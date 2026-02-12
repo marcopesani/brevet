@@ -27,6 +27,7 @@ export default defineConfig({
           setupFiles: ["src/test/setup.ts"],
           include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
           exclude: ["node_modules", ".next", "src/test/e2e/**"],
+          fileParallelism: false,
         },
       },
       {
