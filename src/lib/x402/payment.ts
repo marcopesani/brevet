@@ -8,7 +8,11 @@ import {
   buildTransferAuthorization,
   signTransferAuthorization,
 } from "./eip712";
-import { parsePaymentRequired, buildPaymentSignatureHeader } from "./headers";
+import {
+  parsePaymentRequired,
+  buildPaymentSignatureHeader,
+  extractTxHashFromResponse,
+} from "./headers";
 import type { PaymentResult, PaymentRequirement, SigningStrategy } from "./types";
 
 /**
@@ -185,14 +189,19 @@ export async function executePayment(
     },
   });
 
-  // Step 8: Log transaction
+  // Step 8: Extract transaction hash from facilitator response
+  const txHash = await extractTxHashFromResponse(paidResponse);
+
+  // Step 9: Log transaction
   const txStatus = paidResponse.ok ? "completed" : "failed";
   await prisma.transaction.create({
     data: {
       amount: amountUsd,
       endpoint: url,
+      txHash,
       network: "base",
       status: txStatus,
+      type: "payment",
       userId,
     },
   });

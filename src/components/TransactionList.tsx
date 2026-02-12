@@ -10,6 +10,7 @@ interface Transaction {
   txHash: string | null;
   network: string;
   status: string;
+  type: string;
   userId: string;
   createdAt: string;
 }

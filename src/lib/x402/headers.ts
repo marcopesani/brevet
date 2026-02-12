@@ -6,6 +6,41 @@ import type {
 import type { Hex } from "viem";
 
 /**
+ * Extract a transaction hash from a facilitator's response.
+ *
+ * Checks (in order):
+ * 1. `X-PAYMENT-TX-HASH` response header
+ * 2. JSON body `txHash` field (if content-type is JSON)
+ *
+ * Returns null if no hash is found.
+ */
+export async function extractTxHashFromResponse(
+  response: Response,
+): Promise<string | null> {
+  // Try header first
+  const headerHash = response.headers.get("X-PAYMENT-TX-HASH");
+  if (headerHash && headerHash.startsWith("0x")) {
+    return headerHash;
+  }
+
+  // Try JSON body — clone so the caller can still read the response
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      const cloned = response.clone();
+      const body = await cloned.json();
+      if (typeof body?.txHash === "string" && body.txHash.startsWith("0x")) {
+        return body.txHash;
+      }
+    } catch {
+      // Body isn't valid JSON or can't be read — ignore
+    }
+  }
+
+  return null;
+}
+
+/**
  * Parse the payment requirements from a 402 response.
  *
  * Checks both `X-PAYMENT` and `PAYMENT-REQUIRED` headers.
