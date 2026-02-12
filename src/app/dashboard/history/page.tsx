@@ -1,10 +1,9 @@
-import { createClient } from "@/lib/supabase/server";
+import { getAuthenticatedUser } from "@/lib/auth";
 import TransactionList from "@/components/TransactionList";
 
 export default async function HistoryPage() {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getClaims();
-  const userId = data?.claims?.sub as string;
+  const user = await getAuthenticatedUser();
+  const userId = user!.userId;
 
   return <TransactionList userId={userId} />;
 }

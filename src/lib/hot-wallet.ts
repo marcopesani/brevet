@@ -92,6 +92,21 @@ function getPublicClient() {
   });
 }
 
+/**
+ * Returns true if the error is from the RPC returning 429 (over rate limit).
+ */
+export function isRpcRateLimitError(error: unknown): boolean {
+  let e: unknown = error;
+  while (e) {
+    const err = e as { status?: number; message?: string; cause?: unknown };
+    if (err.status === 429 || (err.message && err.message.includes("over rate limit"))) {
+      return true;
+    }
+    e = err.cause;
+  }
+  return false;
+}
+
 export async function getUsdcBalance(address: string): Promise<string> {
   const client = getPublicClient();
   const balance = await client.readContract({

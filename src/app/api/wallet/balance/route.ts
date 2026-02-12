@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getUsdcBalance } from "@/lib/hot-wallet";
+import { getUsdcBalance, isRpcRateLimitError } from "@/lib/hot-wallet";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
 import { getAuthenticatedUser } from "@/lib/auth";
 
@@ -32,6 +32,17 @@ export async function GET(request: NextRequest) {
     const balance = await getUsdcBalance(address);
     return NextResponse.json({ balance, address });
   } catch (error) {
+    const isRateLimited = isRpcRateLimitError(error);
+    if (isRateLimited) {
+      const retryAfter = 60;
+      return NextResponse.json(
+        { error: "Rate limited", retryAfter },
+        {
+          status: 503,
+          headers: { "Retry-After": String(retryAfter) },
+        },
+      );
+    }
     console.error("Failed to fetch balance:", error);
     return NextResponse.json(
       { error: "Failed to fetch balance" },

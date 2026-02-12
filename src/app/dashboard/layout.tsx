@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
-import SignOutButton from "@/components/SignOutButton";
+import LogoutButton from "@/components/LogoutButton";
 import DashboardNav from "@/components/DashboardNav";
+
+function truncateAddress(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
 
 export default async function DashboardLayout({
   children,
@@ -15,10 +18,6 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getClaims();
-  const email = (data?.claims?.email as string) ?? "";
-
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
       <div className="mx-auto max-w-3xl px-6 py-12">
@@ -27,9 +26,11 @@ export default async function DashboardLayout({
             <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
               PayMCP Dashboard
             </h1>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">{email}</p>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+              {truncateAddress(user.walletAddress)}
+            </p>
           </div>
-          <SignOutButton />
+          <LogoutButton />
         </div>
 
         <DashboardNav />

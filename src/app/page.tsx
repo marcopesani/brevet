@@ -17,23 +17,15 @@ export default async function Home() {
             PayMCP
           </h1>
           <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            AI payment proxy for autonomous agents. Sign in to manage your
-            wallet, spending policies, and transactions.
+            AI payment proxy for autonomous agents. Connect your wallet to
+            manage spending policies, and transactions.
           </p>
-          <div className="flex gap-3">
-            <Link
-              href="/login"
-              className="rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-black dark:hover:bg-zinc-200"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/signup"
-              className="rounded-lg border border-zinc-300 px-5 py-2.5 text-sm font-medium text-black hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-50 dark:hover:bg-zinc-900"
-            >
-              Create account
-            </Link>
-          </div>
+          <Link
+            href="/login"
+            className="rounded-lg bg-black px-5 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-black dark:hover:bg-zinc-200"
+          >
+            Connect Wallet
+          </Link>
         </div>
       </main>
     </div>

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import { TEST_USER_ID } from "@/test/helpers/fixtures";
 
-// Mock Supabase auth — MCP route checks session optionally and compares to URL param
+// Mock auth — MCP route checks session optionally and compares to URL param
 vi.mock("@/lib/auth", () => ({
   getAuthenticatedUser: vi.fn().mockResolvedValue({ userId: "00000000-0000-4000-a000-000000000001" }),
 }));

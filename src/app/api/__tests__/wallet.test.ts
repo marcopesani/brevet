@@ -6,7 +6,7 @@ import { TEST_WALLET_ADDRESS } from "@/test/helpers/crypto";
 import { TEST_USER_ID } from "@/test/helpers/fixtures";
 import { getAuthenticatedUser } from "@/lib/auth";
 
-// Mock Supabase auth
+// Mock auth
 vi.mock("@/lib/auth", () => ({
   getAuthenticatedUser: vi.fn().mockResolvedValue({ userId: "00000000-0000-4000-a000-000000000001" }),
 }));

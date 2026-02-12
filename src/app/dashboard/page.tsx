@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { getAuthenticatedUser } from "@/lib/auth";
 import HotWalletInfo from "@/components/HotWalletInfo";
 import McpServerUrl from "@/components/McpServerUrl";
 import SpendingSummary from "@/components/SpendingSummary";
@@ -6,9 +6,8 @@ import SpendingChart from "@/components/SpendingChart";
 import SpendingPolicies from "@/components/SpendingPolicies";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getClaims();
-  const userId = data?.claims?.sub as string;
+  const user = await getAuthenticatedUser();
+  const userId = user!.userId;
 
   return (
     <div className="flex flex-col gap-6">

@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createHotWallet } from "@/lib/hot-wallet";
-import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { rateLimit } from "@/lib/rate-limit";
 import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
-  const limited = rateLimit(getClientIp(request), 10);
-  if (limited) return limited;
-
   const auth = await getAuthenticatedUser();
   if (!auth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { userId } = auth;
+
+  // Per-user rate limit so one user's retries don't share the same bucket as others (IP is often "unknown" in browser)
+  const limited = rateLimit(`wallet-create:${userId}`, 20);
+  if (limited) return limited;
 
   try {
     // Find user with their hot wallet

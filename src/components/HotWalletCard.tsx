@@ -10,15 +10,22 @@ export default function HotWalletCard() {
   const [hotWalletAddress, setHotWalletAddress] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
+  const [balanceUnavailable, setBalanceUnavailable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchBalance = useCallback(async (addr: string) => {
     try {
-      const res = await fetch(`/api/wallet/balance?address=${addr}`);
+      const res = await fetch(`/api/wallet/balance?address=${addr}`, {
+        credentials: "include",
+      });
       if (res.ok) {
         const data = await res.json();
         setBalance(data.balance);
+        setBalanceUnavailable(false);
+      } else if (res.status === 503) {
+        // RPC rate limited (e.g. public Base RPC); show message and retry on next interval
+        setBalanceUnavailable(true);
       }
     } catch {
       // Balance fetch is non-critical; silently retry on next interval
@@ -72,10 +79,10 @@ export default function HotWalletCard() {
     };
   }, [isConnected, address, fetchBalance]);
 
-  // Refresh balance every 15 seconds
+  // Refresh balance every 30 seconds (avoid hitting public RPC rate limits)
   useEffect(() => {
     if (!hotWalletAddress) return;
-    const interval = setInterval(() => fetchBalance(hotWalletAddress), 15_000);
+    const interval = setInterval(() => fetchBalance(hotWalletAddress), 30_000);
     return () => clearInterval(interval);
   }, [hotWalletAddress, fetchBalance]);
 
@@ -119,7 +126,11 @@ export default function HotWalletCard() {
             USDC Balance
           </p>
           <p className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
-            {balance !== null ? `$${balance}` : "Loading..."}
+            {balanceUnavailable
+              ? "Temporarily unavailable"
+              : balance !== null
+                ? `$${balance}`
+                : "Loading..."}
           </p>
         </div>
       </div>
