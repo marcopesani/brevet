@@ -4,12 +4,13 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model User {
-  id              String           @id @default(cuid())
-  walletAddress   String           @unique
+  id              String           @id @default(uuid())
+  email           String?          @unique
+  walletAddress   String?          @unique
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   hotWallet       HotWallet?
@@ -19,7 +20,7 @@ model User {
 }
 
 model HotWallet {
-  id                  String   @id @default(cuid())
+  id                  String   @id @default(uuid())
   address             String   @unique
   encryptedPrivateKey String
   userId              String   @unique
@@ -29,7 +30,7 @@ model HotWallet {
 }
 
 model SpendingPolicy {
-  id                   String   @id @default(cuid())
+  id                   String   @id @default(uuid())
   perRequestLimit      Float    @default(0.10)
   perHourLimit         Float    @default(1.00)
   perDayLimit          Float    @default(10.00)
@@ -43,7 +44,7 @@ model SpendingPolicy {
 }
 
 model Transaction {
-  id        String   @id @default(cuid())
+  id        String   @id @default(uuid())
   amount    Float
   endpoint  String
   txHash    String?
@@ -56,7 +57,7 @@ model Transaction {
 }
 
 model PendingPayment {
-  id                  String   @id @default(cuid())
+  id                  String   @id @default(uuid())
   userId              String
   url                 String
   method              String   @default("GET")
