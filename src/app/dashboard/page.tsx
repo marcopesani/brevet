@@ -6,6 +6,8 @@ import ConnectWallet from "@/components/ConnectWallet";
 import SessionStatus from "@/components/SessionStatus";
 import PendingPayments from "@/components/PendingPayments";
 import SpendingPolicies from "@/components/SpendingPolicies";
+import SpendingSummary from "@/components/SpendingSummary";
+import SpendingChart from "@/components/SpendingChart";
 
 export default function DashboardPage() {
   const { address, isConnected } = useAppKitAccount();
@@ -56,6 +58,8 @@ export default function DashboardPage() {
         </nav>
 
         <div className="flex flex-col gap-6">
+          <SpendingSummary userId={userId} />
+          <SpendingChart userId={userId} />
           <SessionStatus />
           <PendingPayments userId={userId} walletAddress={address} />
           {/* Hot wallet section will be added by another task */}
