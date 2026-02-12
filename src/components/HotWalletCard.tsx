@@ -3,10 +3,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAccount } from "wagmi";
 import FundWallet from "./FundWallet";
+import WithdrawWallet from "./WithdrawWallet";
 
 export default function HotWalletCard() {
   const { address, isConnected } = useAccount();
   const [hotWalletAddress, setHotWalletAddress] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [balance, setBalance] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,7 @@ export default function HotWalletCard() {
         const data = await res.json();
         if (!cancelled) {
           setHotWalletAddress(data.address);
+          setUserId(data.userId);
           fetchBalance(data.address);
         }
       } catch (err) {
@@ -130,6 +133,19 @@ export default function HotWalletCard() {
           onFunded={() => fetchBalance(hotWalletAddress)}
         />
       </div>
+
+      {userId && (
+        <div className="border-t border-zinc-200 pt-4 dark:border-zinc-800">
+          <h3 className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Withdraw to Wallet
+          </h3>
+          <WithdrawWallet
+            userId={userId}
+            balance={balance}
+            onWithdrawn={() => fetchBalance(hotWalletAddress)}
+          />
+        </div>
+      )}
     </div>
   );
 }

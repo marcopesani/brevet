@@ -1,7 +1,15 @@
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { createPublicClient, http, formatUnits } from "viem";
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  formatUnits,
+  parseUnits,
+  isAddress,
+} from "viem";
 import { base } from "viem/chains";
 import crypto from "crypto";
+import { prisma } from "@/lib/db";
 
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
 const USDC_DECIMALS = 6;
@@ -13,6 +21,16 @@ const USDC_ABI = [
     stateMutability: "view",
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "transfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
   },
 ] as const;
 
@@ -83,6 +101,68 @@ export async function getUsdcBalance(address: string): Promise<string> {
     args: [address as `0x${string}`],
   });
   return formatUnits(balance, USDC_DECIMALS);
+}
+
+export async function withdrawFromHotWallet(
+  userId: string,
+  amount: number,
+  toAddress: string,
+): Promise<{ txHash: string }> {
+  if (!isAddress(toAddress)) {
+    throw new Error("Invalid destination address");
+  }
+  if (amount <= 0) {
+    throw new Error("Amount must be greater than 0");
+  }
+
+  // Look up the user's hot wallet
+  const hotWallet = await prisma.hotWallet.findUnique({
+    where: { userId },
+  });
+  if (!hotWallet) {
+    throw new Error("No hot wallet found for this user");
+  }
+
+  // Check balance
+  const balance = await getUsdcBalance(hotWallet.address);
+  if (parseFloat(balance) < amount) {
+    throw new Error(
+      `Insufficient balance: ${balance} USDC available, ${amount} requested`,
+    );
+  }
+
+  // Decrypt private key and create wallet client
+  const privateKey = decryptPrivateKey(hotWallet.encryptedPrivateKey);
+  const account = privateKeyToAccount(privateKey as `0x${string}`);
+  const rpcUrl = process.env.RPC_URL;
+  const walletClient = createWalletClient({
+    account,
+    chain: base,
+    transport: http(rpcUrl),
+  });
+
+  // Submit ERC-20 transfer
+  const txHash = await walletClient.writeContract({
+    address: USDC_ADDRESS,
+    abi: USDC_ABI,
+    functionName: "transfer",
+    args: [toAddress as `0x${string}`, parseUnits(String(amount), USDC_DECIMALS)],
+  });
+
+  // Log withdrawal transaction
+  await prisma.transaction.create({
+    data: {
+      amount,
+      endpoint: `withdrawal:${toAddress}`,
+      txHash,
+      network: "base",
+      status: "completed",
+      type: "withdrawal",
+      userId,
+    },
+  });
+
+  return { txHash };
 }
 
 export { USDC_ADDRESS, USDC_DECIMALS };
