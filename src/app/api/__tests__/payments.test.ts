@@ -2,7 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
-import { createTestPendingPayment } from "@/test/helpers/fixtures";
+import { createTestPendingPayment, TEST_USER_ID } from "@/test/helpers/fixtures";
+import { getAuthenticatedUser } from "@/lib/auth";
+
+// Mock Supabase auth
+vi.mock("@/lib/auth", () => ({
+  getAuthenticatedUser: vi.fn().mockResolvedValue({ userId: "00000000-0000-4000-a000-000000000001" }),
+}));
 
 // Mock rate-limit to avoid interference
 vi.mock("@/lib/rate-limit", () => ({
@@ -27,11 +33,12 @@ vi.stubGlobal("fetch", mockFetch);
 describe("Payments API routes", () => {
   beforeEach(async () => {
     await resetTestDb();
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({ userId: TEST_USER_ID });
     mockFetch.mockClear();
   });
 
   describe("GET /api/payments/pending", () => {
-    it("should return pending payments for a user", async () => {
+    it("should return pending payments for the authenticated user", async () => {
       const { user } = await seedTestUser();
       await prisma.pendingPayment.create({
         data: createTestPendingPayment(user.id, { id: "pp-1" }),
@@ -45,11 +52,9 @@ describe("Payments API routes", () => {
 
       const { GET } = await import("@/app/api/payments/pending/route");
 
-      const request = new NextRequest(
-        `http://localhost/api/payments/pending?userId=${user.id}`,
-      );
+      const request = new NextRequest("http://localhost/api/payments/pending");
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -57,14 +62,12 @@ describe("Payments API routes", () => {
     });
 
     it("should return empty list when no pending payments", async () => {
-      const { user } = await seedTestUser();
+      await seedTestUser();
       const { GET } = await import("@/app/api/payments/pending/route");
 
-      const request = new NextRequest(
-        `http://localhost/api/payments/pending?userId=${user.id}`,
-      );
+      const request = new NextRequest("http://localhost/api/payments/pending");
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -89,11 +92,9 @@ describe("Payments API routes", () => {
 
       const { GET } = await import("@/app/api/payments/pending/route");
 
-      const request = new NextRequest(
-        `http://localhost/api/payments/pending?userId=${user.id}`,
-      );
+      const request = new NextRequest("http://localhost/api/payments/pending");
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -101,43 +102,58 @@ describe("Payments API routes", () => {
       expect(data[0].id).toBe("valid-pp");
     });
 
-    it("should return 400 when userId is missing", async () => {
+    it("should return 401 when not authenticated", async () => {
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce(null);
       const { GET } = await import("@/app/api/payments/pending/route");
 
       const request = new NextRequest("http://localhost/api/payments/pending");
 
-      const response = await GET(request );
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("userId is required");
+      const response = await GET(request);
+      expect(response.status).toBe(401);
     });
   });
 
   describe("POST /api/payments/pending", () => {
     it("should create a new pending payment", async () => {
-      const { user } = await seedTestUser();
+      await seedTestUser();
       const { POST } = await import("@/app/api/payments/pending/route");
 
       const request = new NextRequest("http://localhost/api/payments/pending", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user.id,
           url: "https://api.example.com/resource",
           amount: 0.05,
           paymentRequirements: JSON.stringify([{ scheme: "exact" }]),
         }),
       });
 
-      const response = await POST(request );
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(201);
-      expect(data.userId).toBe(user.id);
+      expect(data.userId).toBe(TEST_USER_ID);
       expect(data.amount).toBe(0.05);
       expect(data.status).toBe("pending");
       expect(data.method).toBe("GET"); // default
+    });
+
+    it("should return 401 when not authenticated", async () => {
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce(null);
+      const { POST } = await import("@/app/api/payments/pending/route");
+
+      const request = new NextRequest("http://localhost/api/payments/pending", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: "https://api.example.com/resource",
+          amount: 0.05,
+          paymentRequirements: "[]",
+        }),
+      });
+
+      const response = await POST(request);
+      expect(response.status).toBe(401);
     });
 
     it("should return 400 when required fields are missing", async () => {
@@ -146,10 +162,10 @@ describe("Payments API routes", () => {
       const request = new NextRequest("http://localhost/api/payments/pending", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: "test" }),
+        body: JSON.stringify({}),
       });
 
-      const response = await POST(request );
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -163,14 +179,13 @@ describe("Payments API routes", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: "test",
           url: "https://example.com",
           amount: -1,
           paymentRequirements: "[]",
         }),
       });
 
-      const response = await POST(request );
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -184,14 +199,13 @@ describe("Payments API routes", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: "test",
           url: "https://example.com",
           amount: 1,
           paymentRequirements: "not-valid-json",
         }),
       });
 
-      const response = await POST(request );
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -247,6 +261,35 @@ describe("Payments API routes", () => {
       });
       expect(tx).not.toBeNull();
       expect(tx!.status).toBe("completed");
+    });
+
+    it("should return 401 when not authenticated", async () => {
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce(null);
+      const { POST } = await import("@/app/api/payments/[id]/approve/route");
+
+      const request = new NextRequest(
+        "http://localhost/api/payments/some-id/approve",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            signature: "0xabc",
+            authorization: {
+              from: "0x1",
+              to: "0x2",
+              value: "0",
+              validAfter: "0",
+              validBefore: "0",
+              nonce: "0x0",
+            },
+          }),
+        },
+      );
+
+      const response = await POST(request as any, {
+        params: Promise.resolve({ id: "some-id" }),
+      });
+      expect(response.status).toBe(401);
     });
 
     it("should return 404 for non-existent payment", async () => {
@@ -408,6 +451,21 @@ describe("Payments API routes", () => {
         where: { id: "reject-pp" },
       });
       expect(payment!.status).toBe("rejected");
+    });
+
+    it("should return 401 when not authenticated", async () => {
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce(null);
+      const { POST } = await import("@/app/api/payments/[id]/reject/route");
+
+      const request = new NextRequest(
+        "http://localhost/api/payments/some-id/reject",
+        { method: "POST" },
+      );
+
+      const response = await POST(request as any, {
+        params: Promise.resolve({ id: "some-id" }),
+      });
+      expect(response.status).toBe(401);
     });
 
     it("should return 404 for non-existent payment", async () => {

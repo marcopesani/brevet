@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 /**
- * GET /api/payments/pending?userId=...
- * List pending payments for a user (status=pending, not expired).
+ * GET /api/payments/pending
+ * List pending payments for the authenticated user (status=pending, not expired).
  */
 export async function GET(request: NextRequest) {
   const limited = rateLimit(getClientIp(request), 30);
   if (limited) return limited;
 
-  const userId = request.nextUrl.searchParams.get("userId");
-  if (!userId) {
-    return NextResponse.json({ error: "userId is required" }, { status: 400 });
+  const auth = await getAuthenticatedUser();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const { userId } = auth;
 
   const payments = await prisma.pendingPayment.findMany({
     where: {
@@ -30,11 +32,17 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/payments/pending
  * Create a new pending payment (called internally when x402_pay detects a WC-tier payment).
- * Body: { userId, url, method?, amount, paymentRequirements }
+ * Body: { url, method?, amount, paymentRequirements }
  */
 export async function POST(request: NextRequest) {
   const postLimited = rateLimit(getClientIp(request), 10);
   if (postLimited) return postLimited;
+
+  const auth = await getAuthenticatedUser();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { userId } = auth;
 
   let body: Record<string, unknown>;
   try {
@@ -43,17 +51,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { userId, url, method, amount, paymentRequirements } = body as {
-    userId?: string;
+  const { url, method, amount, paymentRequirements } = body as {
     url?: string;
     method?: string;
     amount?: number;
     paymentRequirements?: string;
   };
 
-  if (!userId || !url || amount === undefined || !paymentRequirements) {
+  if (!url || amount === undefined || !paymentRequirements) {
     return NextResponse.json(
-      { error: "userId, url, amount, and paymentRequirements are required" },
+      { error: "url, amount, and paymentRequirements are required" },
       { status: 400 },
     );
   }

@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
-import { resetTestDb, seedTestUser, cleanupTestDb } from "@/test/helpers/db";
+import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import { TEST_WALLET_ADDRESS } from "@/test/helpers/crypto";
+import { TEST_USER_ID } from "@/test/helpers/fixtures";
+import { getAuthenticatedUser } from "@/lib/auth";
+
+// Mock Supabase auth
+vi.mock("@/lib/auth", () => ({
+  getAuthenticatedUser: vi.fn().mockResolvedValue({ userId: "00000000-0000-4000-a000-000000000001" }),
+}));
 
 // Mock hot-wallet module for balance and withdrawal
 vi.mock("@/lib/hot-wallet", async (importOriginal) => {
@@ -25,6 +32,7 @@ vi.mock("@/lib/rate-limit", () => ({
 describe("Wallet API routes", () => {
   beforeEach(async () => {
     await resetTestDb();
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({ userId: TEST_USER_ID });
   });
 
   afterEach(() => {
@@ -32,83 +40,61 @@ describe("Wallet API routes", () => {
   });
 
   describe("POST /api/wallet/create", () => {
-    it("should create a new user and hot wallet", async () => {
+    it("should create a hot wallet for authenticated user", async () => {
+      // Create the user first (signup would normally do this)
+      await prisma.user.create({ data: { id: TEST_USER_ID, email: "test@example.com" } });
+
       const { POST } = await import("@/app/api/wallet/create/route");
 
       const request = new NextRequest("http://localhost/api/wallet/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress: "0x" + "a".repeat(40) }),
       });
 
-      const response = await POST(request );
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
       expect(data.address).toBeDefined();
-      expect(data.userId).toBeDefined();
-
-      // Verify user was created in DB
-      const user = await prisma.user.findFirst({
-        where: { walletAddress: "0x" + "a".repeat(40) },
-      });
-      expect(user).not.toBeNull();
+      expect(data.userId).toBe(TEST_USER_ID);
     });
 
-    it("should return existing hot wallet for duplicate creation (idempotent)", async () => {
+    it("should return existing hot wallet (idempotent)", async () => {
       const { POST } = await import("@/app/api/wallet/create/route");
 
-      const walletAddress = "0x" + "c".repeat(40);
+      // Seed user with hot wallet
+      await seedTestUser();
 
-      // First call
-      const request1 = new NextRequest("http://localhost/api/wallet/create", {
+      const request = new NextRequest("http://localhost/api/wallet/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress }),
       });
-      const response1 = await POST(request1 );
-      const data1 = await response1.json();
-      expect(response1.status).toBe(200);
 
-      // Second call with the same wallet address
-      const request2 = new NextRequest("http://localhost/api/wallet/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress }),
-      });
-      const response2 = await POST(request2 );
-      const data2 = await response2.json();
-      expect(response2.status).toBe(200);
+      const response = await POST(request);
+      const data = await response.json();
 
-      // Should return the same hot wallet address and userId
-      expect(data2.address).toBe(data1.address);
-      expect(data2.userId).toBe(data1.userId);
+      expect(response.status).toBe(200);
+      expect(data.address).toBe(TEST_WALLET_ADDRESS);
+      expect(data.userId).toBe(TEST_USER_ID);
     });
 
-    it("should return 400 when walletAddress is missing", async () => {
+    it("should return 401 when not authenticated", async () => {
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce(null);
       const { POST } = await import("@/app/api/wallet/create/route");
 
       const request = new NextRequest("http://localhost/api/wallet/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
       });
 
-      const response = await POST(request );
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("walletAddress is required");
+      const response = await POST(request);
+      expect(response.status).toBe(401);
     });
   });
 
   describe("GET /api/wallet/balance", () => {
-    it("should return USDC balance for a valid address", async () => {
+    it("should return USDC balance for the authenticated user", async () => {
+      await seedTestUser();
       const { GET } = await import("@/app/api/wallet/balance/route");
 
-      const request = new NextRequest(
-        `http://localhost/api/wallet/balance?address=${TEST_WALLET_ADDRESS}`,
-      );
+      const request = new NextRequest("http://localhost/api/wallet/balance");
 
       const response = await GET(request);
       const data = await response.json();
@@ -118,22 +104,31 @@ describe("Wallet API routes", () => {
       expect(data.address).toBe(TEST_WALLET_ADDRESS);
     });
 
-    it("should return 400 when address is missing", async () => {
+    it("should return 404 when user has no hot wallet", async () => {
+      // Create user without hot wallet
+      await prisma.user.create({ data: { id: TEST_USER_ID, email: "test@example.com" } });
       const { GET } = await import("@/app/api/wallet/balance/route");
 
       const request = new NextRequest("http://localhost/api/wallet/balance");
 
       const response = await GET(request);
-      const data = await response.json();
+      expect(response.status).toBe(404);
+    });
 
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("address query parameter is required");
+    it("should return 401 when not authenticated", async () => {
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce(null);
+      const { GET } = await import("@/app/api/wallet/balance/route");
+
+      const request = new NextRequest("http://localhost/api/wallet/balance");
+
+      const response = await GET(request);
+      expect(response.status).toBe(401);
     });
   });
 
   describe("POST /api/wallet/withdraw", () => {
     it("should withdraw USDC successfully", async () => {
-      const { user } = await seedTestUser();
+      await seedTestUser();
       const { POST } = await import("@/app/api/wallet/withdraw/route");
 
       const toAddress = "0x" + "1".repeat(40);
@@ -141,13 +136,12 @@ describe("Wallet API routes", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user.id,
           amount: 1.0,
           toAddress,
         }),
       });
 
-      const response = await POST(request );
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -155,7 +149,8 @@ describe("Wallet API routes", () => {
       expect(data.amount).toBe(1.0);
     });
 
-    it("should return 400 when userId is missing", async () => {
+    it("should return 401 when not authenticated", async () => {
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce(null);
       const { POST } = await import("@/app/api/wallet/withdraw/route");
 
       const request = new NextRequest("http://localhost/api/wallet/withdraw", {
@@ -167,11 +162,8 @@ describe("Wallet API routes", () => {
         }),
       });
 
-      const response = await POST(request );
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("userId is required");
+      const response = await POST(request);
+      expect(response.status).toBe(401);
     });
 
     it("should return 400 for invalid amount", async () => {
@@ -181,13 +173,12 @@ describe("Wallet API routes", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: "test-user-1",
           amount: -1,
           toAddress: "0x" + "1".repeat(40),
         }),
       });
 
-      const response = await POST(request );
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -201,13 +192,12 @@ describe("Wallet API routes", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: "test-user-1",
           amount: 1.0,
           toAddress: "not-valid",
         }),
       });
 
-      const response = await POST(request );
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -215,19 +205,20 @@ describe("Wallet API routes", () => {
     });
 
     it("should return 404 when user not found", async () => {
+      // Auth returns a userId that doesn't exist in DB
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce({ userId: "00000000-0000-4000-a000-999999999999" });
       const { POST } = await import("@/app/api/wallet/withdraw/route");
 
       const request = new NextRequest("http://localhost/api/wallet/withdraw", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: "nonexistent-user",
           amount: 1.0,
           toAddress: "0x" + "1".repeat(40),
         }),
       });
 
-      const response = await POST(request );
+      const response = await POST(request);
       const data = await response.json();
 
       expect(response.status).toBe(404);

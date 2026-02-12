@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
+import { TEST_USER_ID } from "@/test/helpers/fixtures";
+
+// Mock Supabase auth — MCP route checks session optionally and compares to URL param
+vi.mock("@/lib/auth", () => ({
+  getAuthenticatedUser: vi.fn().mockResolvedValue({ userId: "00000000-0000-4000-a000-000000000001" }),
+}));
 
 // Mock rate-limit to avoid interference
 vi.mock("@/lib/rate-limit", () => ({
@@ -56,7 +62,7 @@ describe("MCP API route", () => {
       const { POST } = await import("@/app/api/mcp/[userId]/route");
 
       const request = new Request(
-        "http://localhost/api/mcp/test-user-1",
+        `http://localhost/api/mcp/${TEST_USER_ID}`,
         {
           method: "POST",
           headers: MCP_HEADERS,
@@ -90,7 +96,7 @@ describe("MCP API route", () => {
       const { POST } = await import("@/app/api/mcp/[userId]/route");
 
       const request = new Request(
-        "http://localhost/api/mcp/test-user-1",
+        `http://localhost/api/mcp/${TEST_USER_ID}`,
         {
           method: "POST",
           headers: MCP_HEADERS,
@@ -118,7 +124,7 @@ describe("MCP API route", () => {
       const { POST } = await import("@/app/api/mcp/[userId]/route");
 
       const request = new Request(
-        "http://localhost/api/mcp/test-user-1",
+        `http://localhost/api/mcp/${TEST_USER_ID}`,
         {
           method: "POST",
           headers: MCP_HEADERS,

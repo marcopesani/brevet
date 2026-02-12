@@ -1,6 +1,12 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { createMcpServer } from "@/lib/mcp/server";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { getAuthenticatedUser } from "@/lib/auth";
+
+// TODO: The MCP endpoint is consumed by headless AI agents that cannot use browser-based
+// Supabase sessions. A token-based auth strategy (e.g., API keys or service tokens) is
+// needed for production use. For now, we validate the Supabase session if present and
+// verify it matches the [userId] URL parameter.
 
 // Stateless: create a fresh server + transport per request
 async function handleMcpRequest(
@@ -14,6 +20,15 @@ async function handleMcpRequest(
   if (!userId) {
     return new Response(JSON.stringify({ error: "userId is required" }), {
       status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Validate Supabase session if present — ensure the authenticated user matches the URL param
+  const auth = await getAuthenticatedUser();
+  if (auth && auth.userId !== userId) {
+    return new Response(JSON.stringify({ error: "Forbidden: userId mismatch" }), {
+      status: 403,
       headers: { "Content-Type": "application/json" },
     });
   }

@@ -2,7 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
-import { createTestTransaction } from "@/test/helpers/fixtures";
+import { createTestTransaction, TEST_USER_ID } from "@/test/helpers/fixtures";
+import { getAuthenticatedUser } from "@/lib/auth";
+
+// Mock Supabase auth
+vi.mock("@/lib/auth", () => ({
+  getAuthenticatedUser: vi.fn().mockResolvedValue({ userId: "00000000-0000-4000-a000-000000000001" }),
+}));
 
 // Mock rate-limit to avoid interference
 vi.mock("@/lib/rate-limit", () => ({
@@ -13,6 +19,7 @@ vi.mock("@/lib/rate-limit", () => ({
 describe("Analytics API routes", () => {
   beforeEach(async () => {
     await resetTestDb();
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({ userId: TEST_USER_ID });
   });
 
   describe("GET /api/analytics", () => {
@@ -44,11 +51,9 @@ describe("Analytics API routes", () => {
 
       const { GET } = await import("@/app/api/analytics/route");
 
-      const request = new NextRequest(
-        `http://localhost/api/analytics?userId=${user.id}`,
-      );
+      const request = new NextRequest("http://localhost/api/analytics");
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -61,14 +66,12 @@ describe("Analytics API routes", () => {
     });
 
     it("should return empty analytics for user with no transactions", async () => {
-      const { user } = await seedTestUser();
+      await seedTestUser();
       const { GET } = await import("@/app/api/analytics/route");
 
-      const request = new NextRequest(
-        `http://localhost/api/analytics?userId=${user.id}`,
-      );
+      const request = new NextRequest("http://localhost/api/analytics");
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -113,11 +116,9 @@ describe("Analytics API routes", () => {
 
       const { GET } = await import("@/app/api/analytics/route");
 
-      const request = new NextRequest(
-        `http://localhost/api/analytics?userId=${user.id}`,
-      );
+      const request = new NextRequest("http://localhost/api/analytics");
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -158,11 +159,9 @@ describe("Analytics API routes", () => {
 
       const { GET } = await import("@/app/api/analytics/route");
 
-      const request = new NextRequest(
-        `http://localhost/api/analytics?userId=${user.id}`,
-      );
+      const request = new NextRequest("http://localhost/api/analytics");
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -182,16 +181,14 @@ describe("Analytics API routes", () => {
       expect(yesterdayEntry?.amount).toBe(0.2);
     });
 
-    it("should return 400 when userId is missing", async () => {
+    it("should return 401 when not authenticated", async () => {
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce(null);
       const { GET } = await import("@/app/api/analytics/route");
 
       const request = new NextRequest("http://localhost/api/analytics");
 
-      const response = await GET(request );
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("userId is required");
+      const response = await GET(request);
+      expect(response.status).toBe(401);
     });
   });
 });

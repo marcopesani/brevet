@@ -29,7 +29,7 @@ describe("checkPolicy", () => {
   it("rejects when no spending policy exists", async () => {
     // Create a user with no policy
     const noPolicy = await prisma.user.create({
-      data: { id: "no-policy-user", walletAddress: "0x" + "d".repeat(40) },
+      data: { id: "00000000-0000-4000-a000-000000000098", email: "no-policy@example.com" },
     });
 
     const result = await checkPolicy(0.01, "https://api.example.com/resource", noPolicy.id);

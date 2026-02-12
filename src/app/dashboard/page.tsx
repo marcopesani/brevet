@@ -1,44 +1,29 @@
-"use client";
-
 import Link from "next/link";
-import { useAppKitAccount } from "@reown/appkit/react";
-import ConnectWallet from "@/components/ConnectWallet";
-import SessionStatus from "@/components/SessionStatus";
-import PendingPayments from "@/components/PendingPayments";
-import SpendingPolicies from "@/components/SpendingPolicies";
+import { createClient } from "@/lib/supabase/server";
+import SignOutButton from "@/components/SignOutButton";
+import HotWalletInfo from "@/components/HotWalletInfo";
 import SpendingSummary from "@/components/SpendingSummary";
 import SpendingChart from "@/components/SpendingChart";
+import SpendingPolicies from "@/components/SpendingPolicies";
 
-export default function DashboardPage() {
-  const { address, isConnected } = useAppKitAccount();
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
 
-  if (!isConnected || !address) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-black">
-        <div className="flex flex-col items-center gap-4">
-          <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
-            PayMCP Dashboard
-          </h1>
-          <p className="text-zinc-600 dark:text-zinc-400">
-            Connect your wallet to access the dashboard.
-          </p>
-          <ConnectWallet />
-        </div>
-      </div>
-    );
-  }
-
-  // Use wallet address as userId for now
-  const userId = address;
+  const userId = data?.claims?.sub as string;
+  const email = (data?.claims?.email as string) ?? "";
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black">
       <div className="mx-auto max-w-3xl px-6 py-12">
         <div className="mb-8 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
-            PayMCP Dashboard
-          </h1>
-          <ConnectWallet />
+          <div>
+            <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
+              PayMCP Dashboard
+            </h1>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">{email}</p>
+          </div>
+          <SignOutButton />
         </div>
 
         {/* Navigation */}
@@ -60,9 +45,7 @@ export default function DashboardPage() {
         <div className="flex flex-col gap-6">
           <SpendingSummary userId={userId} />
           <SpendingChart userId={userId} />
-          <SessionStatus />
-          <PendingPayments userId={userId} walletAddress={address} />
-          {/* Hot wallet section will be added by another task */}
+          <HotWalletInfo />
           <SpendingPolicies userId={userId} />
         </div>
       </div>

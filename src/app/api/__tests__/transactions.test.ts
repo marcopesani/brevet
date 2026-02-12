@@ -4,7 +4,14 @@ import { prisma } from "@/lib/db";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import {
   createTestTransaction,
+  TEST_USER_ID,
 } from "@/test/helpers/fixtures";
+import { getAuthenticatedUser } from "@/lib/auth";
+
+// Mock Supabase auth
+vi.mock("@/lib/auth", () => ({
+  getAuthenticatedUser: vi.fn().mockResolvedValue({ userId: "00000000-0000-4000-a000-000000000001" }),
+}));
 
 // Mock rate-limit to avoid interference
 vi.mock("@/lib/rate-limit", () => ({
@@ -30,10 +37,11 @@ vi.mock("viem", async (importOriginal) => {
 describe("Transactions API routes", () => {
   beforeEach(async () => {
     await resetTestDb();
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({ userId: TEST_USER_ID });
   });
 
   describe("GET /api/transactions", () => {
-    it("should return transactions for a user", async () => {
+    it("should return transactions for the authenticated user", async () => {
       const { user } = await seedTestUser();
       await prisma.transaction.create({
         data: createTestTransaction(user.id, { id: "tx-1" }),
@@ -48,11 +56,9 @@ describe("Transactions API routes", () => {
 
       const { GET } = await import("@/app/api/transactions/route");
 
-      const request = new NextRequest(
-        `http://localhost/api/transactions?userId=${user.id}`,
-      );
+      const request = new NextRequest("http://localhost/api/transactions");
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -60,14 +66,12 @@ describe("Transactions API routes", () => {
     });
 
     it("should return empty list for user with no transactions", async () => {
-      const { user } = await seedTestUser();
+      await seedTestUser();
       const { GET } = await import("@/app/api/transactions/route");
 
-      const request = new NextRequest(
-        `http://localhost/api/transactions?userId=${user.id}`,
-      );
+      const request = new NextRequest("http://localhost/api/transactions");
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -94,10 +98,10 @@ describe("Transactions API routes", () => {
       const { GET } = await import("@/app/api/transactions/route");
 
       const request = new NextRequest(
-        `http://localhost/api/transactions?userId=${user.id}&since=2025-06-01T00:00:00Z`,
+        "http://localhost/api/transactions?since=2025-06-01T00:00:00Z",
       );
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -123,10 +127,10 @@ describe("Transactions API routes", () => {
       const { GET } = await import("@/app/api/transactions/route");
 
       const request = new NextRequest(
-        `http://localhost/api/transactions?userId=${user.id}&until=2025-06-01T00:00:00Z`,
+        "http://localhost/api/transactions?until=2025-06-01T00:00:00Z",
       );
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -134,26 +138,24 @@ describe("Transactions API routes", () => {
       expect(data[0].id).toBe("old-tx");
     });
 
-    it("should return 400 when userId is missing", async () => {
+    it("should return 401 when not authenticated", async () => {
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce(null);
       const { GET } = await import("@/app/api/transactions/route");
 
       const request = new NextRequest("http://localhost/api/transactions");
 
-      const response = await GET(request );
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("userId is required");
+      const response = await GET(request);
+      expect(response.status).toBe(401);
     });
 
     it("should return 400 for invalid since date format", async () => {
       const { GET } = await import("@/app/api/transactions/route");
 
       const request = new NextRequest(
-        "http://localhost/api/transactions?userId=test-user-1&since=not-a-date",
+        "http://localhost/api/transactions?since=not-a-date",
       );
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -164,10 +166,10 @@ describe("Transactions API routes", () => {
       const { GET } = await import("@/app/api/transactions/route");
 
       const request = new NextRequest(
-        "http://localhost/api/transactions?userId=test-user-1&until=not-a-date",
+        "http://localhost/api/transactions?until=not-a-date",
       );
 
-      const response = await GET(request );
+      const response = await GET(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);

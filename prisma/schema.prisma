@@ -67,5 +67,5 @@ model PendingPayment {
   signature           String?  // The EIP-712 signature once approved
   expiresAt           DateTime
   createdAt           DateTime @default(now())
-  user                User     @relation(fields: [userId], references: [id])
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

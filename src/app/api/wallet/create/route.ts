@@ -2,32 +2,30 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { createHotWallet } from "@/lib/hot-wallet";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   const limited = rateLimit(getClientIp(request), 10);
   if (limited) return limited;
 
+  const auth = await getAuthenticatedUser();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { userId } = auth;
+
   try {
-    const { walletAddress } = await request.json();
-
-    if (!walletAddress || typeof walletAddress !== "string") {
-      return NextResponse.json(
-        { error: "walletAddress is required" },
-        { status: 400 },
-      );
-    }
-
-    // Find or create user
-    let user = await prisma.user.findUnique({
-      where: { walletAddress },
+    // Find user with their hot wallet
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
       include: { hotWallet: true },
     });
 
     if (!user) {
-      user = await prisma.user.create({
-        data: { walletAddress },
-        include: { hotWallet: true },
-      });
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 },
+      );
     }
 
     // Return existing hot wallet if already created (idempotent)

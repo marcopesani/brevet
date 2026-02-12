@@ -3,20 +3,20 @@ import { isAddress } from "viem";
 import { prisma } from "@/lib/db";
 import { withdrawFromHotWallet } from "@/lib/hot-wallet";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   const limited = rateLimit(getClientIp(request), 5);
   if (limited) return limited;
 
-  try {
-    const { userId, amount, toAddress } = await request.json();
+  const auth = await getAuthenticatedUser();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { userId } = auth;
 
-    if (!userId || typeof userId !== "string") {
-      return NextResponse.json(
-        { error: "userId is required" },
-        { status: 400 },
-      );
-    }
+  try {
+    const { amount, toAddress } = await request.json();
 
     if (typeof amount !== "number" || amount <= 0) {
       return NextResponse.json(

@@ -118,30 +118,30 @@ describe("hot-wallet", () => {
 
     it("should throw for an invalid destination address", async () => {
       await expect(
-        withdrawFromHotWallet("test-user-1", 1.0, "not-an-address"),
+        withdrawFromHotWallet("00000000-0000-4000-a000-000000000001", 1.0, "not-an-address"),
       ).rejects.toThrow("Invalid destination address");
     });
 
     it("should throw for zero or negative amount", async () => {
       const validAddress = "0x" + "1".repeat(40);
       await expect(
-        withdrawFromHotWallet("test-user-1", 0, validAddress),
+        withdrawFromHotWallet("00000000-0000-4000-a000-000000000001", 0, validAddress),
       ).rejects.toThrow("Amount must be greater than 0");
 
       await expect(
-        withdrawFromHotWallet("test-user-1", -5, validAddress),
+        withdrawFromHotWallet("00000000-0000-4000-a000-000000000001", -5, validAddress),
       ).rejects.toThrow("Amount must be greater than 0");
     });
 
     it("should throw if user has no hot wallet", async () => {
       // Create a user without a hot wallet
       await prisma.user.create({
-        data: { id: "no-wallet-user", walletAddress: TEST_WALLET_ADDRESS },
+        data: { id: "00000000-0000-4000-a000-000000000099", email: "no-wallet@example.com" },
       });
 
       const validAddress = "0x" + "1".repeat(40);
       await expect(
-        withdrawFromHotWallet("no-wallet-user", 1.0, validAddress),
+        withdrawFromHotWallet("00000000-0000-4000-a000-000000000099", 1.0, validAddress),
       ).rejects.toThrow("No hot wallet found for this user");
     });
 

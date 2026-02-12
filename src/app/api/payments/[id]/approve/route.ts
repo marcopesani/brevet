@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
 import { buildPaymentSignatureHeader } from "@/lib/x402/headers";
-import type { PaymentRequirement, TransferAuthorization } from "@/lib/x402/types";
+import { getAuthenticatedUser } from "@/lib/auth";
+import type { TransferAuthorization } from "@/lib/x402/types";
 import type { Hex } from "viem";
 
 /**
@@ -16,6 +17,12 @@ export async function POST(
 ) {
   const limited = rateLimit(getClientIp(request), 10);
   if (limited) return limited;
+
+  const auth = await getAuthenticatedUser();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { userId } = auth;
 
   const { id } = await params;
 
@@ -54,6 +61,14 @@ export async function POST(
     return NextResponse.json(
       { error: "Pending payment not found" },
       { status: 404 },
+    );
+  }
+
+  // Verify the authenticated user owns this payment
+  if (payment.userId !== userId) {
+    return NextResponse.json(
+      { error: "Forbidden" },
+      { status: 403 },
     );
   }
 

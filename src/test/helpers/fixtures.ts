@@ -3,15 +3,21 @@ import {
   TEST_ENCRYPTED_PRIVATE_KEY,
 } from "./crypto";
 
+/** Deterministic UUID for the default test user. */
+export const TEST_USER_ID = "00000000-0000-4000-a000-000000000001";
+
 /**
  * Create test user data with sensible defaults.
+ * Uses UUID IDs to match Supabase Auth / Postgres schema.
  */
 export function createTestUser(overrides?: {
   id?: string;
+  email?: string;
   walletAddress?: string;
 }) {
   return {
-    id: overrides?.id ?? "test-user-1",
+    id: overrides?.id ?? TEST_USER_ID,
+    email: overrides?.email ?? "test@example.com",
     walletAddress: overrides?.walletAddress ?? TEST_WALLET_ADDRESS,
   };
 }
@@ -28,7 +34,7 @@ export function createTestHotWallet(
   },
 ) {
   return {
-    id: overrides?.id ?? "test-hw-1",
+    id: overrides?.id ?? "00000000-0000-4000-a000-000000000010",
     address: overrides?.address ?? TEST_WALLET_ADDRESS,
     encryptedPrivateKey:
       overrides?.encryptedPrivateKey ?? TEST_ENCRYPTED_PRIVATE_KEY,
@@ -52,7 +58,7 @@ export function createTestPolicy(
   },
 ) {
   return {
-    id: overrides?.id ?? "test-policy-1",
+    id: overrides?.id ?? "00000000-0000-4000-a000-000000000020",
     perRequestLimit: overrides?.perRequestLimit ?? 0.1,
     perHourLimit: overrides?.perHourLimit ?? 1.0,
     perDayLimit: overrides?.perDayLimit ?? 10.0,
@@ -79,7 +85,7 @@ export function createTestTransaction(
   },
 ) {
   return {
-    id: overrides?.id ?? "test-tx-1",
+    id: overrides?.id ?? "00000000-0000-4000-a000-000000000030",
     amount: overrides?.amount ?? 0.05,
     endpoint: overrides?.endpoint ?? "https://api.example.com/resource",
     txHash: overrides?.txHash ?? "0x" + "a".repeat(64),
@@ -107,7 +113,7 @@ export function createTestPendingPayment(
   },
 ) {
   return {
-    id: overrides?.id ?? "test-pp-1",
+    id: overrides?.id ?? "00000000-0000-4000-a000-000000000040",
     url: overrides?.url ?? "https://api.example.com/paid-resource",
     method: overrides?.method ?? "GET",
     amount: overrides?.amount ?? 0.05,

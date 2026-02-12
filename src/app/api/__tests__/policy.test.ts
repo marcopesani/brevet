@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
+import { TEST_USER_ID } from "@/test/helpers/fixtures";
+import { getAuthenticatedUser } from "@/lib/auth";
+
+// Mock Supabase auth
+vi.mock("@/lib/auth", () => ({
+  getAuthenticatedUser: vi.fn().mockResolvedValue({ userId: "00000000-0000-4000-a000-000000000001" }),
+}));
 
 // Mock rate-limit to avoid interference
 vi.mock("@/lib/rate-limit", () => ({
@@ -12,16 +19,15 @@ vi.mock("@/lib/rate-limit", () => ({
 describe("Policy API routes", () => {
   beforeEach(async () => {
     await resetTestDb();
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({ userId: TEST_USER_ID });
   });
 
   describe("GET /api/policy", () => {
-    it("should return spending policy for existing user", async () => {
-      const { user, policy } = await seedTestUser();
+    it("should return spending policy for authenticated user", async () => {
+      const { policy } = await seedTestUser();
       const { GET } = await import("@/app/api/policy/route");
 
-      const request = new NextRequest(
-        `http://localhost/api/policy?userId=${user.id}`,
-      );
+      const request = new NextRequest("http://localhost/api/policy");
 
       const response = await GET(request);
       const data = await response.json();
@@ -35,12 +41,12 @@ describe("Policy API routes", () => {
       expect(data.blacklistedEndpoints).toEqual([]);
     });
 
-    it("should return 404 for non-existent user", async () => {
+    it("should return 404 for user without policy", async () => {
+      // Create user without policy
+      await prisma.user.create({ data: { id: TEST_USER_ID, email: "test@example.com" } });
       const { GET } = await import("@/app/api/policy/route");
 
-      const request = new NextRequest(
-        "http://localhost/api/policy?userId=nonexistent",
-      );
+      const request = new NextRequest("http://localhost/api/policy");
 
       const response = await GET(request);
       const data = await response.json();
@@ -49,36 +55,33 @@ describe("Policy API routes", () => {
       expect(data.error).toBe("No spending policy found");
     });
 
-    it("should return 400 when userId is missing", async () => {
+    it("should return 401 when not authenticated", async () => {
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce(null);
       const { GET } = await import("@/app/api/policy/route");
 
       const request = new NextRequest("http://localhost/api/policy");
 
       const response = await GET(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("userId is required");
+      expect(response.status).toBe(401);
     });
   });
 
   describe("PUT /api/policy", () => {
     it("should update spending limits", async () => {
-      const { user } = await seedTestUser();
+      await seedTestUser();
       const { PUT } = await import("@/app/api/policy/route");
 
       const request = new NextRequest("http://localhost/api/policy", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user.id,
           perRequestLimit: 0.5,
           perHourLimit: 5.0,
           perDayLimit: 50.0,
         }),
       });
 
-      const response = await PUT(request );
+      const response = await PUT(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -88,20 +91,19 @@ describe("Policy API routes", () => {
     });
 
     it("should update whitelist and blacklist", async () => {
-      const { user } = await seedTestUser();
+      await seedTestUser();
       const { PUT } = await import("@/app/api/policy/route");
 
       const request = new NextRequest("http://localhost/api/policy", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user.id,
           whitelistedEndpoints: ["https://api.example.com/*"],
           blacklistedEndpoints: ["https://evil.example.com/*"],
         }),
       });
 
-      const response = await PUT(request );
+      const response = await PUT(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -113,10 +115,10 @@ describe("Policy API routes", () => {
       ]);
     });
 
-    it("should create policy via upsert for new user", async () => {
+    it("should create policy via upsert for user without policy", async () => {
       // Create a user without a policy
       await prisma.user.create({
-        data: { id: "new-user", walletAddress: "0x" + "d".repeat(40) },
+        data: { id: TEST_USER_ID, email: "test@example.com" },
       });
 
       const { PUT } = await import("@/app/api/policy/route");
@@ -125,19 +127,19 @@ describe("Policy API routes", () => {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: "new-user",
           perRequestLimit: 0.2,
         }),
       });
 
-      const response = await PUT(request );
+      const response = await PUT(request);
       const data = await response.json();
 
       expect(response.status).toBe(200);
       expect(data.perRequestLimit).toBe(0.2);
     });
 
-    it("should return 400 when userId is missing", async () => {
+    it("should return 401 when not authenticated", async () => {
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce(null);
       const { PUT } = await import("@/app/api/policy/route");
 
       const request = new NextRequest("http://localhost/api/policy", {
@@ -146,27 +148,23 @@ describe("Policy API routes", () => {
         body: JSON.stringify({ perRequestLimit: 0.5 }),
       });
 
-      const response = await PUT(request );
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe("userId is required");
+      const response = await PUT(request);
+      expect(response.status).toBe(401);
     });
 
     it("should return 400 for negative limit values", async () => {
-      const { user } = await seedTestUser();
+      await seedTestUser();
       const { PUT } = await import("@/app/api/policy/route");
 
       const request = new NextRequest("http://localhost/api/policy", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user.id,
           perRequestLimit: -1,
         }),
       });
 
-      const response = await PUT(request );
+      const response = await PUT(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -174,19 +172,18 @@ describe("Policy API routes", () => {
     });
 
     it("should return 400 for invalid endpoint list types", async () => {
-      const { user } = await seedTestUser();
+      await seedTestUser();
       const { PUT } = await import("@/app/api/policy/route");
 
       const request = new NextRequest("http://localhost/api/policy", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user.id,
           whitelistedEndpoints: "not-an-array",
         }),
       });
 
-      const response = await PUT(request );
+      const response = await PUT(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -202,7 +199,7 @@ describe("Policy API routes", () => {
         body: "not json",
       });
 
-      const response = await PUT(request );
+      const response = await PUT(request);
       const data = await response.json();
 
       expect(response.status).toBe(400);

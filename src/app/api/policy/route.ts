@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { getAuthenticatedUser } from "@/lib/auth";
 
 /**
- * GET /api/policy?userId=...
- * Fetch the current spending policy for a user.
+ * GET /api/policy
+ * Fetch the current spending policy for the authenticated user.
  */
 export async function GET(request: NextRequest) {
   const limited = rateLimit(getClientIp(request), 30);
   if (limited) return limited;
-  const userId = request.nextUrl.searchParams.get("userId");
-  if (!userId) {
-    return NextResponse.json({ error: "userId is required" }, { status: 400 });
+
+  const auth = await getAuthenticatedUser();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const { userId } = auth;
 
   const policy = await prisma.spendingPolicy.findUnique({
     where: { userId },
@@ -37,12 +40,18 @@ export async function GET(request: NextRequest) {
 
 /**
  * PUT /api/policy
- * Update a user's spending policy.
- * Body: { userId, perRequestLimit?, perHourLimit?, perDayLimit?, whitelistedEndpoints?, blacklistedEndpoints? }
+ * Update the authenticated user's spending policy.
+ * Body: { perRequestLimit?, perHourLimit?, perDayLimit?, whitelistedEndpoints?, blacklistedEndpoints? }
  */
 export async function PUT(request: NextRequest) {
   const putLimited = rateLimit(getClientIp(request), 10);
   if (putLimited) return putLimited;
+
+  const auth = await getAuthenticatedUser();
+  if (!auth) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const { userId } = auth;
 
   let body: Record<string, unknown>;
   try {
@@ -51,18 +60,13 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { userId, perRequestLimit, perHourLimit, perDayLimit, whitelistedEndpoints, blacklistedEndpoints } = body as {
-    userId?: string;
+  const { perRequestLimit, perHourLimit, perDayLimit, whitelistedEndpoints, blacklistedEndpoints } = body as {
     perRequestLimit?: number;
     perHourLimit?: number;
     perDayLimit?: number;
     whitelistedEndpoints?: string[];
     blacklistedEndpoints?: string[];
   };
-
-  if (!userId) {
-    return NextResponse.json({ error: "userId is required" }, { status: 400 });
-  }
 
   // Validate numeric limits
   const limits = { perRequestLimit, perHourLimit, perDayLimit };
