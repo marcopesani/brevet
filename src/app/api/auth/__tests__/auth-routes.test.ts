@@ -108,7 +108,7 @@ describe("Auth API routes", () => {
   });
 
   describe("POST /api/auth/verify", () => {
-    it("creates a new user with HotWallet and SpendingPolicy on first login", async () => {
+    it("creates a new user with HotWallet on first login", async () => {
       const { createHotWallet } = await import("@/lib/hot-wallet");
 
       // Set up nonce cookie (as if /nonce was called first)
@@ -157,10 +157,6 @@ describe("Auth API routes", () => {
           userId: TEST_USER_ID,
         },
       });
-      await prisma.spendingPolicy.create({
-        data: { userId: TEST_USER_ID },
-      });
-
       cookieJar.set("siwe_nonce", "mock-nonce-value");
 
       const { POST } = await import("@/app/api/auth/verify/route");

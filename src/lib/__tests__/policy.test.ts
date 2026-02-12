@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { prisma } from "../db";
 import { resetTestDb, seedTestUser } from "../../test/helpers/db";
-import { createTestPolicy, createTestTransaction } from "../../test/helpers/fixtures";
+import { createTestEndpointPolicy } from "../../test/helpers/fixtures";
 import { checkPolicy } from "../policy";
 
 describe("checkPolicy", () => {
@@ -18,252 +18,148 @@ describe("checkPolicy", () => {
     await resetTestDb();
   });
 
-  it("allows amount under all limits", async () => {
+  it("returns hot_wallet when payFromHotWallet is true", async () => {
     const result = await checkPolicy(0.05, "https://api.example.com/resource", userId);
 
-    expect(result.allowed).toBe(true);
-    expect(result.perRequestLimit).toBe(0.1);
-    expect(result.wcApprovalLimit).toBe(5.0);
+    expect(result.action).toBe("hot_wallet");
+    expect(result.payFromHotWallet).toBe(true);
   });
 
-  it("rejects when no spending policy exists", async () => {
+  it("rejects when no matching endpoint policy exists", async () => {
     // Create a user with no policy
     const noPolicy = await prisma.user.create({
       data: { id: "00000000-0000-4000-a000-000000000098", email: "no-policy@example.com" },
     });
 
-    const result = await checkPolicy(0.01, "https://api.example.com/resource", noPolicy.id);
+    const result = await checkPolicy(0.01, "https://unknown.example.com/resource", noPolicy.id);
 
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain("No spending policy");
+    expect(result.action).toBe("rejected");
+    expect(result.reason).toContain("No active policy");
   });
 
-  it("rejects when amount exceeds WC approval limit", async () => {
-    // Default wcApprovalLimit is 5.0
-    const result = await checkPolicy(6.0, "https://api.example.com/resource", userId);
+  describe("no policy — draft auto-creation", () => {
+    it("auto-creates a draft policy for the endpoint origin", async () => {
+      const result = await checkPolicy(0.01, "https://unknown.example.com/resource", userId);
 
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain("exceeds maximum approval limit");
-  });
+      expect(result.action).toBe("rejected");
+      expect(result.reason).toContain("draft policy has been created");
 
-  describe("per-hour rolling window", () => {
-    it("rejects when hourly spend would exceed limit", async () => {
-      vi.useFakeTimers();
-      const now = new Date("2025-06-01T12:00:00Z");
-      vi.setSystemTime(now);
+      const draft = await prisma.endpointPolicy.findUnique({
+        where: { userId_endpointPattern: { userId, endpointPattern: "https://unknown.example.com" } },
+      });
+      expect(draft).not.toBeNull();
+      expect(draft!.status).toBe("draft");
+    });
 
-      // Default perHourLimit is 1.0, seed transactions totaling 0.95
-      await prisma.transaction.create({
-        data: createTestTransaction(userId, {
-          id: "tx-hour-1",
-          amount: 0.5,
-          status: "completed",
+    it("does not duplicate draft if one already exists", async () => {
+      await checkPolicy(0.01, "https://unknown.example.com/a", userId);
+      await checkPolicy(0.01, "https://unknown.example.com/b", userId);
+
+      const drafts = await prisma.endpointPolicy.findMany({
+        where: { userId, endpointPattern: "https://unknown.example.com" },
+      });
+      expect(drafts).toHaveLength(1);
+    });
+
+    it("reactivates an archived policy as draft instead of creating a duplicate", async () => {
+      // Archive the seeded policy for api.example.com
+      await prisma.endpointPolicy.update({
+        where: { userId_endpointPattern: { userId, endpointPattern: "https://api.example.com" } },
+        data: { status: "archived", archivedAt: new Date() },
+      });
+
+      const result = await checkPolicy(0.01, "https://api.example.com/resource", userId);
+
+      expect(result.action).toBe("rejected");
+      expect(result.reason).toContain("draft policy has been created");
+
+      const policy = await prisma.endpointPolicy.findUnique({
+        where: { userId_endpointPattern: { userId, endpointPattern: "https://api.example.com" } },
+      });
+      expect(policy).not.toBeNull();
+      expect(policy!.status).toBe("draft");
+      expect(policy!.archivedAt).toBeNull();
+    });
+
+    it("does not match draft policies", async () => {
+      await prisma.endpointPolicy.create({
+        data: createTestEndpointPolicy(userId, {
+          id: "00000000-0000-4000-a000-000000000099",
+          endpointPattern: "https://draft.example.com",
+          status: "draft",
         }),
       });
-      await prisma.transaction.create({
-        data: createTestTransaction(userId, {
-          id: "tx-hour-2",
-          amount: 0.45,
-          status: "completed",
+
+      const result = await checkPolicy(0.01, "https://draft.example.com/resource", userId);
+
+      expect(result.action).toBe("rejected");
+      expect(result.reason).toContain("No active policy");
+    });
+  });
+
+  describe("prefix matching", () => {
+    it("matches endpoints by longest prefix", async () => {
+      // The seeded policy has endpointPattern "https://api.example.com"
+      // A request to a sub-path should match
+      const result = await checkPolicy(0.05, "https://api.example.com/some/deep/path", userId);
+
+      expect(result.action).toBe("hot_wallet");
+    });
+
+    it("prefers the longest matching prefix", async () => {
+      // Create a more specific policy with payFromHotWallet=false
+      await prisma.endpointPolicy.create({
+        data: createTestEndpointPolicy(userId, {
+          id: "00000000-0000-4000-a000-000000000050",
+          endpointPattern: "https://api.example.com/expensive",
+          payFromHotWallet: false,
         }),
       });
 
-      // 0.95 + 0.1 = 1.05 > 1.0
-      const result = await checkPolicy(0.1, "https://api.example.com/resource", userId);
+      const result = await checkPolicy(0.5, "https://api.example.com/expensive/item", userId);
 
-      expect(result.allowed).toBe(false);
-      expect(result.reason).toContain("Hourly spend");
+      // Should match the more specific policy (payFromHotWallet=false)
+      expect(result.action).toBe("walletconnect");
+      expect(result.payFromHotWallet).toBe(false);
     });
 
-    it("allows when old transactions fall outside the hour window", async () => {
-      vi.useFakeTimers();
-      const now = new Date("2025-06-01T12:00:00Z");
-      vi.setSystemTime(now);
+    it("rejects endpoints that don't match any policy prefix", async () => {
+      const result = await checkPolicy(0.05, "https://other.example.com/resource", userId);
 
-      // Create a transaction from 2 hours ago — outside hourly window
-      const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-      await prisma.transaction.create({
-        data: {
-          ...createTestTransaction(userId, {
-            id: "tx-old",
-            amount: 0.9,
-            status: "completed",
-          }),
-          createdAt: twoHoursAgo,
-        },
-      });
-
-      const result = await checkPolicy(0.05, "https://api.example.com/resource", userId);
-
-      expect(result.allowed).toBe(true);
+      expect(result.action).toBe("rejected");
+      expect(result.reason).toContain("No active policy");
     });
   });
 
-  describe("per-day rolling window", () => {
-    it("rejects when daily spend would exceed limit", async () => {
-      vi.useFakeTimers();
-      const now = new Date("2025-06-01T12:00:00Z");
-      vi.setSystemTime(now);
-
-      // Raise hourly limit so only the daily check triggers
-      await prisma.spendingPolicy.update({
-        where: { userId },
-        data: { perHourLimit: 5.0 },
-      });
-
-      // Create 9 transactions (total 9.0 USDC) spread across 2-10 hours ago
-      for (let i = 0; i < 9; i++) {
-        const hoursAgo = new Date(now.getTime() - (i + 2) * 60 * 60 * 1000);
-        await prisma.transaction.create({
-          data: {
-            ...createTestTransaction(userId, {
-              id: `tx-day-${i}`,
-              amount: 1.0,
-              status: "completed",
-            }),
-            createdAt: hoursAgo,
-          },
-        });
-      }
-
-      // Daily total 9.0 + 1.5 = 10.5 > 10.0 (daily limit)
-      // Hourly: 0 + 1.5 = 1.5 ≤ 5.0 (hourly limit) — passes
-      const result = await checkPolicy(1.5, "https://api.example.com/resource", userId);
-
-      expect(result.allowed).toBe(false);
-      expect(result.reason).toContain("Daily spend");
+  it("ignores archived policies (treats as if no policy exists)", async () => {
+    // Archive the seeded policy
+    await prisma.endpointPolicy.update({
+      where: { userId_endpointPattern: { userId, endpointPattern: "https://api.example.com" } },
+      data: { status: "archived", archivedAt: new Date() },
     });
 
-    it("allows when old transactions fall outside the day window", async () => {
-      vi.useFakeTimers();
-      const now = new Date("2025-06-01T12:00:00Z");
-      vi.setSystemTime(now);
-
-      // Transaction from 25 hours ago — outside daily window
-      const overADay = new Date(now.getTime() - 25 * 60 * 60 * 1000);
-      await prisma.transaction.create({
-        data: {
-          ...createTestTransaction(userId, {
-            id: "tx-old-day",
-            amount: 9.0,
-            status: "completed",
-          }),
-          createdAt: overADay,
-        },
-      });
-
-      const result = await checkPolicy(0.05, "https://api.example.com/resource", userId);
-
-      expect(result.allowed).toBe(true);
-    });
-  });
-
-  describe("pending_approval (between per-request and WC limit)", () => {
-    it("returns allowed=true with perRequestLimit for amounts above per-request but within WC limit", async () => {
-      // Default: perRequestLimit=0.1, wcApprovalLimit=5.0
-      // Amount 0.5 is above perRequestLimit but under wcApprovalLimit
-      const result = await checkPolicy(0.5, "https://api.example.com/resource", userId);
-
-      // checkPolicy itself allows the payment — the calling code in payment.ts
-      // determines the signing strategy based on perRequestLimit
-      expect(result.allowed).toBe(true);
-      expect(result.perRequestLimit).toBe(0.1);
-      expect(result.wcApprovalLimit).toBe(5.0);
-    });
-  });
-
-  describe("whitelist", () => {
-    it("allows whitelisted endpoints regardless of other checks", async () => {
-      // Update policy with a whitelist
-      await prisma.spendingPolicy.update({
-        where: { userId },
-        data: {
-          whitelistedEndpoints: JSON.stringify(["https://trusted.example.com"]),
-        },
-      });
-
-      const result = await checkPolicy(
-        0.05,
-        "https://trusted.example.com/api/resource",
-        userId,
-      );
-
-      expect(result.allowed).toBe(true);
-    });
-
-    it("rejects non-whitelisted endpoints when whitelist is set", async () => {
-      await prisma.spendingPolicy.update({
-        where: { userId },
-        data: {
-          whitelistedEndpoints: JSON.stringify(["https://trusted.example.com"]),
-        },
-      });
-
-      const result = await checkPolicy(
-        0.05,
-        "https://untrusted.example.com/api/resource",
-        userId,
-      );
-
-      expect(result.allowed).toBe(false);
-      expect(result.reason).toContain("not in the whitelist");
-    });
-  });
-
-  describe("blacklist", () => {
-    it("rejects blacklisted endpoints regardless of amount", async () => {
-      await prisma.spendingPolicy.update({
-        where: { userId },
-        data: {
-          blacklistedEndpoints: JSON.stringify(["https://blocked.example.com"]),
-        },
-      });
-
-      const result = await checkPolicy(
-        0.01,
-        "https://blocked.example.com/api/resource",
-        userId,
-      );
-
-      expect(result.allowed).toBe(false);
-      expect(result.reason).toContain("blacklisted");
-    });
-
-    it("allows non-blacklisted endpoints when blacklist is set", async () => {
-      await prisma.spendingPolicy.update({
-        where: { userId },
-        data: {
-          blacklistedEndpoints: JSON.stringify(["https://blocked.example.com"]),
-        },
-      });
-
-      const result = await checkPolicy(
-        0.05,
-        "https://api.example.com/resource",
-        userId,
-      );
-
-      expect(result.allowed).toBe(true);
-    });
-  });
-
-  it("excludes failed transactions from rolling window calculations", async () => {
-    vi.useFakeTimers();
-    const now = new Date("2025-06-01T12:00:00Z");
-    vi.setSystemTime(now);
-
-    // Create a large failed transaction — should NOT count
-    await prisma.transaction.create({
-      data: createTestTransaction(userId, {
-        id: "tx-failed",
-        amount: 0.9,
-        status: "failed",
-      }),
-    });
-
-    // 0.0 (failed excluded) + 0.05 = 0.05 < 1.0 hourly limit
     const result = await checkPolicy(0.05, "https://api.example.com/resource", userId);
 
-    expect(result.allowed).toBe(true);
+    expect(result.action).toBe("rejected");
+    expect(result.reason).toContain("No active policy");
+  });
+
+  describe("payFromHotWallet flag", () => {
+    it("returns walletconnect when payFromHotWallet is false", async () => {
+      await prisma.endpointPolicy.update({
+        where: { userId_endpointPattern: { userId, endpointPattern: "https://api.example.com" } },
+        data: { payFromHotWallet: false },
+      });
+
+      const result = await checkPolicy(0.01, "https://api.example.com/resource", userId);
+
+      expect(result.action).toBe("walletconnect");
+    });
+
+    it("returns hot_wallet when payFromHotWallet is true", async () => {
+      const result = await checkPolicy(0.01, "https://api.example.com/resource", userId);
+
+      expect(result.action).toBe("hot_wallet");
+    });
   });
 });

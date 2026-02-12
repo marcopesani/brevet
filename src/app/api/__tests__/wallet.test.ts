@@ -8,7 +8,7 @@ import { getAuthenticatedUser } from "@/lib/auth";
 
 // Mock auth
 vi.mock("@/lib/auth", () => ({
-  getAuthenticatedUser: vi.fn().mockResolvedValue({ userId: "00000000-0000-4000-a000-000000000001" }),
+  getAuthenticatedUser: vi.fn().mockResolvedValue({ userId: "00000000-0000-4000-a000-000000000001", walletAddress: "0x123" }),
 }));
 
 // Mock hot-wallet module for balance and withdrawal
@@ -32,7 +32,7 @@ vi.mock("@/lib/rate-limit", () => ({
 describe("Wallet API routes", () => {
   beforeEach(async () => {
     await resetTestDb();
-    vi.mocked(getAuthenticatedUser).mockResolvedValue({ userId: TEST_USER_ID });
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({ userId: TEST_USER_ID, walletAddress: "0x123" });
   });
 
   afterEach(() => {
@@ -206,7 +206,7 @@ describe("Wallet API routes", () => {
 
     it("should return 404 when user not found", async () => {
       // Auth returns a userId that doesn't exist in DB
-      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce({ userId: "00000000-0000-4000-a000-999999999999" });
+      vi.mocked(getAuthenticatedUser).mockResolvedValueOnce({ userId: "00000000-0000-4000-a000-999999999999", walletAddress: "0x999" });
       const { POST } = await import("@/app/api/wallet/withdraw/route");
 
       const request = new NextRequest("http://localhost/api/wallet/withdraw", {

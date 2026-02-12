@@ -38,7 +38,7 @@ export function registerTools(server: McpServer, userId: string) {
     "x402_pay",
     {
       description:
-        "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's hot wallet and spending policy, then retry the request with payment proof. Non-402 responses are returned directly.",
+        "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's hot wallet and per-endpoint policy, then retry the request with payment proof. Each endpoint has its own policy controlling whether hot wallet or WalletConnect signing is used. Non-402 responses are returned directly.",
       inputSchema: {
         url: z.string().url().describe("The URL to request"),
         method: z
@@ -151,18 +151,18 @@ export function registerTools(server: McpServer, userId: string) {
     },
   );
 
-  // --- x402_check_balance: Check wallet balance and remaining budget ---
+  // --- x402_check_balance: Check wallet balance and active endpoint policies ---
   server.registerTool(
     "x402_check_balance",
     {
       description:
-        "Check the user's hot wallet USDC balance on Base and remaining spending budget based on their policy limits.",
+        "Check the user's hot wallet USDC balance on Base and list their per-endpoint policies.",
     },
     async () => {
       try {
         const user = await prisma.user.findUnique({
           where: { id: userId },
-          include: { hotWallet: true, spendingPolicy: true },
+          include: { hotWallet: true, endpointPolicies: true },
         });
 
         if (!user) {
@@ -188,45 +188,17 @@ export function registerTools(server: McpServer, userId: string) {
 
         const balance = await getUsdcBalance(user.hotWallet.address);
 
-        // Calculate remaining budget from policy
-        let budgetRemaining = null;
-        if (user.spendingPolicy) {
-          const now = new Date();
-          const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-          const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-          const recentTransactions = await prisma.transaction.findMany({
-            where: {
-              userId,
-              status: { not: "failed" },
-              createdAt: { gte: oneDayAgo },
-            },
-            select: { amount: true, createdAt: true },
-          });
-
-          const hourlySpend = recentTransactions
-            .filter((tx) => tx.createdAt >= oneHourAgo)
-            .reduce((sum, tx) => sum + tx.amount, 0);
-
-          const dailySpend = recentTransactions.reduce(
-            (sum, tx) => sum + tx.amount,
-            0,
-          );
-
-          budgetRemaining = {
-            perRequest: user.spendingPolicy.perRequestLimit,
-            hourly: Math.max(
-              0,
-              user.spendingPolicy.perHourLimit - hourlySpend,
-            ),
-            daily: Math.max(0, user.spendingPolicy.perDayLimit - dailySpend),
-          };
-        }
+        const endpointPolicies = user.endpointPolicies.map((policy) => ({
+          id: policy.id,
+          endpointPattern: policy.endpointPattern,
+          payFromHotWallet: policy.payFromHotWallet,
+          status: policy.status,
+        }));
 
         const result = {
           walletAddress: user.hotWallet.address,
           usdcBalance: balance,
-          budgetRemaining,
+          endpointPolicies,
         };
 
         return {

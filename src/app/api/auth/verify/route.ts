@@ -40,11 +40,11 @@ export async function POST(request: NextRequest) {
     // Upsert user: find by walletAddress or create new
     let user = await prisma.user.findUnique({
       where: { walletAddress },
-      include: { hotWallet: true, spendingPolicy: true },
+      include: { hotWallet: true },
     });
 
     if (!user) {
-      // Create user with hot wallet and default spending policy
+      // Create user with hot wallet
       const { address, encryptedPrivateKey } = createHotWallet();
 
       user = await prisma.user.create({
@@ -56,11 +56,8 @@ export async function POST(request: NextRequest) {
               encryptedPrivateKey,
             },
           },
-          spendingPolicy: {
-            create: {},
-          },
         },
-        include: { hotWallet: true, spendingPolicy: true },
+        include: { hotWallet: true },
       });
     }
 

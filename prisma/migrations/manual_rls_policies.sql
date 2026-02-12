@@ -33,18 +33,18 @@ CREATE POLICY "Users can view own hot wallet" ON "HotWallet"
   USING ((select auth.uid())::text = "userId");
 
 -- =============================================================================
--- 3. SpendingPolicy table
--- Users can read and update their own spending policy.
+-- 3. EndpointPolicy table
+-- Users can read and update their own endpoint policies.
 -- Insert/delete handled server-side.
 -- =============================================================================
 
-ALTER TABLE "SpendingPolicy" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "EndpointPolicy" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own spending policy" ON "SpendingPolicy"
+CREATE POLICY "Users can view own endpoint policies" ON "EndpointPolicy"
   FOR SELECT TO authenticated
   USING ((select auth.uid())::text = "userId");
 
-CREATE POLICY "Users can update own spending policy" ON "SpendingPolicy"
+CREATE POLICY "Users can update own endpoint policies" ON "EndpointPolicy"
   FOR UPDATE TO authenticated
   USING ((select auth.uid())::text = "userId")
   WITH CHECK ((select auth.uid())::text = "userId");

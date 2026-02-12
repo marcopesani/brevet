@@ -11,6 +11,15 @@ import { parsePaymentRequired } from "@/lib/x402/headers";
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
+// Mock getUsdcBalance to avoid real RPC calls during the hot wallet balance check
+vi.mock("@/lib/hot-wallet", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/hot-wallet")>();
+  return {
+    ...actual,
+    getUsdcBalance: vi.fn().mockResolvedValue("1000.000000"), // Plenty of balance
+  };
+});
+
 describe("E2E: Full Payment Flow", () => {
   let userId: string;
 
@@ -156,14 +165,11 @@ describe("E2E: Full Payment Flow", () => {
     expect(transactions[0].txHash).toBe(txHash);
   });
 
-  it("should reject payment when amount exceeds WC approval limit", async () => {
-    // 10 USDC = 10_000_000 — exceeds the wcApprovalLimit of 5.0
-    const bigRequirement = {
-      ...DEFAULT_REQUIREMENT,
-      maxAmountRequired: "10000000",
-    };
+  it("should reject payment when no active policy exists", async () => {
+    // Remove all policies
+    await prisma.endpointPolicy.deleteMany({ where: { userId } });
 
-    mockFetch.mockResolvedValueOnce(make402Response([bigRequirement]));
+    mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
 
     const { executePayment } = await import("@/lib/x402/payment");
     const result = await executePayment(
@@ -173,17 +179,17 @@ describe("E2E: Full Payment Flow", () => {
 
     expect(result.success).toBe(false);
     expect(result.status).toBe("rejected");
-    expect(result.error).toContain("exceeds maximum approval limit");
+    expect(result.error).toContain("Policy denied");
   });
 
-  it("should return pending_approval when amount exceeds per-request limit but within WC limit", async () => {
-    // 0.5 USDC = 500000 — exceeds perRequestLimit (0.1) but under wcApprovalLimit (5.0)
-    const mediumRequirement = {
-      ...DEFAULT_REQUIREMENT,
-      maxAmountRequired: "500000",
-    };
+  it("should return pending_approval when payFromHotWallet is false", async () => {
+    // Update policy to disable hot wallet
+    await prisma.endpointPolicy.update({
+      where: { userId_endpointPattern: { userId, endpointPattern: "https://api.example.com" } },
+      data: { payFromHotWallet: false },
+    });
 
-    mockFetch.mockResolvedValueOnce(make402Response([mediumRequirement]));
+    mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
 
     const { executePayment } = await import("@/lib/x402/payment");
     const result = await executePayment(
@@ -194,7 +200,7 @@ describe("E2E: Full Payment Flow", () => {
     expect(result.success).toBe(false);
     expect(result.status).toBe("pending_approval");
     expect(result.signingStrategy).toBe("walletconnect");
-    expect(result.amount).toBe(0.5);
+    expect(result.amount).toBe(0.05);
     expect(result.paymentRequirements).toBeDefined();
 
     // Verify no transaction was created (pending, not completed)
@@ -258,33 +264,5 @@ describe("E2E: Full Payment Flow", () => {
     expect(requirements!.accepts[0].network).toBe("base-sepolia");
     expect((requirements!.accepts[0] as any).maxAmountRequired).toBe("50000");
     expect(requirements!.accepts[0].payTo).toBe(DEFAULT_REQUIREMENT.payTo);
-  });
-
-  it("should enforce hourly spending limits", async () => {
-    // Seed a recent transaction that nearly exhausts hourly limit (0.96 of 1.0)
-    await prisma.transaction.create({
-      data: {
-        amount: 0.96,
-        endpoint: "https://api.example.com/other",
-        txHash: "0x" + "d".repeat(64),
-        network: "base-sepolia",
-        status: "completed",
-        type: "payment",
-        userId,
-      },
-    });
-
-    // Try a 0.05 USDC payment — should exceed hourly limit (0.96 + 0.05 = 1.01 > 1.0)
-    mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
-
-    const { executePayment } = await import("@/lib/x402/payment");
-    const result = await executePayment(
-      "https://api.example.com/resource",
-      userId,
-    );
-
-    expect(result.success).toBe(false);
-    expect(result.status).toBe("rejected");
-    expect(result.error).toContain("Hourly spend");
   });
 });

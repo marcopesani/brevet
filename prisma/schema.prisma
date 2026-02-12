@@ -8,15 +8,15 @@ datasource db {
 }
 
 model User {
-  id              String           @id @default(uuid())
-  email           String?          @unique
-  walletAddress   String?          @unique
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  hotWallet       HotWallet?
-  spendingPolicy  SpendingPolicy?
-  transactions    Transaction[]
-  pendingPayments PendingPayment[]
+  id               String           @id @default(uuid())
+  email            String?          @unique
+  walletAddress    String?          @unique
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  hotWallet        HotWallet?
+  endpointPolicies EndpointPolicy[]
+  transactions     Transaction[]
+  pendingPayments  PendingPayment[]
 }
 
 model HotWallet {
@@ -29,18 +29,18 @@ model HotWallet {
   updatedAt           DateTime @updatedAt
 }
 
-model SpendingPolicy {
-  id                   String   @id @default(uuid())
-  perRequestLimit      Float    @default(0.10)
-  perHourLimit         Float    @default(1.00)
-  perDayLimit          Float    @default(10.00)
-  wcApprovalLimit      Float    @default(5.00)
-  whitelistedEndpoints String   @default("[]")
-  blacklistedEndpoints String   @default("[]")
-  userId               String   @unique
-  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+model EndpointPolicy {
+  id               String    @id @default(uuid())
+  endpointPattern  String
+  payFromHotWallet Boolean   @default(false)
+  status           String    @default("active") // active, draft, archived
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  archivedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([userId, endpointPattern])
 }
 
 model Transaction {
