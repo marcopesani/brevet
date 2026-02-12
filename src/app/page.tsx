@@ -1,4 +1,5 @@
 import ConnectWallet from "@/components/ConnectWallet";
+import HotWalletCard from "@/components/HotWalletCard";
 
 export default function Home() {
   return (
@@ -12,6 +13,7 @@ export default function Home() {
             Connect your wallet to get started.
           </p>
           <ConnectWallet />
+          <HotWalletCard />
         </div>
       </main>
     </div>
