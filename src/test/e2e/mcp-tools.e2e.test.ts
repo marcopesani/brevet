@@ -144,14 +144,15 @@ describe("E2E: MCP Tool Pipeline", () => {
       expect(transactions[0].txHash).toBe(txHash);
     });
 
-    it("should create a pending payment when amount exceeds per-request limit", async () => {
-      // 0.5 USDC exceeds perRequestLimit (0.1) → pending_approval
-      const bigRequirement = {
-        ...DEFAULT_REQUIREMENT,
-        maxAmountRequired: "500000",
-      };
+    it("should return pending_approval when payFromHotWallet is false", async () => {
+      // Update the seeded policy to use WalletConnect (payFromHotWallet = false)
+      const existing = await prisma.endpointPolicy.findFirst({ where: { userId } });
+      await prisma.endpointPolicy.update({
+        where: { id: existing!.id },
+        data: { payFromHotWallet: false },
+      });
 
-      mockFetch.mockResolvedValueOnce(make402Response([bigRequirement]));
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
 
       const payTool = findTool(tools, "x402_pay");
       expect(payTool).toBeDefined();
@@ -168,7 +169,6 @@ describe("E2E: MCP Tool Pipeline", () => {
         where: { userId },
       });
       expect(pending).toHaveLength(1);
-      expect(pending[0].amount).toBe(0.5);
       expect(pending[0].status).toBe("pending");
     });
 
@@ -183,23 +183,20 @@ describe("E2E: MCP Tool Pipeline", () => {
       expect(result.content[0].text).toContain("Payment failed");
     });
 
-    it("should return an error when policy rejects payment", async () => {
-      // 10 USDC exceeds wcApprovalLimit (5.0)
-      const hugeRequirement = {
-        ...DEFAULT_REQUIREMENT,
-        maxAmountRequired: "10000000",
-      };
+    it("should reject when no active policy exists", async () => {
+      // Remove all policies for this user
+      await prisma.endpointPolicy.deleteMany({ where: { userId } });
 
-      mockFetch.mockResolvedValueOnce(make402Response([hugeRequirement]));
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
 
       const payTool = findTool(tools, "x402_pay");
       expect(payTool).toBeDefined();
       const result = await payTool!.handler({
-        url: "https://api.example.com/resource",
+        url: "https://unknown-host.example.com/resource",
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Policy denied");
+      expect(result.content[0].text).toContain("Payment failed");
     });
   });
 
@@ -216,11 +213,9 @@ describe("E2E: MCP Tool Pipeline", () => {
       expect(parsed.usdcBalance).toBe("12.50");
       expect(parsed.endpointPolicies).toBeDefined();
       expect(parsed.endpointPolicies).toHaveLength(1);
-      expect(parsed.endpointPolicies[0].endpoint).toBe("https://api.example.com");
-      expect(parsed.endpointPolicies[0].perRequestLimit).toBe(0.1);
-      expect(parsed.endpointPolicies[0].perHourLimit).toBe(1.0);
-      expect(parsed.endpointPolicies[0].perDayLimit).toBe(10.0);
-      expect(parsed.endpointPolicies[0].wcApprovalLimit).toBe(5.0);
+      expect(parsed.endpointPolicies[0].endpointPattern).toBe("https://api.example.com");
+      expect(parsed.endpointPolicies[0].payFromHotWallet).toBe(true);
+      expect(parsed.endpointPolicies[0].status).toBe("active");
     });
 
     it("should list multiple endpoint policies", async () => {
@@ -228,11 +223,8 @@ describe("E2E: MCP Tool Pipeline", () => {
       await prisma.endpointPolicy.create({
         data: {
           id: "00000000-0000-4000-a000-000000000021",
-          endpoint: "https://api.other.com",
-          perRequestLimit: 0.5,
-          perHourLimit: 5.0,
-          perDayLimit: 50.0,
-          wcApprovalLimit: 10.0,
+          endpointPattern: "https://api.other.com",
+          payFromHotWallet: true,
           userId,
         },
       });

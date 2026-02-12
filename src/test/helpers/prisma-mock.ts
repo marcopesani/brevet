@@ -13,13 +13,9 @@ type Rec = { [key: string]: any };
 const SCHEMA_DEFAULTS: { [model: string]: Rec } = {
   user: {},
   hotWallet: {},
-  spendingPolicy: {
-    perRequestLimit: 0.1,
-    perHourLimit: 1.0,
-    perDayLimit: 10.0,
-    wcApprovalLimit: 5.0,
-    whitelistedEndpoints: "[]",
-    blacklistedEndpoints: "[]",
+  endpointPolicy: {
+    payFromHotWallet: false,
+    status: "active",
   },
   transaction: {
     network: "base",
@@ -43,14 +39,14 @@ type RelationDef = {
 const RELATIONS: { [model: string]: RelationDef[] } = {
   user: [
     { field: "hotWallet", foreignKey: "userId", relatedModel: "hotWallet", type: "one" },
-    { field: "spendingPolicy", foreignKey: "userId", relatedModel: "spendingPolicy", type: "one" },
+    { field: "endpointPolicies", foreignKey: "userId", relatedModel: "endpointPolicy", type: "many" },
     { field: "transactions", foreignKey: "userId", relatedModel: "transaction", type: "many" },
     { field: "pendingPayments", foreignKey: "userId", relatedModel: "pendingPayment", type: "many" },
   ],
   hotWallet: [
     { field: "user", foreignKey: "userId", relatedModel: "user", type: "one" },
   ],
-  spendingPolicy: [
+  endpointPolicy: [
     { field: "user", foreignKey: "userId", relatedModel: "user", type: "one" },
   ],
   transaction: [
@@ -61,9 +57,28 @@ const RELATIONS: { [model: string]: RelationDef[] } = {
   ],
 };
 
+// Composite unique keys: Prisma uses "field1_field2" as the where key
+// wrapping the actual fields. Flatten them before matching.
+const COMPOSITE_KEYS: { [key: string]: string[] } = {
+  userId_endpointPattern: ["userId", "endpointPattern"],
+};
+
+function flattenCompositeWhere(where: Rec): Rec {
+  const flat: Rec = {};
+  for (const [key, value] of Object.entries(where)) {
+    if (COMPOSITE_KEYS[key] && typeof value === "object" && value !== null) {
+      Object.assign(flat, value);
+    } else {
+      flat[key] = value;
+    }
+  }
+  return flat;
+}
+
 /** Simple where-clause matcher that handles equality, gte, lte, in, not, and nested AND/OR. */
 function matchesWhere(record: Rec, where: Rec | undefined): boolean {
   if (!where) return true;
+  where = flattenCompositeWhere(where);
 
   for (const [key, condition] of Object.entries(where)) {
     if (key === "AND") {
@@ -309,7 +324,7 @@ export function createPrismaMock() {
   const stores: { [model: string]: Rec[] } = {
     user: [],
     hotWallet: [],
-    spendingPolicy: [],
+    endpointPolicy: [],
     transaction: [],
     pendingPayment: [],
   };
@@ -317,7 +332,7 @@ export function createPrismaMock() {
   return {
     user: createModelMock(stores.user, "user", stores),
     hotWallet: createModelMock(stores.hotWallet, "hotWallet", stores),
-    spendingPolicy: createModelMock(stores.spendingPolicy, "spendingPolicy", stores),
+    endpointPolicy: createModelMock(stores.endpointPolicy, "endpointPolicy", stores),
     transaction: createModelMock(stores.transaction, "transaction", stores),
     pendingPayment: createModelMock(stores.pendingPayment, "pendingPayment", stores),
     $disconnect: async () => {},
@@ -327,7 +342,7 @@ export function createPrismaMock() {
         return fn({
           user: createModelMock(stores.user, "user", stores),
           hotWallet: createModelMock(stores.hotWallet, "hotWallet", stores),
-          spendingPolicy: createModelMock(stores.spendingPolicy, "spendingPolicy", stores),
+          endpointPolicy: createModelMock(stores.endpointPolicy, "endpointPolicy", stores),
           transaction: createModelMock(stores.transaction, "transaction", stores),
           pendingPayment: createModelMock(stores.pendingPayment, "pendingPayment", stores),
         });

@@ -10,7 +10,7 @@ import { getAuthenticatedUser } from "@/lib/auth";
 
 // Mock auth
 vi.mock("@/lib/auth", () => ({
-  getAuthenticatedUser: vi.fn().mockResolvedValue({ userId: "00000000-0000-4000-a000-000000000001" }),
+  getAuthenticatedUser: vi.fn().mockResolvedValue({ userId: "00000000-0000-4000-a000-000000000001", walletAddress: "0x123" }),
 }));
 
 // Mock rate-limit to avoid interference
@@ -37,7 +37,7 @@ vi.mock("viem", async (importOriginal) => {
 describe("Transactions API routes", () => {
   beforeEach(async () => {
     await resetTestDb();
-    vi.mocked(getAuthenticatedUser).mockResolvedValue({ userId: TEST_USER_ID });
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({ userId: TEST_USER_ID, walletAddress: "0x123" });
   });
 
   describe("GET /api/transactions", () => {

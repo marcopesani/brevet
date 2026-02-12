@@ -3,7 +3,7 @@ import { formatUnits } from "viem";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { prisma } from "@/lib/db";
-import { decryptPrivateKey, USDC_DECIMALS } from "@/lib/hot-wallet";
+import { decryptPrivateKey, getUsdcBalance, USDC_DECIMALS } from "@/lib/hot-wallet";
 import { checkPolicy } from "@/lib/policy";
 import { createEvmSigner } from "./eip712";
 import { parsePaymentRequired, extractTxHashFromResponse, extractSettleResponse } from "./headers";
@@ -172,9 +172,9 @@ export async function executePayment(
   const amountWei = BigInt(amountStr);
   const amountUsd = parseFloat(formatUnits(amountWei, USDC_DECIMALS));
 
-  // Step 5: Check spending policy
+  // Step 5: Check spending policy (returns action: hot_wallet | walletconnect | rejected)
   const policyResult = await checkPolicy(amountUsd, url, userId);
-  if (!policyResult.allowed) {
+  if (policyResult.action === "rejected") {
     return {
       success: false,
       status: "rejected",
@@ -183,13 +183,20 @@ export async function executePayment(
     };
   }
 
-  // Step 6: Determine signing strategy based on amount vs policy limits
-  const perRequestLimit = policyResult.perRequestLimit ?? 0;
-  const signingStrategy: SigningStrategy =
-    amountUsd <= perRequestLimit ? "hot_wallet" : "walletconnect";
+  // Step 6: Determine signing strategy
+  let signingStrategy: SigningStrategy = policyResult.action;
 
-  // If the amount exceeds the hot wallet limit, return pending_approval
-  // for the client to sign via WalletConnect
+  // If the policy says hot_wallet, verify the on-chain USDC balance is sufficient.
+  // If balance is too low, fall through to the WalletConnect path instead of failing.
+  if (signingStrategy === "hot_wallet") {
+    const balanceStr = await getUsdcBalance(hotWallet.address);
+    const balance = parseFloat(balanceStr);
+    if (balance < amountUsd) {
+      signingStrategy = "walletconnect";
+    }
+  }
+
+  // WalletConnect path: return pending_approval for client-side signing
   if (signingStrategy === "walletconnect") {
     return {
       success: false,

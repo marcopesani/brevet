@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { createTestUser, createTestHotWallet, createTestPolicy } from "./fixtures";
+import { createTestUser, createTestHotWallet, createTestEndpointPolicy } from "./fixtures";
 
 /**
  * Truncate all tables in the test database.
@@ -8,13 +8,13 @@ import { createTestUser, createTestHotWallet, createTestPolicy } from "./fixture
 export async function resetTestDb(): Promise<void> {
   await prisma.pendingPayment.deleteMany();
   await prisma.transaction.deleteMany();
-  await prisma.spendingPolicy.deleteMany();
+  await prisma.endpointPolicy.deleteMany();
   await prisma.hotWallet.deleteMany();
   await prisma.user.deleteMany();
 }
 
 /**
- * Seed a test user with associated hot wallet and spending policy.
+ * Seed a test user with associated hot wallet and endpoint policy.
  * Returns all created records.
  */
 export async function seedTestUser(
@@ -26,8 +26,8 @@ export async function seedTestUser(
   const hotWalletData = createTestHotWallet(user.id);
   const hotWallet = await prisma.hotWallet.create({ data: hotWalletData });
 
-  const policyData = createTestPolicy(user.id);
-  const policy = await prisma.spendingPolicy.create({ data: policyData });
+  const policyData = createTestEndpointPolicy(user.id);
+  const policy = await prisma.endpointPolicy.create({ data: policyData });
 
   return { user, hotWallet, policy };
 }

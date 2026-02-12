@@ -38,7 +38,7 @@ export function registerTools(server: McpServer, userId: string) {
     "x402_pay",
     {
       description:
-        "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's hot wallet and per-endpoint spending policy, then retry the request with payment proof. Each endpoint has its own policy with per-request, hourly, and daily limits. Non-402 responses are returned directly.",
+        "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's hot wallet and per-endpoint policy, then retry the request with payment proof. Each endpoint has its own policy controlling whether hot wallet or WalletConnect signing is used. Non-402 responses are returned directly.",
       inputSchema: {
         url: z.string().url().describe("The URL to request"),
         method: z
@@ -156,7 +156,7 @@ export function registerTools(server: McpServer, userId: string) {
     "x402_check_balance",
     {
       description:
-        "Check the user's hot wallet USDC balance on Base and list their active per-endpoint spending policies.",
+        "Check the user's hot wallet USDC balance on Base and list their per-endpoint policies.",
     },
     async () => {
       try {
@@ -190,11 +190,9 @@ export function registerTools(server: McpServer, userId: string) {
 
         const endpointPolicies = user.endpointPolicies.map((policy) => ({
           id: policy.id,
-          endpoint: policy.endpoint,
-          perRequestLimit: policy.perRequestLimit,
-          perHourLimit: policy.perHourLimit,
-          perDayLimit: policy.perDayLimit,
-          wcApprovalLimit: policy.wcApprovalLimit,
+          endpointPattern: policy.endpointPattern,
+          payFromHotWallet: policy.payFromHotWallet,
+          status: policy.status,
         }));
 
         const result = {

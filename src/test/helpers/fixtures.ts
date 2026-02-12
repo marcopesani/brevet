@@ -43,31 +43,28 @@ export function createTestHotWallet(
 }
 
 /**
- * Create test spending policy data for a given user.
+ * Create test endpoint policy data for a given user.
  */
-export function createTestPolicy(
+export function createTestEndpointPolicy(
   userId: string,
   overrides?: {
     id?: string;
-    perRequestLimit?: number;
-    perHourLimit?: number;
-    perDayLimit?: number;
-    wcApprovalLimit?: number;
-    whitelistedEndpoints?: string;
-    blacklistedEndpoints?: string;
+    endpointPattern?: string;
+    payFromHotWallet?: boolean;
+    status?: string;
   },
 ) {
   return {
     id: overrides?.id ?? "00000000-0000-4000-a000-000000000020",
-    perRequestLimit: overrides?.perRequestLimit ?? 0.1,
-    perHourLimit: overrides?.perHourLimit ?? 1.0,
-    perDayLimit: overrides?.perDayLimit ?? 10.0,
-    wcApprovalLimit: overrides?.wcApprovalLimit ?? 5.0,
-    whitelistedEndpoints: overrides?.whitelistedEndpoints ?? "[]",
-    blacklistedEndpoints: overrides?.blacklistedEndpoints ?? "[]",
+    endpointPattern: overrides?.endpointPattern ?? "https://api.example.com",
+    payFromHotWallet: overrides?.payFromHotWallet ?? true,
+    status: overrides?.status ?? "active",
     userId,
   };
 }
+
+/** @deprecated Use createTestEndpointPolicy instead. Alias for backwards compatibility. */
+export const createTestPolicy = createTestEndpointPolicy;
 
 /**
  * Create test transaction data for a given user.
