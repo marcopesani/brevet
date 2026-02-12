@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useAppKitAccount } from "@reown/appkit/react";
 import ConnectWallet from "@/components/ConnectWallet";
-import SpendingPolicies from "@/components/SpendingPolicies";
+import TransactionList from "@/components/TransactionList";
 
-export default function DashboardPage() {
+export default function HistoryPage() {
   const { address, isConnected } = useAppKitAccount();
 
   if (!isConnected || !address) {
@@ -24,7 +24,6 @@ export default function DashboardPage() {
     );
   }
 
-  // Use wallet address as userId for now
   const userId = address;
 
   return (
@@ -41,22 +40,19 @@ export default function DashboardPage() {
         <nav className="mb-6 flex gap-4 border-b border-zinc-200 dark:border-zinc-800">
           <Link
             href="/dashboard"
-            className="border-b-2 border-black px-1 pb-2 text-sm font-medium text-black dark:border-zinc-50 dark:text-zinc-50"
+            className="border-b-2 border-transparent px-1 pb-2 text-sm text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-zinc-50"
           >
             Wallet & Policies
           </Link>
           <Link
             href="/dashboard/history"
-            className="border-b-2 border-transparent px-1 pb-2 text-sm text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-zinc-50"
+            className="border-b-2 border-black px-1 pb-2 text-sm font-medium text-black dark:border-zinc-50 dark:text-zinc-50"
           >
             History
           </Link>
         </nav>
 
-        <div className="flex flex-col gap-6">
-          {/* Hot wallet section will be added by another task */}
-          <SpendingPolicies userId={userId} />
-        </div>
+        <TransactionList userId={userId} />
       </div>
     </div>
   );
