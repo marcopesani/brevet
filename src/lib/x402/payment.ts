@@ -1,34 +1,14 @@
 import type { Hex } from "viem";
 import { formatUnits } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { x402Client, x402HTTPClient } from "@x402/core/client";
+import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { prisma } from "@/lib/db";
 import { decryptPrivateKey, USDC_DECIMALS } from "@/lib/hot-wallet";
-import { chainConfig } from "@/lib/chain-config";
 import { checkPolicy } from "@/lib/policy";
-import {
-  buildTransferAuthorization,
-  signTransferAuthorization,
-} from "./eip712";
-import {
-  parsePaymentRequired,
-  buildPaymentSignatureHeader,
-  extractTxHashFromResponse,
-} from "./headers";
-import type { PaymentResult, PaymentRequirement, SigningStrategy } from "./types";
+import { createEvmSigner } from "./eip712";
+import { parsePaymentRequired, extractTxHashFromResponse, extractSettleResponse } from "./headers";
+import type { PaymentResult, SigningStrategy } from "./types";
 
-/**
- * Execute the full x402 payment flow for a given URL.
- *
- * 1. Fetch the URL
- * 2. If 402 → parse payment requirements
- * 3. Check spending policy
- * 4. Sign EIP-712 TransferWithAuthorization with hot wallet
- * 5. Re-request with PAYMENT-SIGNATURE header
- * 6. Log transaction to database
- *
- * @param url    The x402-protected endpoint
- * @param userId The user whose hot wallet and policy to use
- */
 /**
  * Validate a URL before making an HTTP request.
  * Rejects non-http(s) protocols, private/internal IPs, and malformed URLs.
@@ -84,9 +64,50 @@ function validateUrl(url: string): string | null {
   return null;
 }
 
+/**
+ * Create an x402Client configured with EVM schemes for a given private key.
+ *
+ * Registers both V1 and V2 EVM exact schemes (EIP-3009 + Permit2)
+ * via `registerExactEvmScheme` which handles wildcard eip155:* matching.
+ */
+function createPaymentClient(privateKey: Hex): { client: x402Client; httpClient: x402HTTPClient } {
+  const signer = createEvmSigner(privateKey);
+  const client = new x402Client();
+  registerExactEvmScheme(client, { signer });
+  const httpClient = new x402HTTPClient(client);
+  return { client, httpClient };
+}
+
+/**
+ * Options for the HTTP request sent during the x402 payment flow.
+ */
+export interface PaymentRequestOptions {
+  /** HTTP method (defaults to "GET"). */
+  method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+  /** Request body (for POST/PUT/PATCH). Sent as-is on both the initial and paid requests. */
+  body?: string;
+  /** Additional HTTP headers. Merged into both the initial and paid requests. */
+  headers?: Record<string, string>;
+}
+
+/**
+ * Execute the full x402 payment flow for a given URL.
+ *
+ * 1. Fetch the URL (using the specified method, body, and headers)
+ * 2. If 402 → parse payment requirements (V1 or V2 via SDK)
+ * 3. Check spending policy
+ * 4. Create payment payload via SDK (handles EIP-3009 + Permit2)
+ * 5. Re-request with payment headers (preserving original method/body/headers)
+ * 6. Log transaction to database
+ *
+ * @param url     The x402-protected endpoint
+ * @param userId  The user whose hot wallet and policy to use
+ * @param options Optional HTTP method, body, and headers for the request
+ */
 export async function executePayment(
   url: string,
   userId: string,
+  options?: PaymentRequestOptions,
 ): Promise<PaymentResult> {
   // Step 0: Validate URL
   const urlError = validateUrl(url);
@@ -94,37 +115,40 @@ export async function executePayment(
     return { success: false, status: "rejected", signingStrategy: "rejected", error: `URL validation failed: ${urlError}` };
   }
 
-  // Step 1: Initial request
-  const initialResponse = await fetch(url);
+  // Step 1: Initial request (preserving caller's method, body, and headers)
+  const method = options?.method ?? "GET";
+  const requestInit: RequestInit = { method };
+  if (options?.body) {
+    requestInit.body = options.body;
+  }
+  if (options?.headers) {
+    requestInit.headers = { ...options.headers };
+  }
+  const initialResponse = await fetch(url, requestInit);
 
   if (initialResponse.status !== 402) {
     // Not a paid endpoint — return the response as-is
     return { success: true, status: "completed", signingStrategy: "hot_wallet", response: initialResponse };
   }
 
-  // Step 2: Parse payment requirements
-  const requirements = parsePaymentRequired(initialResponse);
-  if (!requirements || requirements.length === 0) {
-    return {
-      success: false,
-      status: "rejected",
-      signingStrategy: "rejected",
-      error: "Received 402 but no valid payment requirements in headers",
-    };
+  // Step 2: Parse payment requirements (SDK handles V1 body + V2 header)
+  let responseBody: unknown;
+  try {
+    const responseText = await initialResponse.clone().text();
+    if (responseText) {
+      responseBody = JSON.parse(responseText);
+    }
+  } catch {
+    // Not valid JSON — that's fine, V2 uses headers only
   }
 
-  // Use the first requirement that matches our supported scheme/network
-  const requirement = requirements.find(
-    (r): r is PaymentRequirement =>
-      r.scheme === "exact" && r.network === chainConfig.networkString,
-  );
-
-  if (!requirement) {
+  const paymentRequired = parsePaymentRequired(initialResponse, responseBody);
+  if (!paymentRequired || !paymentRequired.accepts || paymentRequired.accepts.length === 0) {
     return {
       success: false,
       status: "rejected",
       signingStrategy: "rejected",
-      error: `No supported payment requirement found (need scheme=exact, network=${chainConfig.networkString})`,
+      error: "Received 402 but no valid payment requirements found",
     };
   }
 
@@ -138,13 +162,17 @@ export async function executePayment(
   }
 
   const privateKey = decryptPrivateKey(hotWallet.encryptedPrivateKey) as Hex;
-  const account = privateKeyToAccount(privateKey);
 
-  // Calculate amount in human-readable USD for policy check
-  const amountWei = BigInt(requirement.maxAmountRequired);
+  // Step 4: Determine the amount from the first accepted requirement
+  // SDK V2 uses `amount`, V1 uses `maxAmountRequired` — check both
+  const selectedRequirement = paymentRequired.accepts[0];
+  const amountStr = selectedRequirement.amount
+    ?? (selectedRequirement as unknown as { maxAmountRequired?: string }).maxAmountRequired
+    ?? "0";
+  const amountWei = BigInt(amountStr);
   const amountUsd = parseFloat(formatUnits(amountWei, USDC_DECIMALS));
 
-  // Step 4: Check spending policy
+  // Step 5: Check spending policy
   const policyResult = await checkPolicy(amountUsd, url, userId);
   if (!policyResult.allowed) {
     return {
@@ -155,7 +183,7 @@ export async function executePayment(
     };
   }
 
-  // Step 5: Determine signing strategy based on amount vs policy limits
+  // Step 6: Determine signing strategy based on amount vs policy limits
   const perRequestLimit = policyResult.perRequestLimit ?? 0;
   const signingStrategy: SigningStrategy =
     amountUsd <= perRequestLimit ? "hot_wallet" : "walletconnect";
@@ -167,39 +195,48 @@ export async function executePayment(
       success: false,
       status: "pending_approval",
       signingStrategy: "walletconnect",
-      paymentRequirements: JSON.stringify([requirement]),
+      paymentRequirements: JSON.stringify(paymentRequired.accepts),
       amount: amountUsd,
     };
   }
 
-  // Step 6: Hot wallet auto-sign — build and sign the EIP-712 message
-  const authorization = buildTransferAuthorization(
-    account.address,
-    requirement.payTo,
-    amountWei,
-  );
+  // Step 7: Create payment payload via SDK (handles EIP-3009 + Permit2)
+  const { client, httpClient } = createPaymentClient(privateKey);
+  let paymentPayload;
+  try {
+    paymentPayload = await client.createPaymentPayload(paymentRequired);
+  } catch (err) {
+    return {
+      success: false,
+      status: "rejected",
+      signingStrategy: "hot_wallet",
+      error: `Failed to create payment: ${err instanceof Error ? err.message : "Unknown error"}`,
+    };
+  }
 
-  const signature = await signTransferAuthorization(authorization, privateKey);
-  const paymentHeader = buildPaymentSignatureHeader(signature, authorization);
+  // Step 8: Encode payment into HTTP headers and re-request (preserving original method/body/headers)
+  const paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
+  const paidRequestInit: RequestInit = {
+    method,
+    headers: { ...options?.headers, ...paymentHeaders },
+  };
+  if (options?.body) {
+    paidRequestInit.body = options.body;
+  }
+  const paidResponse = await fetch(url, paidRequestInit);
 
-  // Step 7: Re-request with payment header
-  const paidResponse = await fetch(url, {
-    headers: {
-      "PAYMENT-SIGNATURE": paymentHeader,
-    },
-  });
+  // Step 9: Extract settlement response and transaction hash from facilitator response
+  const settlement = extractSettleResponse(paidResponse) ?? undefined;
+  const txHash = settlement?.transaction ?? await extractTxHashFromResponse(paidResponse);
 
-  // Step 8: Extract transaction hash from facilitator response
-  const txHash = await extractTxHashFromResponse(paidResponse);
-
-  // Step 9: Log transaction
+  // Step 10: Log transaction
   const txStatus = paidResponse.ok ? "completed" : "failed";
   await prisma.transaction.create({
     data: {
       amount: amountUsd,
       endpoint: url,
       txHash,
-      network: "base",
+      network: selectedRequirement.network,
       status: txStatus,
       type: "payment",
       userId,
@@ -216,5 +253,5 @@ export async function executePayment(
     };
   }
 
-  return { success: true, status: "completed", signingStrategy: "hot_wallet", response: paidResponse };
+  return { success: true, status: "completed", signingStrategy: "hot_wallet", response: paidResponse, settlement };
 }

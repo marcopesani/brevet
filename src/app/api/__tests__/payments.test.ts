@@ -18,7 +18,7 @@ vi.mock("@/lib/rate-limit", () => ({
 
 // Mock x402 headers
 vi.mock("@/lib/x402/headers", () => ({
-  buildPaymentSignatureHeader: vi.fn().mockReturnValue("mock-payment-header"),
+  buildPaymentHeaders: vi.fn().mockReturnValue({ "X-PAYMENT": "mock-payment-header" }),
 }));
 
 // Mock global fetch for the approve route (which makes a paid request)

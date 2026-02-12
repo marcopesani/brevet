@@ -1,17 +1,22 @@
 export { executePayment } from "./payment";
-export { parsePaymentRequired, buildPaymentSignatureHeader } from "./headers";
 export {
-  buildTransferAuthorization,
-  signTransferAuthorization,
-  USDC_DOMAIN,
-  TRANSFER_WITH_AUTHORIZATION_TYPES,
+  parsePaymentRequired,
+  buildPaymentHeaders,
+  extractTxHashFromResponse,
+  extractSettleResponse,
+} from "./headers";
+export {
+  createEvmSigner,
+  createExactEvmScheme,
+  ExactEvmScheme,
 } from "./eip712";
 export type {
-  PaymentRequirement,
+  PaymentRequired,
   PaymentRequirements,
-  PaymentResult,
-  PaymentHeader,
   PaymentPayload,
-  TransferAuthorization,
+  PaymentResult,
   SigningStrategy,
+  Network,
+  ClientEvmSigner,
+  SettleResponse,
 } from "./types";

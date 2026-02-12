@@ -4,6 +4,34 @@ import { executePayment } from "@/lib/x402/payment";
 import { prisma } from "@/lib/db";
 import { getUsdcBalance } from "@/lib/hot-wallet";
 
+
+const DISCOVERY_API_URL =
+  "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources";
+
+export interface DiscoveryItem {
+  resource: string;
+  type: string;
+  x402Version: number;
+  lastUpdated: string;
+  metadata: Record<string, unknown>;
+  accepts: Array<{
+    description: string;
+    maxAmountRequired: string;
+    network: string;
+    scheme: string;
+    resource: string;
+    payTo: string;
+    asset: string;
+    [key: string]: unknown;
+  }>;
+}
+
+export interface DiscoveryResponse {
+  items: DiscoveryItem[];
+  pagination: { limit: number; offset: number; total: number };
+  x402Version: number;
+}
+
 export function registerTools(server: McpServer, userId: string) {
   // --- x402_pay: Make an HTTP request, handle 402 payment flow ---
   server.registerTool(
@@ -17,21 +45,21 @@ export function registerTools(server: McpServer, userId: string) {
           .enum(["GET", "POST", "PUT", "DELETE", "PATCH"])
           .optional()
           .describe(
-            "HTTP method (currently only GET is supported for x402 payment flow)",
+            "HTTP method to use for the request. Defaults to GET. The x402 payment flow works with any method — the same method, body, and headers are used for both the initial request and the paid retry.",
           ),
         body: z
           .string()
           .optional()
-          .describe("Request body (reserved for future use)"),
+          .describe("Request body (for POST, PUT, PATCH). Sent on both the initial and paid retry requests."),
         headers: z
           .record(z.string(), z.string())
           .optional()
-          .describe("Additional HTTP headers (reserved for future use)"),
+          .describe("Additional HTTP headers to include in the request."),
       },
     },
-    async ({ url }) => {
+    async ({ url, method, body, headers }) => {
       try {
-        const result = await executePayment(url, userId);
+        const result = await executePayment(url, userId, { method: method ?? "GET", body, headers });
 
         // Handle pending_approval status (WalletConnect tier)
         const resultAny = result as unknown as Record<string, unknown>;
@@ -47,6 +75,7 @@ export function registerTools(server: McpServer, userId: string) {
             data: {
               userId,
               url,
+              method: method ?? "GET",
               amount: pendingResult.amount,
               paymentRequirements: pendingResult.paymentRequirements,
               expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 min TTL
@@ -96,6 +125,14 @@ export function registerTools(server: McpServer, userId: string) {
                   success: true,
                   status: result.response?.status,
                   data: responseData,
+                  ...(result.settlement && {
+                    settlement: {
+                      transaction: result.settlement.transaction,
+                      network: result.settlement.network,
+                      success: result.settlement.success,
+                      payer: result.settlement.payer,
+                    },
+                  }),
                 },
                 null,
                 2,
@@ -358,6 +395,144 @@ export function registerTools(server: McpServer, userId: string) {
           error instanceof Error
             ? error.message
             : "Failed to check pending payment";
+        return {
+          content: [{ type: "text" as const, text: `Error: ${message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // --- x402_discover: Search the CDP Bazaar for x402-protected endpoints ---
+  server.registerTool(
+    "x402_discover",
+    {
+      description:
+        "Search the CDP Bazaar discovery API for available x402-protected endpoints. Returns a list of endpoints with their URL, description, price, network, and payment scheme.",
+      inputSchema: {
+        query: z
+          .string()
+          .optional()
+          .describe(
+            "Keyword to filter endpoints by description or URL",
+          ),
+        network: z
+          .string()
+          .optional()
+          .describe(
+            'Network to filter by (e.g., "base", "base-sepolia", "eip155:8453")',
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(100)
+          .optional()
+          .describe("Maximum number of results to return (default 20)"),
+      },
+    },
+    async ({ query, network, limit }) => {
+      try {
+        const maxResults = limit ?? 20;
+
+        const url = new URL(DISCOVERY_API_URL);
+        url.searchParams.set("limit", String(maxResults));
+
+        const response = await fetch(url.toString());
+
+        if (!response.ok) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Error: Discovery API returned HTTP ${response.status}`,
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const data: DiscoveryResponse = await response.json();
+
+        if (!data.items || !Array.isArray(data.items)) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Error: Unexpected response format from discovery API",
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        let items = data.items;
+
+        // Client-side filtering by network
+        if (network) {
+          const networkLower = network.toLowerCase();
+          items = items.filter((item) =>
+            item.accepts.some(
+              (a) => a.network.toLowerCase() === networkLower,
+            ),
+          );
+        }
+
+        // Client-side filtering by keyword
+        if (query) {
+          const queryLower = query.toLowerCase();
+          items = items.filter((item) => {
+            const resourceMatch = item.resource
+              .toLowerCase()
+              .includes(queryLower);
+            const descMatch = item.accepts.some((a) =>
+              a.description.toLowerCase().includes(queryLower),
+            );
+            return resourceMatch || descMatch;
+          });
+        }
+
+        if (items.length === 0) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "No endpoints found matching your query.",
+              },
+            ],
+          };
+        }
+
+        const endpoints = items.map((item) => {
+          const accept = item.accepts[0];
+          return {
+            url: item.resource,
+            description: accept?.description ?? "No description",
+            price: accept
+              ? `${(Number(accept.maxAmountRequired) / 1e6).toFixed(6)} USDC`
+              : "Unknown",
+            network: accept?.network ?? "Unknown",
+            scheme: accept?.scheme ?? "Unknown",
+          };
+        });
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                { count: endpoints.length, endpoints },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to query discovery API";
         return {
           content: [{ type: "text" as const, text: `Error: ${message}` }],
           isError: true,

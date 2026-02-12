@@ -8,15 +8,26 @@ import { executePayment } from "../payment";
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-function make402Response(
-  paymentRequirements: object[],
-  headerName = "X-PAYMENT",
-): Response {
-  return new Response(JSON.stringify({ error: "Payment Required" }), {
+/**
+ * Build a V1-format 402 response with payment requirements in the body.
+ *
+ * The SDK's `getPaymentRequiredResponse` checks:
+ *   1. PAYMENT-REQUIRED header (V2, base64)
+ *   2. Body with `x402Version: 1` and `accepts` array (V1)
+ *
+ * We use V1 body format here since the test private key can sign V1 EIP-3009
+ * payloads via the registered ExactEvmSchemeV1.
+ */
+function make402Response(paymentRequirements: object[]): Response {
+  const body = {
+    x402Version: 1,
+    error: "Payment Required",
+    accepts: paymentRequirements,
+  };
+  return new Response(JSON.stringify(body), {
     status: 402,
     headers: {
       "Content-Type": "application/json",
-      [headerName]: JSON.stringify(paymentRequirements),
     },
   });
 }
@@ -31,13 +42,24 @@ function make200Response(body: object, headers: Record<string, string> = {}): Re
   });
 }
 
+/**
+ * V1-format payment requirement with all fields the SDK's ExactEvmSchemeV1 needs.
+ *
+ * - `network`: plain name for V1 (e.g. "base-sepolia")
+ * - `maxAmountRequired`: amount in smallest unit (V1 field)
+ * - `maxTimeoutSeconds`: validity window (V1 field)
+ * - `extra.name` / `extra.version`: EIP-712 domain for USDC
+ * - `asset`: USDC contract on Base Sepolia
+ */
 const DEFAULT_REQUIREMENT = {
   scheme: "exact",
-  network: "eip155:84532",
+  network: "base-sepolia",
   maxAmountRequired: "50000", // 0.05 USDC (6 decimals)
   resource: "https://api.example.com/resource",
   payTo: ("0x" + "b".repeat(40)) as `0x${string}`,
-  requiredDeadlineSeconds: 3600,
+  maxTimeoutSeconds: 3600,
+  asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  extra: { name: "USD Coin", version: "2" },
 };
 
 describe("executePayment", () => {
@@ -95,7 +117,7 @@ describe("executePayment", () => {
   });
 
   it("handles 402 with no payment requirements headers", async () => {
-    // 402 response with no X-PAYMENT header
+    // 402 response with no V1 body or V2 header
     mockFetch.mockResolvedValueOnce(
       new Response("Payment Required", { status: 402 }),
     );
@@ -110,20 +132,21 @@ describe("executePayment", () => {
     const requirement = {
       ...DEFAULT_REQUIREMENT,
       scheme: "subscription", // Not "exact"
-      network: "eip155:1", // Not Base Sepolia
+      network: "solana:mainnet", // Not an EVM network
     };
     mockFetch.mockResolvedValueOnce(make402Response([requirement]));
 
     const result = await executePayment("https://api.example.com/resource", userId);
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("No supported payment requirement");
+    // SDK throws when no registered scheme matches the requirement
+    expect(result.error).toContain("Failed to create payment");
   });
 
   it("completes payment flow: 402 → sign → re-request → 200", async () => {
     const txHash = "0x" + "a".repeat(64);
 
-    // First call: 402
+    // First call: 402 with V1 body requirements
     mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
     // Second call: 200 with tx hash
     mockFetch.mockResolvedValueOnce(
@@ -137,10 +160,14 @@ describe("executePayment", () => {
     expect(result.signingStrategy).toBe("hot_wallet");
     expect(mockFetch).toHaveBeenCalledTimes(2);
 
-    // Verify the second request includes the PAYMENT-SIGNATURE header
+    // Verify the second request includes the payment signature header
+    // V1 uses X-PAYMENT header with base64-encoded payload
     const secondCall = mockFetch.mock.calls[1];
     const headers = secondCall[1]?.headers;
-    expect(headers).toHaveProperty("PAYMENT-SIGNATURE");
+    expect(headers).toBeDefined();
+    const hasPaymentHeader =
+      "X-PAYMENT" in headers || "PAYMENT-SIGNATURE" in headers;
+    expect(hasPaymentHeader).toBe(true);
 
     // Verify transaction was logged in the database
     const tx = await prisma.transaction.findFirst({
@@ -217,6 +244,62 @@ describe("executePayment", () => {
     expect(tx!.status).toBe("failed");
   });
 
+  it("preserves POST method and body across 402 payment flow", async () => {
+    const txHash = "0x" + "c".repeat(64);
+
+    // First call: 402 with V1 body requirements
+    mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+    // Second call: 200 with tx hash
+    mockFetch.mockResolvedValueOnce(
+      make200Response({ created: true }, { "X-PAYMENT-TX-HASH": txHash }),
+    );
+
+    const result = await executePayment(
+      "https://api.example.com/resource",
+      userId,
+      {
+        method: "POST",
+        body: JSON.stringify({ action: "create", data: "test" }),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe("completed");
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    // Verify the initial request used POST with the body and headers
+    const [firstUrl, firstInit] = mockFetch.mock.calls[0];
+    expect(firstUrl).toBe("https://api.example.com/resource");
+    expect(firstInit.method).toBe("POST");
+    expect(firstInit.body).toBe(JSON.stringify({ action: "create", data: "test" }));
+    expect(firstInit.headers?.["Content-Type"]).toBe("application/json");
+
+    // Verify the paid retry also used POST with the same body and original headers
+    const [secondUrl, secondInit] = mockFetch.mock.calls[1];
+    expect(secondUrl).toBe("https://api.example.com/resource");
+    expect(secondInit.method).toBe("POST");
+    expect(secondInit.body).toBe(JSON.stringify({ action: "create", data: "test" }));
+    expect(secondInit.headers?.["Content-Type"]).toBe("application/json");
+
+    // Verify payment headers were added to the retry
+    const hasPaymentHeader =
+      "X-PAYMENT" in secondInit.headers || "PAYMENT-SIGNATURE" in secondInit.headers;
+    expect(hasPaymentHeader).toBe(true);
+  });
+
+  it("uses GET by default when no method is specified", async () => {
+    mockFetch.mockResolvedValueOnce(make200Response({ data: "ok" }));
+
+    const result = await executePayment("https://api.example.com/free", userId);
+
+    expect(result.success).toBe(true);
+    // Default should be GET — verify no body was sent
+    const [, init] = mockFetch.mock.calls[0];
+    expect(init.method).toBe("GET");
+    expect(init.body).toBeUndefined();
+  });
+
   it("rejects when hourly spend limit is exceeded", async () => {
     // Seed transactions close to the hourly limit
     await prisma.transaction.create({
@@ -227,8 +310,7 @@ describe("executePayment", () => {
       }),
     });
 
-    // 0.95 + 0.05 = 1.0, and that equals the limit, so it should be fine
-    // But let's push over: 0.95 + 0.06 = 1.01 > 1.0
+    // 0.95 + 0.06 = 1.01 > 1.0 hourly limit
     const overLimitReq = {
       ...DEFAULT_REQUIREMENT,
       maxAmountRequired: "60000", // 0.06 USDC

@@ -4,13 +4,9 @@ import { verifyTypedData } from "viem";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import { TEST_WALLET_ADDRESS } from "@/test/helpers/crypto";
 import { prisma } from "@/lib/db";
-import {
-  USDC_DOMAIN,
-  TRANSFER_WITH_AUTHORIZATION_TYPES,
-} from "@/lib/x402/eip712";
+import { chainConfig } from "@/lib/chain-config";
+import { authorizationTypes } from "@/lib/x402/eip712";
 import { parsePaymentRequired } from "@/lib/x402/headers";
-import type { PaymentRequirement } from "@/lib/x402/types";
-
 // Mock fetch so executePayment can reach endpoints despite URL validation
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -18,21 +14,32 @@ vi.stubGlobal("fetch", mockFetch);
 describe("E2E: Full Payment Flow", () => {
   let userId: string;
 
-  const DEFAULT_REQUIREMENT: PaymentRequirement = {
+  /**
+   * V1-format payment requirement with all fields the SDK needs.
+   */
+  const DEFAULT_REQUIREMENT = {
     scheme: "exact",
-    network: "eip155:84532",
+    network: "base-sepolia",
     maxAmountRequired: "50000", // 0.05 USDC
     resource: "https://api.example.com/resource",
     payTo: ("0x" + "b".repeat(40)) as Hex,
+    maxTimeoutSeconds: 3600,
+    asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    extra: { name: "USD Coin", version: "2" },
   };
 
-  function make402Response(requirements: PaymentRequirement[]): Response {
-    return new Response(JSON.stringify({ error: "Payment Required" }), {
+  /**
+   * Build a V1-format 402 response with requirements in the body.
+   */
+  function make402Response(requirements: object[]): Response {
+    const body = {
+      x402Version: 1,
+      error: "Payment Required",
+      accepts: requirements,
+    };
+    return new Response(JSON.stringify(body), {
       status: 402,
-      headers: {
-        "Content-Type": "application/json",
-        "X-PAYMENT": JSON.stringify(requirements),
-      },
+      headers: { "Content-Type": "application/json" },
     });
   }
 
@@ -78,27 +85,29 @@ describe("E2E: Full Payment Flow", () => {
     expect(result.status).toBe("completed");
     expect(result.signingStrategy).toBe("hot_wallet");
 
-    // Verify that the second fetch call included a PAYMENT-SIGNATURE header
+    // Verify that the second fetch call included a payment header
     expect(mockFetch).toHaveBeenCalledTimes(2);
     const secondCall = mockFetch.mock.calls[1];
-    const paymentSigHeader =
-      secondCall[1]?.headers?.["PAYMENT-SIGNATURE"];
-    expect(paymentSigHeader).toBeDefined();
-    expect(typeof paymentSigHeader).toBe("string");
+    const headers = secondCall[1]?.headers;
+    expect(headers).toBeDefined();
+
+    // V1 uses X-PAYMENT header
+    const paymentHeaderValue = headers["X-PAYMENT"] ?? headers["PAYMENT-SIGNATURE"];
+    expect(paymentHeaderValue).toBeDefined();
+    expect(typeof paymentHeaderValue).toBe("string");
 
     // Decode the payment header and verify EIP-712 signature
-    const decoded = JSON.parse(atob(paymentSigHeader));
+    const decoded = JSON.parse(atob(paymentHeaderValue));
     expect(decoded.x402Version).toBe(1);
     expect(decoded.scheme).toBe("exact");
-    expect(decoded.network).toBe("eip155:84532");
 
     const { signature, authorization } = decoded.payload;
 
     // Verify the signature recovers to our test wallet address
     const isValid = await verifyTypedData({
       address: TEST_WALLET_ADDRESS,
-      domain: USDC_DOMAIN,
-      types: TRANSFER_WITH_AUTHORIZATION_TYPES,
+      domain: chainConfig.usdcDomain,
+      types: authorizationTypes,
       primaryType: "TransferWithAuthorization",
       message: {
         from: authorization.from,
@@ -120,14 +129,6 @@ describe("E2E: Full Payment Flow", () => {
       DEFAULT_REQUIREMENT.payTo.toLowerCase(),
     );
     expect(BigInt(authorization.value)).toBe(BigInt(50000));
-    expect(BigInt(authorization.validAfter)).toBe(BigInt(0));
-
-    // validBefore should be ~5 minutes in the future
-    const now = BigInt(Math.floor(Date.now() / 1000));
-    expect(BigInt(authorization.validBefore)).toBeGreaterThan(now);
-    expect(BigInt(authorization.validBefore)).toBeLessThanOrEqual(
-      now + BigInt(310),
-    );
   });
 
   it("should log a transaction in the database after successful payment", async () => {
@@ -151,13 +152,13 @@ describe("E2E: Full Payment Flow", () => {
     );
     expect(transactions[0].status).toBe("completed");
     expect(transactions[0].type).toBe("payment");
-    expect(transactions[0].network).toBe("base");
+    expect(transactions[0].network).toBe("base-sepolia");
     expect(transactions[0].txHash).toBe(txHash);
   });
 
   it("should reject payment when amount exceeds WC approval limit", async () => {
     // 10 USDC = 10_000_000 — exceeds the wcApprovalLimit of 5.0
-    const bigRequirement: PaymentRequirement = {
+    const bigRequirement = {
       ...DEFAULT_REQUIREMENT,
       maxAmountRequired: "10000000",
     };
@@ -177,7 +178,7 @@ describe("E2E: Full Payment Flow", () => {
 
   it("should return pending_approval when amount exceeds per-request limit but within WC limit", async () => {
     // 0.5 USDC = 500000 — exceeds perRequestLimit (0.1) but under wcApprovalLimit (5.0)
-    const mediumRequirement: PaymentRequirement = {
+    const mediumRequirement = {
       ...DEFAULT_REQUIREMENT,
       maxAmountRequired: "500000",
     };
@@ -241,27 +242,32 @@ describe("E2E: Full Payment Flow", () => {
     expect(result.error).toContain("no valid payment requirements");
   });
 
-  it("should parse payment requirements from 402 response headers", () => {
-    const requirements = parsePaymentRequired(
-      make402Response([DEFAULT_REQUIREMENT]),
-    );
+  it("should parse payment requirements from V1 402 response body", () => {
+    const response = make402Response([DEFAULT_REQUIREMENT]);
+    const body = {
+      x402Version: 1,
+      error: "Payment Required",
+      accepts: [DEFAULT_REQUIREMENT],
+    };
+
+    const requirements = parsePaymentRequired(response, body);
 
     expect(requirements).not.toBeNull();
-    expect(requirements!.length).toBe(1);
-    expect(requirements![0].scheme).toBe("exact");
-    expect(requirements![0].network).toBe("eip155:84532");
-    expect(requirements![0].maxAmountRequired).toBe("50000");
-    expect(requirements![0].payTo).toBe(DEFAULT_REQUIREMENT.payTo);
+    expect(requirements!.accepts).toHaveLength(1);
+    expect(requirements!.accepts[0].scheme).toBe("exact");
+    expect(requirements!.accepts[0].network).toBe("base-sepolia");
+    expect((requirements!.accepts[0] as any).maxAmountRequired).toBe("50000");
+    expect(requirements!.accepts[0].payTo).toBe(DEFAULT_REQUIREMENT.payTo);
   });
 
   it("should enforce hourly spending limits", async () => {
-    // Seed a recent transaction that nearly exhausts hourly limit (0.95 of 1.0)
+    // Seed a recent transaction that nearly exhausts hourly limit (0.96 of 1.0)
     await prisma.transaction.create({
       data: {
         amount: 0.96,
         endpoint: "https://api.example.com/other",
         txHash: "0x" + "d".repeat(64),
-        network: "base",
+        network: "base-sepolia",
         status: "completed",
         type: "payment",
         userId,

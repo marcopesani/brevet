@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import { createTestTransaction, createTestPendingPayment } from "@/test/helpers/fixtures";
 import { prisma } from "@/lib/db";
-import type { PaymentRequirement } from "@/lib/x402/types";
 import type { Hex } from "viem";
 
 /**
@@ -21,7 +20,7 @@ interface CapturedTool {
 }
 
 function createToolCapture() {
-  const tools: CapturedTool[] = {};
+  const tools: CapturedTool[] = [];
 
   const fakeMcpServer = {
     registerTool(
@@ -29,11 +28,18 @@ function createToolCapture() {
       meta: unknown,
       handler: ToolHandler,
     ) {
-      tools[name] = { name, meta, handler };
+      tools.push({ name, meta, handler });
     },
   };
 
   return { server: fakeMcpServer, tools };
+}
+
+/**
+ * Helper to find a tool by name from the captured tools array.
+ */
+function findTool(tools: CapturedTool[], name: string): CapturedTool | undefined {
+  return tools.find((t) => t.name === name);
 }
 
 // Mock fetch for x402_pay tool (uses executePayment which calls fetch)
@@ -49,17 +55,38 @@ vi.mock("@/lib/hot-wallet", async (importOriginal) => {
   };
 });
 
+/**
+ * V1-format payment requirement with all fields the SDK needs.
+ */
+const DEFAULT_REQUIREMENT = {
+  scheme: "exact",
+  network: "base-sepolia",
+  maxAmountRequired: "50000", // 0.05 USDC
+  resource: "https://api.example.com/resource",
+  payTo: ("0x" + "b".repeat(40)) as `0x${string}`,
+  maxTimeoutSeconds: 3600,
+  asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  extra: { name: "USD Coin", version: "2" },
+};
+
+/**
+ * Build a V1-format 402 response.
+ */
+function make402Response(requirements: object[]): Response {
+  const body = {
+    x402Version: 1,
+    error: "Payment Required",
+    accepts: requirements,
+  };
+  return new Response(JSON.stringify(body), {
+    status: 402,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 describe("E2E: MCP Tool Pipeline", () => {
   let userId: string;
-  let tools: Record<string, CapturedTool>;
-
-  const DEFAULT_REQUIREMENT: PaymentRequirement = {
-    scheme: "exact",
-    network: "eip155:84532",
-    maxAmountRequired: "50000", // 0.05 USDC
-    resource: "https://api.example.com/resource",
-    payTo: ("0x" + "b".repeat(40)) as Hex,
-  };
+  let tools: CapturedTool[];
 
   beforeEach(async () => {
     await resetTestDb();
@@ -83,15 +110,7 @@ describe("E2E: MCP Tool Pipeline", () => {
       const txHash = "0x" + "f".repeat(64);
 
       mockFetch
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ error: "Payment Required" }), {
-            status: 402,
-            headers: {
-              "Content-Type": "application/json",
-              "X-PAYMENT": JSON.stringify([DEFAULT_REQUIREMENT]),
-            },
-          }),
-        )
+        .mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]))
         .mockResolvedValueOnce(
           new Response(JSON.stringify({ success: true, data: "paid content" }), {
             status: 200,
@@ -102,7 +121,9 @@ describe("E2E: MCP Tool Pipeline", () => {
           }),
         );
 
-      const result = await tools["x402_pay"].handler({
+      const payTool = findTool(tools, "x402_pay");
+      expect(payTool).toBeDefined();
+      const result = await payTool!.handler({
         url: "https://api.example.com/resource",
       });
 
@@ -125,22 +146,16 @@ describe("E2E: MCP Tool Pipeline", () => {
 
     it("should create a pending payment when amount exceeds per-request limit", async () => {
       // 0.5 USDC exceeds perRequestLimit (0.1) → pending_approval
-      const bigRequirement: PaymentRequirement = {
+      const bigRequirement = {
         ...DEFAULT_REQUIREMENT,
         maxAmountRequired: "500000",
       };
 
-      mockFetch.mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: "Payment Required" }), {
-          status: 402,
-          headers: {
-            "Content-Type": "application/json",
-            "X-PAYMENT": JSON.stringify([bigRequirement]),
-          },
-        }),
-      );
+      mockFetch.mockResolvedValueOnce(make402Response([bigRequirement]));
 
-      const result = await tools["x402_pay"].handler({
+      const payTool = findTool(tools, "x402_pay");
+      expect(payTool).toBeDefined();
+      const result = await payTool!.handler({
         url: "https://api.example.com/resource",
       });
 
@@ -158,7 +173,9 @@ describe("E2E: MCP Tool Pipeline", () => {
     });
 
     it("should return an error for invalid URLs", async () => {
-      const result = await tools["x402_pay"].handler({
+      const payTool = findTool(tools, "x402_pay");
+      expect(payTool).toBeDefined();
+      const result = await payTool!.handler({
         url: "not-a-url",
       });
 
@@ -168,22 +185,16 @@ describe("E2E: MCP Tool Pipeline", () => {
 
     it("should return an error when policy rejects payment", async () => {
       // 10 USDC exceeds wcApprovalLimit (5.0)
-      const hugeRequirement: PaymentRequirement = {
+      const hugeRequirement = {
         ...DEFAULT_REQUIREMENT,
         maxAmountRequired: "10000000",
       };
 
-      mockFetch.mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: "Payment Required" }), {
-          status: 402,
-          headers: {
-            "Content-Type": "application/json",
-            "X-PAYMENT": JSON.stringify([hugeRequirement]),
-          },
-        }),
-      );
+      mockFetch.mockResolvedValueOnce(make402Response([hugeRequirement]));
 
-      const result = await tools["x402_pay"].handler({
+      const payTool = findTool(tools, "x402_pay");
+      expect(payTool).toBeDefined();
+      const result = await payTool!.handler({
         url: "https://api.example.com/resource",
       });
 
@@ -194,7 +205,9 @@ describe("E2E: MCP Tool Pipeline", () => {
 
   describe("x402_check_balance", () => {
     it("should return wallet balance and budget info", async () => {
-      const result = await tools["x402_check_balance"].handler({});
+      const balanceTool = findTool(tools, "x402_check_balance");
+      expect(balanceTool).toBeDefined();
+      const result = await balanceTool!.handler({});
 
       expect(result.isError).toBeUndefined();
 
@@ -217,7 +230,9 @@ describe("E2E: MCP Tool Pipeline", () => {
         }),
       });
 
-      const result = await tools["x402_check_balance"].handler({});
+      const balanceTool = findTool(tools, "x402_check_balance");
+      expect(balanceTool).toBeDefined();
+      const result = await balanceTool!.handler({});
       const parsed = JSON.parse(result.content[0].text);
 
       expect(parsed.budgetRemaining.hourly).toBe(0.5); // 1.0 - 0.5
@@ -243,7 +258,9 @@ describe("E2E: MCP Tool Pipeline", () => {
         }),
       });
 
-      const result = await tools["x402_spending_history"].handler({});
+      const historyTool = findTool(tools, "x402_spending_history");
+      expect(historyTool).toBeDefined();
+      const result = await historyTool!.handler({});
 
       expect(result.isError).toBeUndefined();
 
@@ -276,7 +293,9 @@ describe("E2E: MCP Tool Pipeline", () => {
         }),
       });
 
-      const result = await tools["x402_spending_history"].handler({
+      const historyTool = findTool(tools, "x402_spending_history");
+      expect(historyTool).toBeDefined();
+      const result = await historyTool!.handler({
         since: "2024-01-01T00:00:00Z",
       });
 
@@ -286,7 +305,9 @@ describe("E2E: MCP Tool Pipeline", () => {
     });
 
     it("should return empty list when no transactions exist", async () => {
-      const result = await tools["x402_spending_history"].handler({});
+      const historyTool = findTool(tools, "x402_spending_history");
+      expect(historyTool).toBeDefined();
+      const result = await historyTool!.handler({});
 
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.count).toBe(0);
@@ -301,7 +322,9 @@ describe("E2E: MCP Tool Pipeline", () => {
         data: pendingData,
       });
 
-      const result = await tools["x402_check_pending"].handler({
+      const checkTool = findTool(tools, "x402_check_pending");
+      expect(checkTool).toBeDefined();
+      const result = await checkTool!.handler({
         paymentId: pending.id,
       });
 
@@ -324,7 +347,9 @@ describe("E2E: MCP Tool Pipeline", () => {
         data: pendingData,
       });
 
-      const result = await tools["x402_check_pending"].handler({
+      const checkTool = findTool(tools, "x402_check_pending");
+      expect(checkTool).toBeDefined();
+      const result = await checkTool!.handler({
         paymentId: pending.id,
       });
 
@@ -339,7 +364,9 @@ describe("E2E: MCP Tool Pipeline", () => {
     });
 
     it("should return error for non-existent payment ID", async () => {
-      const result = await tools["x402_check_pending"].handler({
+      const checkTool = findTool(tools, "x402_check_pending");
+      expect(checkTool).toBeDefined();
+      const result = await checkTool!.handler({
         paymentId: "non-existent-id",
       });
 

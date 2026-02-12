@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
-import { buildPaymentSignatureHeader } from "@/lib/x402/headers";
+import { buildPaymentHeaders } from "@/lib/x402/headers";
 import { getAuthenticatedUser } from "@/lib/auth";
-import type { TransferAuthorization } from "@/lib/x402/types";
 import type { Hex } from "viem";
 
 /**
@@ -91,27 +90,40 @@ export async function POST(
     );
   }
 
-  // Build the transfer authorization for the payment header
-  const transferAuth: TransferAuthorization = {
-    from: authorization.from as Hex,
-    to: authorization.to as Hex,
-    value: BigInt(authorization.value),
-    validAfter: BigInt(authorization.validAfter),
-    validBefore: BigInt(authorization.validBefore),
-    nonce: authorization.nonce as Hex,
+  // Build an SDK-compatible PaymentPayload from the WalletConnect signature
+  // Parse the stored payment requirements to get the accepted requirement
+  const storedRequirements = JSON.parse(payment.paymentRequirements);
+  const acceptedRequirement = Array.isArray(storedRequirements)
+    ? storedRequirements[0]
+    : storedRequirements;
+
+  const paymentPayload = {
+    x402Version: 1,
+    resource: {
+      url: payment.url,
+      description: "",
+      mimeType: "",
+    },
+    accepted: acceptedRequirement,
+    payload: {
+      signature: signature as Hex,
+      authorization: {
+        from: authorization.from as Hex,
+        to: authorization.to as Hex,
+        value: authorization.value,
+        validAfter: authorization.validAfter,
+        validBefore: authorization.validBefore,
+        nonce: authorization.nonce as Hex,
+      },
+    },
   };
 
-  // Build the payment header and make the paid request
-  const paymentHeader = buildPaymentSignatureHeader(
-    signature as Hex,
-    transferAuth,
-  );
+  // Build the payment headers and make the paid request
+  const paymentHeaders = buildPaymentHeaders(paymentPayload);
 
   const paidResponse = await fetch(payment.url, {
     method: payment.method,
-    headers: {
-      "PAYMENT-SIGNATURE": paymentHeader,
-    },
+    headers: paymentHeaders,
   });
 
   const txStatus = paidResponse.ok ? "completed" : "failed";
@@ -121,7 +133,7 @@ export async function POST(
     data: {
       amount: payment.amount,
       endpoint: payment.url,
-      network: "base",
+      network: acceptedRequirement.network ?? "base",
       status: txStatus,
       userId: payment.userId,
     },

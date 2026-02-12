@@ -1,43 +1,63 @@
 import { describe, it, expect } from "vitest";
 import type { Hex } from "viem";
 import { verifyTypedData } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import {
   TEST_PRIVATE_KEY,
   TEST_WALLET_ADDRESS,
 } from "@/test/helpers/crypto";
 import { chainConfig } from "@/lib/chain-config";
-import {
-  buildTransferAuthorization,
-  signTransferAuthorization,
-  USDC_DOMAIN,
-  TRANSFER_WITH_AUTHORIZATION_TYPES,
-} from "@/lib/x402/eip712";
-import {
-  buildPaymentSignatureHeader,
-} from "@/lib/x402/headers";
+import { createEvmSigner, authorizationTypes } from "@/lib/x402/eip712";
+import { buildPaymentHeaders } from "@/lib/x402/headers";
+import crypto from "crypto";
 
 describe("E2E: EIP-712 Signing", () => {
   const RECIPIENT = ("0x" + "b".repeat(40)) as Hex;
 
+  /**
+   * Helper: build a TransferWithAuthorization message.
+   * Mirrors what the SDK's ExactEvmSchemeV1 does internally.
+   */
+  function buildTransferAuthorization(from: Hex, to: Hex, value: bigint) {
+    const nonce = `0x${crypto.randomBytes(32).toString("hex")}` as Hex;
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    return {
+      from,
+      to,
+      value,
+      validAfter: BigInt(0),
+      validBefore: now + BigInt(300),
+      nonce,
+    };
+  }
+
   describe("TransferWithAuthorization signing and verification", () => {
     it("should sign and verify a TransferWithAuthorization message", async () => {
+      const signer = createEvmSigner(TEST_PRIVATE_KEY);
       const authorization = buildTransferAuthorization(
         TEST_WALLET_ADDRESS,
         RECIPIENT,
         BigInt(50000), // 0.05 USDC
       );
 
-      const signature = await signTransferAuthorization(
-        authorization,
-        TEST_PRIVATE_KEY,
-      );
+      const signature = await signer.signTypedData({
+        domain: chainConfig.usdcDomain,
+        types: authorizationTypes,
+        primaryType: "TransferWithAuthorization",
+        message: {
+          from: authorization.from,
+          to: authorization.to,
+          value: authorization.value,
+          validAfter: authorization.validAfter,
+          validBefore: authorization.validBefore,
+          nonce: authorization.nonce,
+        },
+      });
 
       // Verify the signature recovers to the test wallet address
       const isValid = await verifyTypedData({
         address: TEST_WALLET_ADDRESS,
-        domain: USDC_DOMAIN,
-        types: TRANSFER_WITH_AUTHORIZATION_TYPES,
+        domain: chainConfig.usdcDomain,
+        types: authorizationTypes,
         primaryType: "TransferWithAuthorization",
         message: {
           from: authorization.from,
@@ -54,15 +74,16 @@ describe("E2E: EIP-712 Signing", () => {
     });
 
     it("should use the correct Sepolia USDC domain", () => {
-      expect(USDC_DOMAIN.name).toBe("USD Coin");
-      expect(USDC_DOMAIN.version).toBe("2");
-      expect(USDC_DOMAIN.chainId).toBe(84532);
-      expect(USDC_DOMAIN.verifyingContract).toBe(
+      expect(chainConfig.usdcDomain.name).toBe("USD Coin");
+      expect(chainConfig.usdcDomain.version).toBe("2");
+      expect(chainConfig.usdcDomain.chainId).toBe(84532);
+      expect(chainConfig.usdcDomain.verifyingContract).toBe(
         "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       );
     });
 
     it("should produce a valid signature for different amounts", async () => {
+      const signer = createEvmSigner(TEST_PRIVATE_KEY);
       const amounts = [
         BigInt(1), // 0.000001 USDC
         BigInt(100000), // 0.1 USDC
@@ -77,15 +98,24 @@ describe("E2E: EIP-712 Signing", () => {
           amount,
         );
 
-        const signature = await signTransferAuthorization(
-          authorization,
-          TEST_PRIVATE_KEY,
-        );
+        const signature = await signer.signTypedData({
+          domain: chainConfig.usdcDomain,
+          types: authorizationTypes,
+          primaryType: "TransferWithAuthorization",
+          message: {
+            from: authorization.from,
+            to: authorization.to,
+            value: authorization.value,
+            validAfter: authorization.validAfter,
+            validBefore: authorization.validBefore,
+            nonce: authorization.nonce,
+          },
+        });
 
         const isValid = await verifyTypedData({
           address: TEST_WALLET_ADDRESS,
-          domain: USDC_DOMAIN,
-          types: TRANSFER_WITH_AUTHORIZATION_TYPES,
+          domain: chainConfig.usdcDomain,
+          types: authorizationTypes,
           primaryType: "TransferWithAuthorization",
           message: {
             from: authorization.from,
@@ -103,6 +133,7 @@ describe("E2E: EIP-712 Signing", () => {
     });
 
     it("should produce a valid signature for different recipients", async () => {
+      const signer = createEvmSigner(TEST_PRIVATE_KEY);
       const recipients: Hex[] = [
         ("0x" + "a".repeat(40)) as Hex,
         ("0x" + "c".repeat(40)) as Hex,
@@ -116,15 +147,24 @@ describe("E2E: EIP-712 Signing", () => {
           BigInt(50000),
         );
 
-        const signature = await signTransferAuthorization(
-          authorization,
-          TEST_PRIVATE_KEY,
-        );
+        const signature = await signer.signTypedData({
+          domain: chainConfig.usdcDomain,
+          types: authorizationTypes,
+          primaryType: "TransferWithAuthorization",
+          message: {
+            from: authorization.from,
+            to: authorization.to,
+            value: authorization.value,
+            validAfter: authorization.validAfter,
+            validBefore: authorization.validBefore,
+            nonce: authorization.nonce,
+          },
+        });
 
         const isValid = await verifyTypedData({
           address: TEST_WALLET_ADDRESS,
-          domain: USDC_DOMAIN,
-          types: TRANSFER_WITH_AUTHORIZATION_TYPES,
+          domain: chainConfig.usdcDomain,
+          types: authorizationTypes,
           primaryType: "TransferWithAuthorization",
           message: {
             from: authorization.from,
@@ -142,23 +182,33 @@ describe("E2E: EIP-712 Signing", () => {
     });
 
     it("should fail verification with a different signer address", async () => {
+      const signer = createEvmSigner(TEST_PRIVATE_KEY);
       const authorization = buildTransferAuthorization(
         TEST_WALLET_ADDRESS,
         RECIPIENT,
         BigInt(50000),
       );
 
-      const signature = await signTransferAuthorization(
-        authorization,
-        TEST_PRIVATE_KEY,
-      );
+      const signature = await signer.signTypedData({
+        domain: chainConfig.usdcDomain,
+        types: authorizationTypes,
+        primaryType: "TransferWithAuthorization",
+        message: {
+          from: authorization.from,
+          to: authorization.to,
+          value: authorization.value,
+          validAfter: authorization.validAfter,
+          validBefore: authorization.validBefore,
+          nonce: authorization.nonce,
+        },
+      });
 
       // Verify with a WRONG address should fail
       const wrongAddress = ("0x" + "d".repeat(40)) as Hex;
       const isValid = await verifyTypedData({
         address: wrongAddress,
-        domain: USDC_DOMAIN,
-        types: TRANSFER_WITH_AUTHORIZATION_TYPES,
+        domain: chainConfig.usdcDomain,
+        types: authorizationTypes,
         primaryType: "TransferWithAuthorization",
         message: {
           from: authorization.from,
@@ -234,51 +284,41 @@ describe("E2E: EIP-712 Signing", () => {
   });
 
   describe("Payment signature header encoding", () => {
-    it("should produce a valid base64-encoded payment header", async () => {
-      const authorization = buildTransferAuthorization(
-        TEST_WALLET_ADDRESS,
-        RECIPIENT,
-        BigInt(50000),
-      );
+    it("should produce valid payment headers from a V1 payload", () => {
+      const paymentPayload = {
+        x402Version: 1 as const,
+        scheme: "exact",
+        network: "base-sepolia",
+        payload: {
+          signature: "0xdeadbeef" as Hex,
+          authorization: {
+            from: TEST_WALLET_ADDRESS,
+            to: RECIPIENT,
+            value: "50000",
+            validAfter: "0",
+            validBefore: "1748736300",
+            nonce: ("0x" + "0".repeat(63) + "1") as Hex,
+          },
+        },
+      };
 
-      const signature = await signTransferAuthorization(
-        authorization,
-        TEST_PRIVATE_KEY,
-      );
+      // Cast needed: SDK types PaymentPayloadV1.network as `${string}:${string}`,
+      // but V1 networks are plain names like "base-sepolia"
+      const headers = buildPaymentHeaders(paymentPayload as any);
 
-      const header = buildPaymentSignatureHeader(signature, authorization);
+      // V1 uses X-PAYMENT header
+      expect(headers).toHaveProperty("X-PAYMENT");
+      expect(typeof headers["X-PAYMENT"]).toBe("string");
 
       // Should be valid base64
-      expect(typeof header).toBe("string");
-      const decoded = JSON.parse(atob(header));
-
+      const decoded = JSON.parse(atob(headers["X-PAYMENT"]));
       expect(decoded.x402Version).toBe(1);
       expect(decoded.scheme).toBe("exact");
-      expect(decoded.network).toBe("eip155:84532");
-      expect(decoded.payload.signature).toBe(signature);
+      expect(decoded.network).toBe("base-sepolia");
+      expect(decoded.payload.signature).toBe("0xdeadbeef");
       expect(decoded.payload.authorization.from).toBe(TEST_WALLET_ADDRESS);
       expect(decoded.payload.authorization.to).toBe(RECIPIENT);
-      // BigInt serialized as string
       expect(decoded.payload.authorization.value).toBe("50000");
-    });
-
-    it("should include the correct network string for Sepolia", async () => {
-      const authorization = buildTransferAuthorization(
-        TEST_WALLET_ADDRESS,
-        RECIPIENT,
-        BigInt(1000000),
-      );
-
-      const signature = await signTransferAuthorization(
-        authorization,
-        TEST_PRIVATE_KEY,
-      );
-
-      const header = buildPaymentSignatureHeader(signature, authorization);
-      const decoded = JSON.parse(atob(header));
-
-      expect(decoded.network).toBe(chainConfig.networkString);
-      expect(decoded.network).toBe("eip155:84532");
     });
   });
 });

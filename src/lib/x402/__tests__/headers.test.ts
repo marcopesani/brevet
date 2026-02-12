@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import type { Hex } from "viem";
 import {
   parsePaymentRequired,
-  buildPaymentSignatureHeader,
+  buildPaymentHeaders,
   extractTxHashFromResponse,
+  extractSettleResponse,
 } from "../headers";
 
 // Helper to create a Response with given headers and body
@@ -19,127 +19,133 @@ function makeResponse(
 }
 
 describe("parsePaymentRequired", () => {
-  it("parses valid X-PAYMENT header with array", () => {
-    const requirements = [
-      {
-        scheme: "exact",
-        network: "eip155:84532",
-        maxAmountRequired: "50000",
-        resource: "https://api.example.com/resource",
-        payTo: "0x" + "b".repeat(40),
-      },
-    ];
-
-    const response = makeResponse(
-      402,
-      { "X-PAYMENT": JSON.stringify(requirements) },
-    );
-
-    const result = parsePaymentRequired(response);
-    expect(result).toEqual(requirements);
-  });
-
-  it("normalises a single object to an array", () => {
-    const requirement = {
-      scheme: "exact",
-      network: "eip155:84532",
-      maxAmountRequired: "50000",
-      resource: "https://api.example.com/resource",
-      payTo: "0x" + "b".repeat(40),
+  it("parses V1 body-based payment requirements", () => {
+    const v1Body = {
+      x402Version: 1,
+      error: "Payment Required",
+      accepts: [
+        {
+          scheme: "exact",
+          network: "base-sepolia",
+          maxAmountRequired: "50000",
+          resource: "https://api.example.com/resource",
+          description: "Test resource",
+          mimeType: "application/json",
+          payTo: "0x" + "b".repeat(40),
+          maxTimeoutSeconds: 3600,
+          asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          extra: { name: "USD Coin", version: "2" },
+        },
+      ],
     };
 
     const response = makeResponse(
       402,
-      { "X-PAYMENT": JSON.stringify(requirement) },
+      { "Content-Type": "application/json" },
+      JSON.stringify(v1Body),
     );
 
-    const result = parsePaymentRequired(response);
-    expect(result).toEqual([requirement]);
+    const result = parsePaymentRequired(response, v1Body);
+    expect(result).not.toBeNull();
+    expect(result!.accepts).toHaveLength(1);
+    expect(result!.accepts[0].scheme).toBe("exact");
   });
 
-  it("falls back to PAYMENT-REQUIRED header", () => {
-    const requirements = [
-      {
-        scheme: "exact",
-        network: "eip155:84532",
-        maxAmountRequired: "100000",
-        resource: "https://api.example.com/resource",
-        payTo: "0x" + "c".repeat(40),
+  it("parses V2 header-based payment requirements", () => {
+    const v2PaymentRequired = {
+      x402Version: 2,
+      resource: {
+        url: "https://api.example.com/resource",
+        description: "Test resource",
+        mimeType: "application/json",
       },
-    ];
+      accepts: [
+        {
+          scheme: "exact",
+          network: "eip155:84532",
+          asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          amount: "50000",
+          payTo: "0x" + "b".repeat(40),
+          maxTimeoutSeconds: 300,
+          extra: { name: "USD Coin", version: "2" },
+        },
+      ],
+    };
 
+    const encoded = Buffer.from(JSON.stringify(v2PaymentRequired)).toString("base64");
     const response = makeResponse(
       402,
-      { "PAYMENT-REQUIRED": JSON.stringify(requirements) },
+      { "Payment-Required": encoded },
+      "{}",
     );
 
-    const result = parsePaymentRequired(response);
-    expect(result).toEqual(requirements);
+    const result = parsePaymentRequired(response, {});
+    expect(result).not.toBeNull();
+    expect(result!.x402Version).toBe(2);
+    expect(result!.accepts).toHaveLength(1);
+    expect(result!.accepts[0].amount).toBe("50000");
+    expect(result!.accepts[0].network).toBe("eip155:84532");
   });
 
-  it("returns null when no payment headers present", () => {
+  it("returns null when no payment headers or body present", () => {
     const response = makeResponse(402, {});
     const result = parsePaymentRequired(response);
     expect(result).toBeNull();
   });
 
-  it("returns null for malformed JSON", () => {
-    const response = makeResponse(402, { "X-PAYMENT": "not valid json{" });
-    const result = parsePaymentRequired(response);
-    expect(result).toBeNull();
-  });
-
-  it("returns null for empty header value", () => {
-    const response = makeResponse(402, { "X-PAYMENT": "" });
+  it("returns null for malformed data", () => {
+    const response = makeResponse(
+      402,
+      { "Payment-Required": "not valid base64 json{" },
+    );
     const result = parsePaymentRequired(response);
     expect(result).toBeNull();
   });
 });
 
-describe("buildPaymentSignatureHeader", () => {
-  it("produces valid base64-encoded JSON", () => {
-    const signature = "0xdeadbeef" as Hex;
-    const authorization = {
-      from: "0x" + "a".repeat(40) as Hex,
-      to: "0x" + "b".repeat(40) as Hex,
-      value: BigInt(50000),
-      validAfter: BigInt(0),
-      validBefore: BigInt(1748736300),
-      nonce: "0x" + "0".repeat(63) + "1" as Hex,
+describe("buildPaymentHeaders", () => {
+  it("produces payment headers from a PaymentPayload", () => {
+    const paymentPayload = {
+      x402Version: 2,
+      resource: {
+        url: "https://api.example.com/resource",
+        description: "Test",
+        mimeType: "application/json",
+      },
+      accepted: {
+        scheme: "exact",
+        network: "eip155:84532" as `${string}:${string}`,
+        asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        amount: "50000",
+        payTo: "0x" + "b".repeat(40),
+        maxTimeoutSeconds: 300,
+        extra: {},
+      },
+      payload: {
+        signature: "0xdeadbeef",
+        authorization: {
+          from: "0x" + "a".repeat(40),
+          to: "0x" + "b".repeat(40),
+          value: "50000",
+          validAfter: "0",
+          validBefore: "1748736300",
+          nonce: "0x" + "0".repeat(63) + "1",
+        },
+      },
     };
 
-    const header = buildPaymentSignatureHeader(signature, authorization);
+    const headers = buildPaymentHeaders(paymentPayload);
 
-    // Decode base64
-    const decoded = JSON.parse(atob(header));
+    // Should return a record with at least one header
+    expect(typeof headers).toBe("object");
+    const headerKeys = Object.keys(headers);
+    expect(headerKeys.length).toBeGreaterThan(0);
 
-    expect(decoded.x402Version).toBe(1);
-    expect(decoded.scheme).toBe("exact");
-    expect(decoded.network).toBe("eip155:84532"); // Base Sepolia from test env
-    expect(decoded.payload.signature).toBe(signature);
-    expect(decoded.payload.authorization.from).toBe(authorization.from);
-    expect(decoded.payload.authorization.to).toBe(authorization.to);
-    // BigInt serialised as string
-    expect(decoded.payload.authorization.value).toBe("50000");
-    expect(decoded.payload.authorization.validAfter).toBe("0");
-    expect(decoded.payload.authorization.validBefore).toBe("1748736300");
-  });
-
-  it("serialises bigint values as strings in JSON", () => {
-    const header = buildPaymentSignatureHeader("0xabc" as Hex, {
-      from: "0x" + "a".repeat(40) as Hex,
-      to: "0x" + "b".repeat(40) as Hex,
-      value: BigInt("115792089237316195423570985008687907853269984665640564039457584007913129639935"),
-      validAfter: BigInt(0),
-      validBefore: BigInt(999999999999),
-      nonce: "0x" + "f".repeat(64) as Hex,
-    });
-
-    const decoded = JSON.parse(atob(header));
-    // max uint256 should be serialised as a string, not lose precision
-    expect(decoded.payload.authorization.value).toBe(
-      "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+    // V2 should use Payment-Signature header
+    const hasPaymentHeader = headerKeys.some(
+      (k) => k.toLowerCase() === "payment-signature" || k.toLowerCase() === "x-payment",
     );
+    expect(hasPaymentHeader).toBe(true);
   });
 });
 
@@ -231,5 +237,82 @@ describe("extractTxHashFromResponse", () => {
 
     const hash = await extractTxHashFromResponse(response);
     expect(hash).toBeNull();
+  });
+});
+
+describe("extractSettleResponse", () => {
+  const sampleSettle = {
+    success: true,
+    transaction: "0x" + "a".repeat(64),
+    network: "eip155:8453",
+    payer: "0x" + "c".repeat(40),
+  };
+
+  it("parses V2 Payment-Response header (base64-encoded JSON)", () => {
+    const encoded = Buffer.from(JSON.stringify(sampleSettle)).toString("base64");
+    const response = makeResponse(200, { "PAYMENT-RESPONSE": encoded }, "{}");
+
+    const result = extractSettleResponse(response);
+    expect(result).not.toBeNull();
+    expect(result!.success).toBe(true);
+    expect(result!.transaction).toBe(sampleSettle.transaction);
+    expect(result!.network).toBe("eip155:8453");
+    expect(result!.payer).toBe(sampleSettle.payer);
+  });
+
+  it("parses V1 X-Payment-Response header (base64-encoded JSON)", () => {
+    const encoded = Buffer.from(JSON.stringify(sampleSettle)).toString("base64");
+    const response = makeResponse(200, { "X-PAYMENT-RESPONSE": encoded }, "{}");
+
+    const result = extractSettleResponse(response);
+    expect(result).not.toBeNull();
+    expect(result!.transaction).toBe(sampleSettle.transaction);
+    expect(result!.network).toBe("eip155:8453");
+  });
+
+  it("prefers V2 Payment-Response over V1 X-Payment-Response", () => {
+    const v2Settle = { ...sampleSettle, transaction: "0x" + "a".repeat(64) };
+    const v1Settle = { ...sampleSettle, transaction: "0x" + "b".repeat(64) };
+    const v2Encoded = Buffer.from(JSON.stringify(v2Settle)).toString("base64");
+    const v1Encoded = Buffer.from(JSON.stringify(v1Settle)).toString("base64");
+    const response = makeResponse(
+      200,
+      { "PAYMENT-RESPONSE": v2Encoded, "X-PAYMENT-RESPONSE": v1Encoded },
+      "{}",
+    );
+
+    const result = extractSettleResponse(response);
+    expect(result).not.toBeNull();
+    expect(result!.transaction).toBe(v2Settle.transaction);
+  });
+
+  it("returns null when no settlement headers are present", () => {
+    const response = makeResponse(200, {}, "{}");
+    const result = extractSettleResponse(response);
+    expect(result).toBeNull();
+  });
+
+  it("returns null for invalid base64 header value", () => {
+    const response = makeResponse(
+      200,
+      { "PAYMENT-RESPONSE": "not valid base64{" },
+      "{}",
+    );
+    const result = extractSettleResponse(response);
+    expect(result).toBeNull();
+  });
+
+  it("includes optional fields when present", () => {
+    const settleWithExtras = {
+      ...sampleSettle,
+      errorReason: undefined,
+      extensions: { custom: "data" },
+    };
+    const encoded = Buffer.from(JSON.stringify(settleWithExtras)).toString("base64");
+    const response = makeResponse(200, { "PAYMENT-RESPONSE": encoded }, "{}");
+
+    const result = extractSettleResponse(response);
+    expect(result).not.toBeNull();
+    expect(result!.extensions).toEqual({ custom: "data" });
   });
 });

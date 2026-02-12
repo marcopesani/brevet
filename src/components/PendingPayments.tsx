@@ -2,14 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSignTypedData } from "wagmi";
-import {
-  USDC_DOMAIN,
-  TRANSFER_WITH_AUTHORIZATION_TYPES,
-  buildTransferAuthorization,
-} from "@/lib/x402/eip712";
-import type { PaymentRequirement } from "@/lib/x402/types";
+import { authorizationTypes } from "@x402/evm";
+import type { PaymentRequirements } from "@x402/core/types";
 import { chainConfig } from "@/lib/chain-config";
 import type { Hex } from "viem";
+import crypto from "crypto";
 
 interface PendingPayment {
   id: string;
@@ -65,7 +62,7 @@ export default function PendingPayments({
     setMessage(null);
 
     try {
-      const requirements: PaymentRequirement[] = JSON.parse(
+      const requirements: PaymentRequirements[] = JSON.parse(
         payment.paymentRequirements,
       );
       const requirement = requirements.find(
@@ -80,19 +77,23 @@ export default function PendingPayments({
         return;
       }
 
-      const amountWei = BigInt(requirement.maxAmountRequired);
+      const amountWei = BigInt(requirement.amount);
+      const nonce = `0x${crypto.randomBytes(32).toString("hex")}` as Hex;
+      const now = BigInt(Math.floor(Date.now() / 1_000));
 
-      // Build the transfer authorization
-      const authorization = buildTransferAuthorization(
-        walletAddress as Hex,
-        requirement.payTo,
-        amountWei,
-      );
+      const authorization = {
+        from: walletAddress as Hex,
+        to: requirement.payTo as Hex,
+        value: amountWei,
+        validAfter: BigInt(0),
+        validBefore: now + BigInt(300),
+        nonce,
+      };
 
       // Sign with Wagmi (triggers WalletConnect)
       const signature = await signTypedDataAsync({
-        domain: USDC_DOMAIN,
-        types: TRANSFER_WITH_AUTHORIZATION_TYPES,
+        domain: chainConfig.usdcDomain,
+        types: authorizationTypes,
         primaryType: "TransferWithAuthorization",
         message: {
           from: authorization.from,

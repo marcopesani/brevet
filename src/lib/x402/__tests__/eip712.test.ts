@@ -1,116 +1,96 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { verifyTypedData, type Hex } from "viem";
-import {
-  buildTransferAuthorization,
-  signTransferAuthorization,
-  USDC_DOMAIN,
-  TRANSFER_WITH_AUTHORIZATION_TYPES,
-} from "../eip712";
+import { describe, it, expect } from "vitest";
+import { createEvmSigner, createExactEvmScheme } from "../eip712";
 import { TEST_PRIVATE_KEY, TEST_WALLET_ADDRESS } from "../../../test/helpers/crypto";
 
-describe("buildTransferAuthorization", () => {
-  const from = TEST_WALLET_ADDRESS;
-  const to = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Hex;
-
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2025-06-01T00:00:00Z"));
+describe("createEvmSigner", () => {
+  it("creates a signer with the correct address", () => {
+    const signer = createEvmSigner(TEST_PRIVATE_KEY);
+    expect(signer.address).toBe(TEST_WALLET_ADDRESS);
   });
 
-  it("produces correct typed data structure", () => {
-    const auth = buildTransferAuthorization(from, to, BigInt(50000));
-
-    expect(auth.from).toBe(from);
-    expect(auth.to).toBe(to);
-    expect(auth.value).toBe(BigInt(50000));
-    expect(auth.validAfter).toBe(BigInt(0));
-    // validBefore should be now + 300 seconds
-    const expectedValidBefore =
-      BigInt(Math.floor(new Date("2025-06-01T00:00:00Z").getTime() / 1000)) +
-      BigInt(300);
-    expect(auth.validBefore).toBe(expectedValidBefore);
-    // nonce should be a 66-char hex string (0x + 64 hex chars)
-    expect(auth.nonce).toMatch(/^0x[0-9a-f]{64}$/);
+  it("signer has signTypedData method", () => {
+    const signer = createEvmSigner(TEST_PRIVATE_KEY);
+    expect(typeof signer.signTypedData).toBe("function");
   });
 
-  it("generates unique nonces on each call", () => {
-    const auth1 = buildTransferAuthorization(from, to, BigInt(50000));
-    const auth2 = buildTransferAuthorization(from, to, BigInt(50000));
+  it("signer can sign EIP-712 typed data", async () => {
+    const signer = createEvmSigner(TEST_PRIVATE_KEY);
+    const signature = await signer.signTypedData({
+      domain: {
+        name: "USD Coin",
+        version: "2",
+        chainId: 84532,
+        verifyingContract: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      },
+      types: {
+        TransferWithAuthorization: [
+          { name: "from", type: "address" },
+          { name: "to", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "validAfter", type: "uint256" },
+          { name: "validBefore", type: "uint256" },
+          { name: "nonce", type: "bytes32" },
+        ],
+      },
+      primaryType: "TransferWithAuthorization",
+      message: {
+        from: TEST_WALLET_ADDRESS,
+        to: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        value: BigInt(50000),
+        validAfter: BigInt(0),
+        validBefore: BigInt(1748736300),
+        nonce: "0x0000000000000000000000000000000000000000000000000000000000000001",
+      },
+    });
 
-    expect(auth1.nonce).not.toBe(auth2.nonce);
+    expect(signature).toMatch(/^0x[0-9a-f]+$/);
   });
 
-  it("handles zero amount", () => {
-    const auth = buildTransferAuthorization(from, to, BigInt(0));
-    expect(auth.value).toBe(BigInt(0));
-  });
+  it("produces deterministic signatures for the same input", async () => {
+    const signer = createEvmSigner(TEST_PRIVATE_KEY);
+    const args = {
+      domain: {
+        name: "USD Coin",
+        version: "2",
+        chainId: 84532,
+        verifyingContract: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      },
+      types: {
+        TransferWithAuthorization: [
+          { name: "from", type: "address" },
+          { name: "to", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "validAfter", type: "uint256" },
+          { name: "validBefore", type: "uint256" },
+          { name: "nonce", type: "bytes32" },
+        ],
+      },
+      primaryType: "TransferWithAuthorization",
+      message: {
+        from: TEST_WALLET_ADDRESS,
+        to: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+        value: BigInt(50000),
+        validAfter: BigInt(0),
+        validBefore: BigInt(1748736300),
+        nonce: "0x0000000000000000000000000000000000000000000000000000000000000001",
+      },
+    };
 
-  it("handles max uint256 amount", () => {
-    const maxUint256 = BigInt(2) ** BigInt(256) - BigInt(1);
-    const auth = buildTransferAuthorization(from, to, maxUint256);
-    expect(auth.value).toBe(maxUint256);
+    const sig1 = await signer.signTypedData(args);
+    const sig2 = await signer.signTypedData(args);
+
+    expect(sig1).toBe(sig2);
   });
 });
 
-describe("signTransferAuthorization", () => {
-  const from = TEST_WALLET_ADDRESS;
-  const to = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as Hex;
-
-  it("produces a deterministic signature for fixed inputs", async () => {
-    const authorization = {
-      from,
-      to,
-      value: BigInt(50000),
-      validAfter: BigInt(0),
-      validBefore: BigInt(1748736300), // fixed timestamp
-      nonce: "0x0000000000000000000000000000000000000000000000000000000000000001" as Hex,
-    };
-
-    const sig1 = await signTransferAuthorization(authorization, TEST_PRIVATE_KEY);
-    const sig2 = await signTransferAuthorization(authorization, TEST_PRIVATE_KEY);
-
-    expect(sig1).toBe(sig2);
-    expect(sig1).toMatch(/^0x[0-9a-f]+$/);
+describe("createExactEvmScheme", () => {
+  it("creates an ExactEvmScheme instance", () => {
+    const scheme = createExactEvmScheme(TEST_PRIVATE_KEY);
+    expect(scheme.scheme).toBe("exact");
   });
 
-  it("signature can be recovered to the signer address", async () => {
-    const authorization = {
-      from,
-      to,
-      value: BigInt(100000),
-      validAfter: BigInt(0),
-      validBefore: BigInt(1748736300),
-      nonce: "0x0000000000000000000000000000000000000000000000000000000000000002" as Hex,
-    };
-
-    const signature = await signTransferAuthorization(authorization, TEST_PRIVATE_KEY);
-
-    const recovered = await verifyTypedData({
-      address: TEST_WALLET_ADDRESS,
-      domain: USDC_DOMAIN,
-      types: TRANSFER_WITH_AUTHORIZATION_TYPES,
-      primaryType: "TransferWithAuthorization",
-      message: {
-        from: authorization.from,
-        to: authorization.to,
-        value: authorization.value,
-        validAfter: authorization.validAfter,
-        validBefore: authorization.validBefore,
-        nonce: authorization.nonce,
-      },
-      signature,
-    });
-
-    expect(recovered).toBe(true);
-  });
-
-  it("uses the Sepolia USDC domain", () => {
-    // Tests run with CHAIN_ID=84532 (Base Sepolia)
-    expect(USDC_DOMAIN.name).toBe("USD Coin");
-    expect(USDC_DOMAIN.version).toBe("2");
-    expect(USDC_DOMAIN.chainId).toBe(84532);
-    expect(USDC_DOMAIN.verifyingContract).toBe(
-      "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-    );
+  it("scheme has createPaymentPayload method", () => {
+    const scheme = createExactEvmScheme(TEST_PRIVATE_KEY);
+    expect(typeof scheme.createPaymentPayload).toBe("function");
   });
 });
