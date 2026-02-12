@@ -40,9 +40,18 @@ export interface PaymentHeader {
   payload: PaymentPayload;
 }
 
+/** Determines which signing method to use based on amount vs policy limits. */
+export type SigningStrategy = "hot_wallet" | "walletconnect" | "rejected";
+
 /** Result of processing an x402 payment. */
 export interface PaymentResult {
   success: boolean;
+  status: "completed" | "pending_approval" | "rejected";
+  signingStrategy: SigningStrategy;
   response?: Response;
   error?: string;
+  /** Included when status is "pending_approval" — JSON-encoded payment requirements for client-side signing. */
+  paymentRequirements?: string;
+  /** Amount in USD for the pending payment. */
+  amount?: number;
 }

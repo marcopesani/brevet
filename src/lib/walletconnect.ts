@@ -7,6 +7,11 @@ export const projectId =
 
 export const networks = [base];
 
+/**
+ * Note: eth_signTypedData_v4 is supported by default through Reown AppKit's
+ * WagmiAdapter — Wagmi's useSignTypedData hook uses it automatically.
+ * No explicit method configuration is needed.
+ */
 export const wagmiAdapter = new WagmiAdapter({
   storage: createStorage({
     storage: cookieStorage,

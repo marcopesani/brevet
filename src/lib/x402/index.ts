@@ -13,4 +13,5 @@ export type {
   PaymentHeader,
   PaymentPayload,
   TransferAuthorization,
+  SigningStrategy,
 } from "./types";

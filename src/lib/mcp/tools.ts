@@ -33,6 +33,36 @@ export function registerTools(server: McpServer, userId: string) {
       try {
         const result = await executePayment(url, userId);
 
+        // Handle pending_approval status (WalletConnect tier)
+        const resultAny = result as unknown as Record<string, unknown>;
+        if (resultAny.status === "pending_approval") {
+          const pendingResult = resultAny as {
+            status: string;
+            paymentRequirements: string;
+            amount: number;
+          };
+
+          // Create a pending payment record
+          const pendingPayment = await prisma.pendingPayment.create({
+            data: {
+              userId,
+              url,
+              amount: pendingResult.amount,
+              paymentRequirements: pendingResult.paymentRequirements,
+              expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 min TTL
+            },
+          });
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Payment of $${pendingResult.amount.toFixed(6)} requires user approval. Payment ID: ${pendingPayment.id}. The user has been notified and has 30 minutes to approve. Use x402_check_pending to check the status.`,
+              },
+            ],
+          };
+        }
+
         if (!result.success) {
           return {
             content: [
@@ -237,6 +267,97 @@ export function registerTools(server: McpServer, userId: string) {
           error instanceof Error
             ? error.message
             : "Failed to fetch spending history";
+        return {
+          content: [{ type: "text" as const, text: `Error: ${message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // --- x402_check_pending: Check status of a pending payment ---
+  server.registerTool(
+    "x402_check_pending",
+    {
+      description:
+        "Check the status of a pending payment that requires user approval via WalletConnect. Use this to poll for approval after x402_pay returns a pending_approval status.",
+      inputSchema: {
+        paymentId: z
+          .string()
+          .describe("The pending payment ID returned by x402_pay"),
+      },
+    },
+    async ({ paymentId }) => {
+      try {
+        const payment = await prisma.pendingPayment.findUnique({
+          where: { id: paymentId },
+        });
+
+        if (!payment) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Error: Pending payment not found",
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        // Check if expired
+        if (
+          payment.status === "pending" &&
+          new Date() > payment.expiresAt
+        ) {
+          await prisma.pendingPayment.update({
+            where: { id: paymentId },
+            data: { status: "expired" },
+          });
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  { status: "expired", message: "Payment approval has expired" },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        const timeRemaining = Math.max(
+          0,
+          Math.floor(
+            (payment.expiresAt.getTime() - Date.now()) / 1000,
+          ),
+        );
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  id: payment.id,
+                  status: payment.status,
+                  amount: payment.amount,
+                  url: payment.url,
+                  timeRemainingSeconds: timeRemaining,
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to check pending payment";
         return {
           content: [{ type: "text" as const, text: `Error: ${message}` }],
           isError: true,

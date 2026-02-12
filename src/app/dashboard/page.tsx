@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAppKitAccount } from "@reown/appkit/react";
 import ConnectWallet from "@/components/ConnectWallet";
+import PendingPayments from "@/components/PendingPayments";
 import SpendingPolicies from "@/components/SpendingPolicies";
 
 export default function DashboardPage() {
@@ -54,6 +55,7 @@ export default function DashboardPage() {
         </nav>
 
         <div className="flex flex-col gap-6">
+          <PendingPayments userId={userId} walletAddress={address} />
           {/* Hot wallet section will be added by another task */}
           <SpendingPolicies userId={userId} />
         </div>

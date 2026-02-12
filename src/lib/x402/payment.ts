@@ -9,7 +9,7 @@ import {
   signTransferAuthorization,
 } from "./eip712";
 import { parsePaymentRequired, buildPaymentSignatureHeader } from "./headers";
-import type { PaymentResult, PaymentRequirement } from "./types";
+import type { PaymentResult, PaymentRequirement, SigningStrategy } from "./types";
 
 /**
  * Execute the full x402 payment flow for a given URL.
@@ -86,7 +86,7 @@ export async function executePayment(
   // Step 0: Validate URL
   const urlError = validateUrl(url);
   if (urlError) {
-    return { success: false, error: `URL validation failed: ${urlError}` };
+    return { success: false, status: "rejected", signingStrategy: "rejected", error: `URL validation failed: ${urlError}` };
   }
 
   // Step 1: Initial request
@@ -94,7 +94,7 @@ export async function executePayment(
 
   if (initialResponse.status !== 402) {
     // Not a paid endpoint — return the response as-is
-    return { success: true, response: initialResponse };
+    return { success: true, status: "completed", signingStrategy: "hot_wallet", response: initialResponse };
   }
 
   // Step 2: Parse payment requirements
@@ -102,6 +102,8 @@ export async function executePayment(
   if (!requirements || requirements.length === 0) {
     return {
       success: false,
+      status: "rejected",
+      signingStrategy: "rejected",
       error: "Received 402 but no valid payment requirements in headers",
     };
   }
@@ -115,6 +117,8 @@ export async function executePayment(
   if (!requirement) {
     return {
       success: false,
+      status: "rejected",
+      signingStrategy: "rejected",
       error:
         "No supported payment requirement found (need scheme=exact, network=eip155:8453)",
     };
@@ -126,7 +130,7 @@ export async function executePayment(
   });
 
   if (!hotWallet) {
-    return { success: false, error: "No hot wallet found for user" };
+    return { success: false, status: "rejected", signingStrategy: "rejected", error: "No hot wallet found for user" };
   }
 
   const privateKey = decryptPrivateKey(hotWallet.encryptedPrivateKey) as Hex;
@@ -141,11 +145,30 @@ export async function executePayment(
   if (!policyResult.allowed) {
     return {
       success: false,
+      status: "rejected",
+      signingStrategy: "rejected",
       error: `Policy denied: ${policyResult.reason}`,
     };
   }
 
-  // Step 5: Build and sign the EIP-712 message
+  // Step 5: Determine signing strategy based on amount vs policy limits
+  const perRequestLimit = policyResult.perRequestLimit ?? 0;
+  const signingStrategy: SigningStrategy =
+    amountUsd <= perRequestLimit ? "hot_wallet" : "walletconnect";
+
+  // If the amount exceeds the hot wallet limit, return pending_approval
+  // for the client to sign via WalletConnect
+  if (signingStrategy === "walletconnect") {
+    return {
+      success: false,
+      status: "pending_approval",
+      signingStrategy: "walletconnect",
+      paymentRequirements: JSON.stringify([requirement]),
+      amount: amountUsd,
+    };
+  }
+
+  // Step 6: Hot wallet auto-sign — build and sign the EIP-712 message
   const authorization = buildTransferAuthorization(
     account.address,
     requirement.payTo,
@@ -155,14 +178,14 @@ export async function executePayment(
   const signature = await signTransferAuthorization(authorization, privateKey);
   const paymentHeader = buildPaymentSignatureHeader(signature, authorization);
 
-  // Step 6: Re-request with payment header
+  // Step 7: Re-request with payment header
   const paidResponse = await fetch(url, {
     headers: {
       "PAYMENT-SIGNATURE": paymentHeader,
     },
   });
 
-  // Step 7: Log transaction
+  // Step 8: Log transaction
   const txStatus = paidResponse.ok ? "completed" : "failed";
   await prisma.transaction.create({
     data: {
@@ -177,10 +200,12 @@ export async function executePayment(
   if (!paidResponse.ok) {
     return {
       success: false,
+      status: "rejected",
+      signingStrategy: "hot_wallet",
       error: `Payment submitted but server responded with ${paidResponse.status}`,
       response: paidResponse,
     };
   }
 
-  return { success: true, response: paidResponse };
+  return { success: true, status: "completed", signingStrategy: "hot_wallet", response: paidResponse };
 }

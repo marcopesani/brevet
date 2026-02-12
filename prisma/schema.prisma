@@ -8,13 +8,14 @@ datasource db {
 }
 
 model User {
-  id            String          @id @default(cuid())
-  walletAddress String          @unique
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  hotWallet     HotWallet?
-  spendingPolicy SpendingPolicy?
-  transactions  Transaction[]
+  id              String           @id @default(cuid())
+  walletAddress   String           @unique
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  hotWallet       HotWallet?
+  spendingPolicy  SpendingPolicy?
+  transactions    Transaction[]
+  pendingPayments PendingPayment[]
 }
 
 model HotWallet {
@@ -32,6 +33,7 @@ model SpendingPolicy {
   perRequestLimit      Float    @default(0.10)
   perHourLimit         Float    @default(1.00)
   perDayLimit          Float    @default(10.00)
+  wcApprovalLimit      Float    @default(5.00)
   whitelistedEndpoints String   @default("[]")
   blacklistedEndpoints String   @default("[]")
   userId               String   @unique
@@ -50,4 +52,18 @@ model Transaction {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
+}
+
+model PendingPayment {
+  id                  String   @id @default(cuid())
+  userId              String
+  url                 String
+  method              String   @default("GET")
+  amount              Float
+  paymentRequirements String   // JSON string of PaymentRequirements
+  status              String   @default("pending") // pending, approved, rejected, expired
+  signature           String?  // The EIP-712 signature once approved
+  expiresAt           DateTime
+  createdAt           DateTime @default(now())
+  user                User     @relation(fields: [userId], references: [id])
 }

@@ -3,6 +3,10 @@ import { prisma } from "@/lib/db";
 export interface PolicyCheckResult {
   allowed: boolean;
   reason?: string;
+  /** The per-request auto-approve limit (hot wallet signing). */
+  perRequestLimit?: number;
+  /** The max amount for WalletConnect-signed payments. Above this, payment is rejected. */
+  wcApprovalLimit?: number;
 }
 
 /**
@@ -22,11 +26,17 @@ export async function checkPolicy(
     return { allowed: false, reason: "No spending policy found for user" };
   }
 
-  // --- Per-request limit ---
-  if (amount > policy.perRequestLimit) {
+  const limits = {
+    perRequestLimit: policy.perRequestLimit,
+    wcApprovalLimit: policy.wcApprovalLimit,
+  };
+
+  // --- WC approval limit (absolute max) ---
+  if (amount > policy.wcApprovalLimit) {
     return {
       allowed: false,
-      reason: `Amount $${amount.toFixed(2)} exceeds per-request limit of $${policy.perRequestLimit.toFixed(2)}`,
+      reason: `Amount $${amount.toFixed(2)} exceeds maximum approval limit of $${policy.wcApprovalLimit.toFixed(2)}`,
+      ...limits,
     };
   }
 
@@ -38,6 +48,7 @@ export async function checkPolicy(
     return {
       allowed: false,
       reason: `Endpoint "${endpoint}" is blacklisted`,
+      ...limits,
     };
   }
 
@@ -45,6 +56,7 @@ export async function checkPolicy(
     return {
       allowed: false,
       reason: `Endpoint "${endpoint}" is not in the whitelist`,
+      ...limits,
     };
   }
 
@@ -70,6 +82,7 @@ export async function checkPolicy(
     return {
       allowed: false,
       reason: `Hourly spend ($${(hourlySpend + amount).toFixed(2)}) would exceed limit of $${policy.perHourLimit.toFixed(2)}`,
+      ...limits,
     };
   }
 
@@ -82,8 +95,9 @@ export async function checkPolicy(
     return {
       allowed: false,
       reason: `Daily spend ($${(dailySpend + amount).toFixed(2)}) would exceed limit of $${policy.perDayLimit.toFixed(2)}`,
+      ...limits,
     };
   }
 
-  return { allowed: true };
+  return { allowed: true, ...limits };
 }
