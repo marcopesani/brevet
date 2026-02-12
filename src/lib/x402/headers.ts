@@ -4,6 +4,7 @@ import type {
   TransferAuthorization,
 } from "./types";
 import type { Hex } from "viem";
+import { chainConfig } from "@/lib/chain-config";
 
 /**
  * Extract a transaction hash from a facilitator's response.
@@ -77,7 +78,7 @@ export function buildPaymentSignatureHeader(
   const header: PaymentHeader = {
     x402Version: 1,
     scheme: "exact",
-    network: "eip155:8453",
+    network: chainConfig.networkString,
     payload: {
       signature,
       authorization: {

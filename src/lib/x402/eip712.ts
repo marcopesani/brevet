@@ -2,14 +2,10 @@ import { type Hex, type TypedDataDomain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import crypto from "crypto";
 import type { TransferAuthorization } from "./types";
+import { chainConfig } from "@/lib/chain-config";
 
-/** USDC on Base — EIP-3009 domain separator. */
-export const USDC_DOMAIN: TypedDataDomain = {
-  name: "USD Coin",
-  version: "2",
-  chainId: 8453,
-  verifyingContract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-};
+/** USDC EIP-3009 domain separator — sourced from chain config. */
+export const USDC_DOMAIN: TypedDataDomain = chainConfig.usdcDomain;
 
 /** EIP-712 type definition for TransferWithAuthorization. */
 export const TRANSFER_WITH_AUTHORIZATION_TYPES = {

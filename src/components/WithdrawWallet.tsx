@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAccount } from "wagmi";
+import { chainConfig } from "@/lib/chain-config";
 
 export default function WithdrawWallet({
   userId,
@@ -102,7 +103,7 @@ export default function WithdrawWallet({
         <p className="text-xs text-green-600">
           Withdrawn successfully!{" "}
           <a
-            href={`https://basescan.org/tx/${txHash}`}
+            href={`${chainConfig.explorerUrl}/tx/${txHash}`}
             target="_blank"
             rel="noopener noreferrer"
             className="underline"

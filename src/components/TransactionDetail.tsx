@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { chainConfig } from "@/lib/chain-config";
 
 interface Transaction {
   id: string;
@@ -130,7 +131,7 @@ export default function TransactionDetail({
         </span>
         {transaction.txHash ? (
           <a
-            href={`https://basescan.org/tx/${transaction.txHash}`}
+            href={`${chainConfig.explorerUrl}/tx/${transaction.txHash}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-blue-600 hover:underline dark:text-blue-400"

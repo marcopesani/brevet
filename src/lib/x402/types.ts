@@ -3,7 +3,7 @@ import type { Hex } from "viem";
 /** A single payment requirement from a 402 response. */
 export interface PaymentRequirement {
   scheme: "exact";
-  network: "eip155:8453";
+  network: string;
   maxAmountRequired: string; // stringified wei amount
   resource: string; // the URL being paid for
   description?: string;
@@ -36,7 +36,7 @@ export interface PaymentPayload {
 export interface PaymentHeader {
   x402Version: 1;
   scheme: "exact";
-  network: "eip155:8453";
+  network: string;
   payload: PaymentPayload;
 }
 

@@ -3,6 +3,7 @@ import { formatUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { prisma } from "@/lib/db";
 import { decryptPrivateKey, USDC_DECIMALS } from "@/lib/hot-wallet";
+import { chainConfig } from "@/lib/chain-config";
 import { checkPolicy } from "@/lib/policy";
 import {
   buildTransferAuthorization,
@@ -115,7 +116,7 @@ export async function executePayment(
   // Use the first requirement that matches our supported scheme/network
   const requirement = requirements.find(
     (r): r is PaymentRequirement =>
-      r.scheme === "exact" && r.network === "eip155:8453",
+      r.scheme === "exact" && r.network === chainConfig.networkString,
   );
 
   if (!requirement) {
@@ -123,8 +124,7 @@ export async function executePayment(
       success: false,
       status: "rejected",
       signingStrategy: "rejected",
-      error:
-        "No supported payment requirement found (need scheme=exact, network=eip155:8453)",
+      error: `No supported payment requirement found (need scheme=exact, network=${chainConfig.networkString})`,
     };
   }
 

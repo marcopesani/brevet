@@ -8,6 +8,7 @@ import {
   buildTransferAuthorization,
 } from "@/lib/x402/eip712";
 import type { PaymentRequirement } from "@/lib/x402/types";
+import { chainConfig } from "@/lib/chain-config";
 import type { Hex } from "viem";
 
 interface PendingPayment {
@@ -68,7 +69,7 @@ export default function PendingPayments({
         payment.paymentRequirements,
       );
       const requirement = requirements.find(
-        (r) => r.scheme === "exact" && r.network === "eip155:8453",
+        (r) => r.scheme === "exact" && r.network === chainConfig.networkString,
       );
 
       if (!requirement) {

@@ -7,11 +7,11 @@ import {
   parseUnits,
   isAddress,
 } from "viem";
-import { base } from "viem/chains";
 import crypto from "crypto";
 import { prisma } from "@/lib/db";
+import { chainConfig } from "@/lib/chain-config";
 
-const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
+const USDC_ADDRESS = chainConfig.usdcAddress;
 const USDC_DECIMALS = 6;
 
 const USDC_ABI = [
@@ -87,7 +87,7 @@ export function createHotWallet(): {
 function getPublicClient() {
   const rpcUrl = process.env.RPC_URL;
   return createPublicClient({
-    chain: base,
+    chain: chainConfig.chain,
     transport: http(rpcUrl),
   });
 }
@@ -137,7 +137,7 @@ export async function withdrawFromHotWallet(
   const rpcUrl = process.env.RPC_URL;
   const walletClient = createWalletClient({
     account,
-    chain: base,
+    chain: chainConfig.chain,
     transport: http(rpcUrl),
   });
 
@@ -155,7 +155,7 @@ export async function withdrawFromHotWallet(
       amount,
       endpoint: `withdrawal:${toAddress}`,
       txHash,
-      network: "base",
+      network: chainConfig.chain.name.toLowerCase(),
       status: "completed",
       type: "withdrawal",
       userId,

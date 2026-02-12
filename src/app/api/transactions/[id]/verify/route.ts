@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPublicClient, http } from "viem";
-import { base } from "viem/chains";
 import type { Hex } from "viem";
 import { prisma } from "@/lib/db";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
+import { chainConfig } from "@/lib/chain-config";
 
 const publicClient = createPublicClient({
-  chain: base,
+  chain: chainConfig.chain,
   transport: http(),
 });
 
