@@ -1,8 +1,11 @@
 import { z } from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { executePayment } from "@/lib/x402/payment";
 import { prisma } from "@/lib/db";
 import { getUsdcBalance } from "@/lib/hot-wallet";
+
+const DEMO_WALLETCONNECT_RESOURCE_URI = "ui://demo-walletconnect/demo-walletconnect.html";
 
 
 const DISCOVERY_API_URL =
@@ -511,5 +514,26 @@ export function registerTools(server: McpServer, userId: string) {
         };
       }
     },
+  );
+
+  // --- demo_walletconnect: Show a WalletConnect connect button UI ---
+  registerAppTool(
+    server,
+    "demo_walletconnect",
+    {
+      title: "WalletConnect Demo",
+      description:
+        "Show a WalletConnect connect button. Displays an interactive UI where the user can connect their wallet and see the connected account address.",
+      inputSchema: {},
+      _meta: { ui: { resourceUri: DEMO_WALLETCONNECT_RESOURCE_URI } },
+    },
+    async () => ({
+      content: [
+        {
+          type: "text" as const,
+          text: "Displaying WalletConnect demo UI. Connect your wallet using the interface above.",
+        },
+      ],
+    }),
   );
 }

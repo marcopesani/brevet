@@ -58,6 +58,8 @@ next-env.d.ts
 # workspace tooling
 .firecrawl/
 
+dist-mcp-app/
+
 /src/generated/prisma
 dev.db
 dev.db-journal
