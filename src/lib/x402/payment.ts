@@ -8,6 +8,7 @@ import { checkPolicy } from "@/lib/policy";
 import { createEvmSigner } from "./eip712";
 import { parsePaymentRequired, extractTxHashFromResponse, extractSettleResponse } from "./headers";
 import type { PaymentResult, SigningStrategy } from "./types";
+import { chainConfig } from "../chain-config";
 
 /**
  * Validate a URL before making an HTTP request.
@@ -149,6 +150,15 @@ export async function executePayment(
       status: "rejected",
       signingStrategy: "rejected",
       error: "Received 402 but no valid payment requirements found",
+    };
+  }
+
+  if (!paymentRequired.accepts.some(accept => accept.network === chainConfig.networkString)) {
+    return {
+      success: false,
+      status: "rejected",
+      signingStrategy: "rejected",
+      error: `Network ${chainConfig.networkString} is not supported`,
     };
   }
 
