@@ -3,6 +3,7 @@
 import { LogOut, ChevronsUpDown, Wallet } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useDisconnect } from "wagmi"
+import { signOut } from "next-auth/react"
 
 import {
   DropdownMenu,
@@ -33,7 +34,7 @@ export function NavUser({
   const { disconnect } = useDisconnect()
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" })
+    await signOut({ redirect: false })
     disconnect()
     router.push("/login")
   }

@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppKit } from "@reown/appkit/react";
-import { useAccount } from "wagmi";
-import { Wallet, Loader2, AlertCircle } from "lucide-react";
+import { useSession, signOut } from "next-auth/react";
+import { Wallet, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { useSIWE } from "@/hooks/useSIWE";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,7 +15,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export function LoginForm({
   className,
@@ -24,51 +22,19 @@ export function LoginForm({
 }: React.ComponentProps<"div">) {
   const router = useRouter();
   const { open } = useAppKit();
-  const { address, isConnected, chainId } = useAccount();
-  const { authenticate, status, error, reset } = useSIWE();
-  const authStartedRef = useRef(false);
+  const { data: session, status } = useSession();
 
-  // When wallet connects, automatically trigger SIWE once
   useEffect(() => {
-    if (!isConnected || !address || !chainId || status !== "idle") return;
-    if (authStartedRef.current) return;
-    authStartedRef.current = true;
-    authenticate(address, chainId).then((success) => {
-      if (success) {
-        router.push("/dashboard");
-      } else {
-        authStartedRef.current = false;
-      }
-    });
-  }, [isConnected, address, chainId, status, authenticate, router]);
-
-  const handleConnect = () => {
-    authStartedRef.current = false;
-    reset();
-    open();
-  };
-
-  const handleRetry = () => {
-    authStartedRef.current = false;
-    reset();
-    if (isConnected && address && chainId) {
-      authStartedRef.current = true;
-      authenticate(address, chainId).then((success) => {
-        if (success) {
-          router.push("/dashboard");
-        } else {
-          authStartedRef.current = false;
-        }
-      });
-    } else {
-      open();
+    if (status !== "authenticated") return;
+    // Valid SIWE session has address; legacy/invalid sessions do not
+    if (!session?.address) {
+      signOut({ redirect: false });
+      return;
     }
-  };
+    router.push("/dashboard");
+  }, [status, session?.address, session?.userId, router]);
 
-  const isLoading =
-    status === "fetching-nonce" ||
-    status === "signing" ||
-    status === "verifying";
+  const isLoading = status === "loading";
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
@@ -86,43 +52,14 @@ export function LoginForm({
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertCircle className="size-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-
             {isLoading ? (
               <div className="flex flex-col items-center gap-3 py-4">
                 <Loader2 className="text-muted-foreground size-6 animate-spin" />
-                <p className="text-muted-foreground text-sm">
-                  {statusLabel(status)}
-                </p>
-              </div>
-            ) : isConnected && address && status === "error" ? (
-              <div className="flex flex-col gap-3">
-                <p className="text-muted-foreground text-center text-sm">
-                  Connected as{" "}
-                  <span className="font-mono text-xs">
-                    {address.slice(0, 6)}...{address.slice(-4)}
-                  </span>
-                </p>
-                <Button onClick={handleRetry} className="w-full" size="lg">
-                  Try Again
-                </Button>
-                <Button
-                  onClick={handleConnect}
-                  variant="outline"
-                  className="w-full"
-                  size="lg"
-                >
-                  Connect Different Wallet
-                </Button>
+                <p className="text-muted-foreground text-sm">Connecting...</p>
               </div>
             ) : (
               <Button
-                onClick={handleConnect}
+                onClick={() => open()}
                 className="w-full"
                 size="lg"
               >
@@ -139,17 +76,4 @@ export function LoginForm({
       </p>
     </div>
   );
-}
-
-function statusLabel(status: string): string {
-  switch (status) {
-    case "fetching-nonce":
-      return "Preparing sign-in...";
-    case "signing":
-      return "Please sign the message in your wallet...";
-    case "verifying":
-      return "Verifying signature...";
-    default:
-      return "Connecting...";
-  }
 }
