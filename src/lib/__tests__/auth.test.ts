@@ -1,129 +1,103 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// In-memory cookie jar for testing
-let cookieJar: Map<string, string>;
+// Set required env vars before any module loads (vi.hoisted runs before vi.mock factories)
+vi.hoisted(() => {
+  process.env.NEXTAUTH_SECRET = "test-secret-that-is-at-least-32-chars-long";
+  process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID = "test-project-id";
+});
 
-const mockCookieStore = {
-  get: (name: string) => {
-    const value = cookieJar.get(name);
-    return value !== undefined ? { name, value } : undefined;
-  },
-  set: (name: string, value: string, _options?: any) => {
-    cookieJar.set(name, value);
-  },
-  delete: (name: string) => {
-    cookieJar.delete(name);
-  },
-};
-
-vi.mock("next/headers", () => ({
-  cookies: vi.fn().mockImplementation(async () => mockCookieStore),
+// Mock next-auth's getServerSession
+const mockGetServerSession = vi.fn();
+vi.mock("next-auth", () => ({
+  getServerSession: (...args: any[]) => mockGetServerSession(...args),
 }));
 
-// Set JWT_SECRET for the tests
-process.env.JWT_SECRET = "test-jwt-secret-that-is-at-least-32-chars-long";
+// Mock next-auth/providers/credentials (imported by auth.ts)
+vi.mock("next-auth/providers/credentials", () => ({
+  default: vi.fn().mockReturnValue({ id: "credentials", name: "Ethereum" }),
+}));
 
-import {
-  generateNonce,
-  createSession,
-  getAuthenticatedUser,
-  destroySession,
-  setNonceCookie,
-  consumeNonceCookie,
-} from "../auth";
+// Mock @reown/appkit-siwe (imported by auth.ts)
+vi.mock("@reown/appkit-siwe", () => ({
+  verifySignature: vi.fn(),
+  getChainIdFromMessage: vi.fn(),
+  getAddressFromMessage: vi.fn(),
+}));
 
-describe("auth helpers", () => {
+// Mock hot-wallet (imported by auth.ts)
+vi.mock("@/lib/hot-wallet", () => ({
+  createHotWallet: vi.fn(),
+}));
+
+// Mock prisma user.findUnique directly for unit-level control
+const mockFindUnique = vi.fn();
+vi.mock("@/lib/db", () => ({
+  prisma: {
+    user: { findUnique: (...args: any[]) => mockFindUnique(...args) },
+  },
+}));
+
+import { getAuthenticatedUser } from "../auth";
+
+describe("getAuthenticatedUser", () => {
   beforeEach(() => {
-    cookieJar = new Map();
+    vi.clearAllMocks();
   });
 
-  describe("generateNonce", () => {
-    it("returns a 32-character hex string", () => {
-      const nonce = generateNonce();
-      expect(nonce).toMatch(/^[0-9a-f]{32}$/);
+  it("returns { userId, walletAddress } when session has valid address", async () => {
+    mockGetServerSession.mockResolvedValue({
+      address: "0xABCdef1234567890abcdef1234567890ABCDEF12",
+      chainId: 8453,
+    });
+    mockFindUnique.mockResolvedValue({
+      id: "user-123",
+      walletAddress: "0xabcdef1234567890abcdef1234567890abcdef12",
     });
 
-    it("generates unique nonces", () => {
-      const nonces = new Set(Array.from({ length: 20 }, () => generateNonce()));
-      expect(nonces.size).toBe(20);
-    });
-  });
-
-  describe("createSession / getAuthenticatedUser", () => {
-    it("creates a JWT that getAuthenticatedUser can verify", async () => {
-      await createSession("user-123", "0xabc");
-
-      const user = await getAuthenticatedUser();
-      expect(user).toEqual({
-        userId: "user-123",
-        walletAddress: "0xabc",
-      });
-    });
-
-    it("sets an httpOnly session cookie", async () => {
-      await createSession("user-123", "0xabc");
-      expect(cookieJar.has("session")).toBe(true);
-    });
-
-    it("returns null when no session cookie exists", async () => {
-      const user = await getAuthenticatedUser();
-      expect(user).toBeNull();
-    });
-
-    it("returns null for an invalid JWT token", async () => {
-      cookieJar.set("session", "not-a-valid-jwt");
-      const user = await getAuthenticatedUser();
-      expect(user).toBeNull();
-    });
-
-    it("returns null for a tampered JWT token", async () => {
-      // Create a session with the current secret
-      await createSession("user-123", "0xabc");
-      const token = cookieJar.get("session")!;
-
-      // Replace signature with a completely different one
-      const parts = token.split(".");
-      parts[2] = "INVALID_SIGNATURE_THAT_WILL_NOT_VERIFY_correctly";
-      cookieJar.set("session", parts.join("."));
-
-      const user = await getAuthenticatedUser();
-      expect(user).toBeNull();
+    const result = await getAuthenticatedUser();
+    expect(result).toEqual({
+      userId: "user-123",
+      walletAddress: "0xabcdef1234567890abcdef1234567890abcdef12",
     });
   });
 
-  describe("destroySession", () => {
-    it("deletes the session cookie", async () => {
-      await createSession("user-123", "0xabc");
-      expect(cookieJar.has("session")).toBe(true);
-
-      await destroySession();
-      expect(cookieJar.has("session")).toBe(false);
-    });
+  it("returns null when no session exists", async () => {
+    mockGetServerSession.mockResolvedValue(null);
+    const result = await getAuthenticatedUser();
+    expect(result).toBeNull();
   });
 
-  describe("setNonceCookie / consumeNonceCookie", () => {
-    it("stores nonce and retrieves it on consume", async () => {
-      await setNonceCookie("test-nonce-123");
-      const nonce = await consumeNonceCookie();
-      expect(nonce).toBe("test-nonce-123");
+  it("returns null when session has no address", async () => {
+    mockGetServerSession.mockResolvedValue({ chainId: 8453 });
+    const result = await getAuthenticatedUser();
+    expect(result).toBeNull();
+  });
+
+  it("returns null when user not found in database", async () => {
+    mockGetServerSession.mockResolvedValue({
+      address: "0xABCdef1234567890abcdef1234567890ABCDEF12",
+      chainId: 8453,
+    });
+    mockFindUnique.mockResolvedValue(null);
+    const result = await getAuthenticatedUser();
+    expect(result).toBeNull();
+  });
+
+  it("lowercases the address for DB lookup", async () => {
+    mockGetServerSession.mockResolvedValue({
+      address: "0xABCDEF1234567890ABCDEF1234567890ABCDEF12",
+      chainId: 8453,
+    });
+    mockFindUnique.mockResolvedValue({
+      id: "user-456",
+      walletAddress: "0xabcdef1234567890abcdef1234567890abcdef12",
     });
 
-    it("deletes the nonce cookie after consumption", async () => {
-      await setNonceCookie("test-nonce-456");
-      await consumeNonceCookie();
-      expect(cookieJar.has("siwe_nonce")).toBe(false);
-    });
-
-    it("returns null when no nonce cookie exists", async () => {
-      const nonce = await consumeNonceCookie();
-      expect(nonce).toBeNull();
-    });
-
-    it("second consume returns null (nonce is single-use)", async () => {
-      await setNonceCookie("one-time-nonce");
-      await consumeNonceCookie();
-      const second = await consumeNonceCookie();
-      expect(second).toBeNull();
+    await getAuthenticatedUser();
+    expect(mockFindUnique).toHaveBeenCalledWith({
+      where: {
+        walletAddress: "0xabcdef1234567890abcdef1234567890abcdef12",
+      },
     });
   });
 });

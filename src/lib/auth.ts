@@ -1,85 +1,106 @@
-import { SignJWT, jwtVerify } from "jose";
-import { cookies } from "next/headers";
-import crypto from "crypto";
+import { getServerSession } from "next-auth";
+import type { NextAuthOptions } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import {
+  verifySignature,
+  getChainIdFromMessage,
+  getAddressFromMessage,
+} from "@reown/appkit-siwe";
+import type { SIWESession } from "@reown/appkit-siwe";
+import { prisma } from "@/lib/db";
+import { createHotWallet } from "@/lib/hot-wallet";
 
-const SESSION_COOKIE = "session";
-const NONCE_COOKIE = "siwe_nonce";
-const JWT_EXPIRY = "7d";
-
-function getJwtSecret(): Uint8Array {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) {
-    throw new Error("JWT_SECRET environment variable is not set");
+declare module "next-auth" {
+  interface Session extends SIWESession {
+    address: string;
+    chainId: number;
   }
-  return new TextEncoder().encode(secret);
 }
 
-export function generateNonce(): string {
-  return crypto.randomBytes(16).toString("hex");
-}
+const nextAuthSecret = process.env.NEXTAUTH_SECRET;
+if (!nextAuthSecret) throw new Error("NEXTAUTH_SECRET is not set");
 
-export async function createSession(
-  userId: string,
-  walletAddress: string,
-): Promise<void> {
-  const secret = getJwtSecret();
-  const token = await new SignJWT({ userId, walletAddress })
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime(JWT_EXPIRY)
-    .sign(secret);
+const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+if (!projectId)
+  throw new Error("NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is not set");
 
-  const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 7 * 24 * 60 * 60, // 7 days
-  });
-}
+export const authOptions: NextAuthOptions = {
+  secret: nextAuthSecret,
+  providers: [
+    CredentialsProvider({
+      name: "Ethereum",
+      credentials: {
+        message: { label: "Message", type: "text", placeholder: "0x0" },
+        signature: { label: "Signature", type: "text", placeholder: "0x0" },
+      },
+      async authorize(credentials) {
+        try {
+          if (!credentials?.message) throw new Error("SiweMessage is undefined");
+          const { message, signature } = credentials;
+          const address = getAddressFromMessage(message);
+          const chainId = getChainIdFromMessage(message);
+
+          const isValid = await verifySignature({
+            address,
+            message,
+            signature,
+            chainId,
+            projectId: projectId!,
+          });
+
+          if (!isValid) return null;
+
+          // Upsert user + hot wallet (same logic as old verify route)
+          const walletAddress = address.toLowerCase();
+          let user = await prisma.user.findUnique({
+            where: { walletAddress },
+            include: { hotWallet: true },
+          });
+
+          if (!user) {
+            const { address: hwAddress, encryptedPrivateKey } = createHotWallet();
+            user = await prisma.user.create({
+              data: {
+                walletAddress,
+                hotWallet: {
+                  create: { address: hwAddress, encryptedPrivateKey },
+                },
+              },
+              include: { hotWallet: true },
+            });
+          }
+
+          return { id: `${chainId}:${address}` };
+        } catch {
+          return null;
+        }
+      },
+    }),
+  ],
+  session: { strategy: "jwt" },
+  callbacks: {
+    session({ session, token }) {
+      if (!token.sub) return session;
+      const [chainId, address] = token.sub.split(":");
+      if (chainId && address) {
+        session.address = address;
+        session.chainId = parseInt(chainId, 10);
+      }
+      return session;
+    },
+  },
+};
 
 export async function getAuthenticatedUser(): Promise<{
   userId: string;
   walletAddress: string;
 } | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
+  const session = await getServerSession(authOptions);
+  if (!session?.address) return null;
 
-  try {
-    const secret = getJwtSecret();
-    const { payload } = await jwtVerify(token, secret);
-    const userId = payload.userId as string | undefined;
-    const walletAddress = payload.walletAddress as string | undefined;
-    if (!userId || !walletAddress) return null;
-    return { userId, walletAddress };
-  } catch {
-    return null;
-  }
-}
+  const walletAddress = session.address.toLowerCase();
+  const user = await prisma.user.findUnique({ where: { walletAddress } });
+  if (!user) return null;
 
-export async function destroySession(): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE);
-}
-
-export async function setNonceCookie(nonce: string): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.set(NONCE_COOKIE, nonce, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax", // strict can prevent cookie being sent after wallet redirects
-    path: "/",
-    maxAge: 5 * 60, // 5 minutes
-  });
-}
-
-export async function consumeNonceCookie(): Promise<string | null> {
-  const cookieStore = await cookies();
-  const nonce = cookieStore.get(NONCE_COOKIE)?.value ?? null;
-  if (nonce) {
-    cookieStore.delete(NONCE_COOKIE);
-  }
-  return nonce;
+  return { userId: user.id, walletAddress: user.walletAddress ?? walletAddress };
 }

@@ -6,6 +6,8 @@ import { createAppKit } from "@reown/appkit/react";
 import { base } from "@reown/appkit/networks";
 import React, { type ReactNode } from "react";
 import { cookieToInitialState, WagmiProvider, type Config } from "wagmi";
+import { SessionProvider } from "next-auth/react";
+import { siweConfig } from "@/lib/siwe-config";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +29,7 @@ createAppKit({
     email: false,
     socials: [],
   },
+  siweConfig,
 });
 
 export default function Providers({
@@ -46,7 +49,9 @@ export default function Providers({
       config={wagmiAdapter.wagmiConfig as Config}
       initialState={initialState}
     >
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <SessionProvider>{children}</SessionProvider>
+      </QueryClientProvider>
     </WagmiProvider>
   );
 }
