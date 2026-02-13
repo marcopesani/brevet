@@ -1,0 +1,89 @@
+"use client";
+
+import { useState } from "react";
+import { Copy, Check } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+
+interface McpServerUrlProps {
+  userId: string;
+}
+
+export function McpServerUrl({ userId }: McpServerUrlProps) {
+  const [copied, setCopied] = useState(false);
+
+  const mcpUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/api/mcp/${userId}`
+      : `/api/mcp/${userId}`;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(mcpUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = mcpUrl;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>MCP Server URL</CardTitle>
+        <CardDescription>
+          Use this URL to connect AI agents to your payment gateway.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="bg-muted min-w-0 flex-1 rounded-md border px-3 py-2">
+            <p className="truncate font-mono text-sm">{mcpUrl}</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleCopy}>
+            {copied ? (
+              <>
+                <Check className="size-4" />
+                Copied!
+              </>
+            ) : (
+              <>
+                <Copy className="size-4" />
+                Copy
+              </>
+            )}
+          </Button>
+        </div>
+        <Separator />
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium">Configure your AI agent</h4>
+          <p className="text-muted-foreground text-sm">
+            Point your MCP-compatible AI agent to this endpoint. The agent can
+            use the following tools:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary">x402_pay</Badge>
+            <Badge variant="secondary">x402_check_balance</Badge>
+            <Badge variant="secondary">x402_spending_history</Badge>
+            <Badge variant="secondary">x402_check_pending</Badge>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}

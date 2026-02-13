@@ -1,0 +1,257 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useSignTypedData } from "wagmi";
+import { authorizationTypes } from "@x402/evm";
+import type { PaymentRequirements } from "@x402/core/types";
+import { chainConfig } from "@/lib/chain-config";
+import type { Hex } from "viem";
+import { toast } from "sonner";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { Clock, Check, X, Loader2 } from "lucide-react";
+
+export interface PendingPayment {
+  id: string;
+  url: string;
+  amount: number;
+  paymentRequirements: string;
+  status: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+interface PendingPaymentCardProps {
+  payment: PendingPayment;
+  walletAddress: string;
+  disabled: boolean;
+  onAction: () => void;
+}
+
+function generateNonce(): Hex {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `0x${hex}` as Hex;
+}
+
+function useCountdown(expiresAt: string) {
+  const [remaining, setRemaining] = useState(() => {
+    return Math.max(0, new Date(expiresAt).getTime() - Date.now());
+  });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const ms = new Date(expiresAt).getTime() - Date.now();
+      setRemaining(Math.max(0, ms));
+      if (ms <= 0) clearInterval(interval);
+    }, 1_000);
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  return remaining;
+}
+
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return "Expired";
+  const totalSeconds = Math.floor(ms / 1_000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+}
+
+function getUrgencyVariant(
+  ms: number
+): "destructive" | "outline" | "secondary" {
+  if (ms <= 0) return "destructive";
+  const minutes = ms / 60_000;
+  if (minutes < 5) return "destructive";
+  if (minutes < 15) return "outline";
+  return "secondary";
+}
+
+export default function PendingPaymentCard({
+  payment,
+  walletAddress,
+  disabled,
+  onAction,
+}: PendingPaymentCardProps) {
+  const [actionInProgress, setActionInProgress] = useState<
+    "approve" | "reject" | null
+  >(null);
+  const { signTypedDataAsync } = useSignTypedData();
+  const remaining = useCountdown(payment.expiresAt);
+  const isExpired = remaining <= 0;
+
+  async function handleApprove() {
+    setActionInProgress("approve");
+    try {
+      const requirements: PaymentRequirements[] = JSON.parse(
+        payment.paymentRequirements
+      );
+      const requirement = requirements.find(
+        (r) => r.scheme === "exact" && r.network === chainConfig.networkString
+      );
+
+      if (!requirement) {
+        toast.error("No supported payment requirement found");
+        return;
+      }
+
+      const amountWei = BigInt(requirement.amount);
+      const nonce = generateNonce();
+      const now = BigInt(Math.floor(Date.now() / 1_000));
+
+      const authorization = {
+        from: walletAddress as Hex,
+        to: requirement.payTo as Hex,
+        value: amountWei,
+        validAfter: BigInt(0),
+        validBefore: now + BigInt(300),
+        nonce,
+      };
+
+      const signature = await signTypedDataAsync({
+        domain: chainConfig.usdcDomain,
+        types: authorizationTypes,
+        primaryType: "TransferWithAuthorization",
+        message: {
+          from: authorization.from,
+          to: authorization.to,
+          value: authorization.value,
+          validAfter: authorization.validAfter,
+          validBefore: authorization.validBefore,
+          nonce: authorization.nonce,
+        },
+      });
+
+      const res = await fetch(`/api/payments/${payment.id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signature,
+          authorization: {
+            from: authorization.from,
+            to: authorization.to,
+            value: authorization.value.toString(),
+            validAfter: authorization.validAfter.toString(),
+            validBefore: authorization.validBefore.toString(),
+            nonce: authorization.nonce,
+          },
+        }),
+      });
+
+      if (res.ok) {
+        toast.success("Payment approved and submitted");
+        onAction();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Failed to approve payment");
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to sign transaction"
+      );
+    } finally {
+      setActionInProgress(null);
+    }
+  }
+
+  async function handleReject() {
+    setActionInProgress("reject");
+    try {
+      const res = await fetch(`/api/payments/${payment.id}/reject`, {
+        method: "POST",
+      });
+
+      if (res.ok) {
+        toast.success("Payment rejected");
+        onAction();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Failed to reject payment");
+      }
+    } catch {
+      toast.error("Network error");
+    } finally {
+      setActionInProgress(null);
+    }
+  }
+
+  const urgencyVariant = getUrgencyVariant(remaining);
+  const isActioning = actionInProgress !== null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4">
+          <CardTitle className="truncate text-sm font-medium">
+            {payment.url}
+          </CardTitle>
+          <Badge variant={urgencyVariant} className="shrink-0">
+            <Clock className="size-3" />
+            {formatCountdown(remaining)}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+          <div className="text-muted-foreground">Amount</div>
+          <div className="font-medium">${payment.amount.toFixed(6)} USDC</div>
+          <div className="text-muted-foreground">Created</div>
+          <div>{new Date(payment.createdAt).toLocaleString()}</div>
+          <div className="text-muted-foreground">Expires</div>
+          <div>{new Date(payment.expiresAt).toLocaleString()}</div>
+        </div>
+        <Separator />
+      </CardContent>
+      <CardFooter className="gap-2">
+        <Button
+          onClick={handleApprove}
+          disabled={disabled || isActioning || isExpired}
+          size="sm"
+        >
+          {actionInProgress === "approve" ? (
+            <>
+              <Loader2 className="animate-spin" />
+              Signing...
+            </>
+          ) : (
+            <>
+              <Check />
+              Approve & Sign
+            </>
+          )}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={handleReject}
+          disabled={disabled || isActioning || isExpired}
+          size="sm"
+        >
+          {actionInProgress === "reject" ? (
+            <>
+              <Loader2 className="animate-spin" />
+              Rejecting...
+            </>
+          ) : (
+            <>
+              <X />
+              Reject
+            </>
+          )}
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
