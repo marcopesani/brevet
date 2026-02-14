@@ -7,7 +7,7 @@
  */
 import type { Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { ExactEvmScheme } from "@x402/evm";
+import { ExactEvmScheme,toClientEvmSigner } from "@x402/evm";
 import type { ClientEvmSigner } from "@x402/evm";
 
 /**
