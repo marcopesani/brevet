@@ -1,7 +1,9 @@
 import { z } from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executePayment } from "@/lib/x402/payment";
-import { prisma } from "@/lib/db";
+import { createPendingPayment, getPendingPayment, expirePendingPayment } from "@/lib/data/payments";
+import { getSpendingHistory } from "@/lib/data/transactions";
+import { getUserWithWalletAndPolicies } from "@/lib/data/wallet";
 import { getUsdcBalance } from "@/lib/hot-wallet";
 
 
@@ -71,15 +73,12 @@ export function registerTools(server: McpServer, userId: string) {
           };
 
           // Create a pending payment record
-          const pendingPayment = await prisma.pendingPayment.create({
-            data: {
-              userId,
-              url,
-              method: method ?? "GET",
-              amount: pendingResult.amount,
-              paymentRequirements: pendingResult.paymentRequirements,
-              expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 min TTL
-            },
+          const pendingPayment = await createPendingPayment({
+            userId,
+            url,
+            method: method ?? "GET",
+            amount: pendingResult.amount,
+            paymentRequirements: pendingResult.paymentRequirements,
           });
 
           return {
@@ -160,10 +159,7 @@ export function registerTools(server: McpServer, userId: string) {
     },
     async () => {
       try {
-        const user = await prisma.user.findUnique({
-          where: { id: userId },
-          include: { hotWallet: true, endpointPolicies: true },
-        });
+        const user = await getUserWithWalletAndPolicies(userId);
 
         if (!user) {
           return {
@@ -237,17 +233,8 @@ export function registerTools(server: McpServer, userId: string) {
     },
     async ({ since }) => {
       try {
-        const where: { userId: string; createdAt?: { gte: Date } } = {
-          userId,
-        };
-        if (since) {
-          where.createdAt = { gte: new Date(since) };
-        }
-
-        const transactions = await prisma.transaction.findMany({
-          where,
-          orderBy: { createdAt: "desc" },
-          take: 100,
+        const transactions = await getSpendingHistory(userId, {
+          ...(since && { since: new Date(since) }),
         });
 
         const result = {
@@ -298,9 +285,7 @@ export function registerTools(server: McpServer, userId: string) {
     },
     async ({ paymentId }) => {
       try {
-        const payment = await prisma.pendingPayment.findUnique({
-          where: { id: paymentId },
-        });
+        const payment = await getPendingPayment(paymentId);
 
         if (!payment) {
           return {
@@ -319,10 +304,7 @@ export function registerTools(server: McpServer, userId: string) {
           payment.status === "pending" &&
           new Date() > payment.expiresAt
         ) {
-          await prisma.pendingPayment.update({
-            where: { id: paymentId },
-            data: { status: "expired" },
-          });
+          await expirePendingPayment(paymentId);
           return {
             content: [
               {
