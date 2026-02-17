@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useTransition } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { AlertTriangle, Plus, Shield } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -18,63 +20,47 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { AddPolicyDialog } from "@/components/add-policy-dialog";
+import {
+  activatePolicy,
+  toggleHotWallet,
+  archivePolicy,
+} from "@/app/actions/policies";
 
 interface Policy {
   id: string;
   endpointPattern: string;
   payFromHotWallet: boolean;
-  status: "draft" | "active" | "archived";
-  archivedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
+  status: string;
+  archivedAt: string | Date | null;
+  createdAt: string | Date;
+  updatedAt: string | Date;
 }
 
 type TabFilter = "all" | "active" | "draft" | "archived";
 
-export function PolicyTable() {
-  const [policies, setPolicies] = useState<Policy[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+interface PolicyTableProps {
+  initialPolicies: Policy[];
+}
+
+export function PolicyTable({ initialPolicies }: PolicyTableProps) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const [tab, setTab] = useState<TabFilter>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
 
-  const fetchPolicies = useCallback(async () => {
-    try {
-      const res = await fetch("/api/policies");
-      if (res.ok) {
-        const data = await res.json();
-        setPolicies(data);
-      }
-    } catch {
-      // Network error — keep current state
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPolicies();
-    const interval = setInterval(fetchPolicies, 15_000);
-    return () => clearInterval(interval);
-  }, [fetchPolicies]);
+  const policies = initialPolicies;
 
   async function handleActivate(policyId: string) {
     setActionInProgress(policyId);
     try {
-      const res = await fetch(`/api/policies/${policyId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "active" }),
+      await activatePolicy(policyId);
+      toast.success("Policy activated");
+      startTransition(() => {
+        router.refresh();
       });
-      if (res.ok) {
-        toast.success("Policy activated");
-        fetchPolicies();
-      } else {
-        const err = await res.json();
-        toast.error(err.error || "Failed to activate");
-      }
-    } catch {
-      toast.error("Network error");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to activate");
     } finally {
       setActionInProgress(null);
     }
@@ -83,22 +69,15 @@ export function PolicyTable() {
   async function handleToggleHotWallet(policy: Policy) {
     setActionInProgress(policy.id);
     try {
-      const res = await fetch(`/api/policies/${policy.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payFromHotWallet: !policy.payFromHotWallet }),
+      await toggleHotWallet(policy.id, !policy.payFromHotWallet);
+      toast.success(
+        `Hot wallet ${!policy.payFromHotWallet ? "enabled" : "disabled"}`
+      );
+      startTransition(() => {
+        router.refresh();
       });
-      if (res.ok) {
-        toast.success(
-          `Hot wallet ${!policy.payFromHotWallet ? "enabled" : "disabled"}`
-        );
-        fetchPolicies();
-      } else {
-        const err = await res.json();
-        toast.error(err.error || "Failed to update");
-      }
-    } catch {
-      toast.error("Network error");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update");
     } finally {
       setActionInProgress(null);
     }
@@ -107,28 +86,29 @@ export function PolicyTable() {
   async function handleArchive(policyId: string) {
     setActionInProgress(policyId);
     try {
-      const res = await fetch(`/api/policies/${policyId}/archive`, {
-        method: "POST",
+      await archivePolicy(policyId);
+      toast.success("Policy archived");
+      startTransition(() => {
+        router.refresh();
       });
-      if (res.ok) {
-        toast.success("Policy archived");
-        fetchPolicies();
-      } else {
-        const err = await res.json();
-        toast.error(err.error || "Failed to archive");
-      }
-    } catch {
-      toast.error("Network error");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to archive");
     } finally {
       setActionInProgress(null);
     }
+  }
+
+  function handlePolicyCreated() {
+    startTransition(() => {
+      router.refresh();
+    });
   }
 
   const draftCount = policies.filter((p) => p.status === "draft").length;
   const filtered =
     tab === "all" ? policies : policies.filter((p) => p.status === tab);
 
-  function statusBadge(status: Policy["status"]) {
+  function statusBadge(status: string) {
     switch (status) {
       case "active":
         return (
@@ -148,8 +128,16 @@ export function PolicyTable() {
             archived
           </Badge>
         );
+      default:
+        return (
+          <Badge variant="outline">
+            {status}
+          </Badge>
+        );
     }
   }
+
+  const isBusy = isPending || actionInProgress !== null;
 
   return (
     <Card>
@@ -191,11 +179,7 @@ export function PolicyTable() {
           </TabsList>
 
           <TabsContent value={tab}>
-            {loading ? (
-              <p className="text-muted-foreground py-8 text-center text-sm">
-                Loading policies...
-              </p>
-            ) : filtered.length === 0 ? (
+            {filtered.length === 0 ? (
               <p className="text-muted-foreground py-8 text-center text-sm">
                 {tab === "all"
                   ? "No endpoint policies yet. Policies will appear here when endpoints are discovered."
@@ -213,7 +197,7 @@ export function PolicyTable() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map((policy) => {
-                    const isBusy = actionInProgress === policy.id;
+                    const isActionTarget = actionInProgress === policy.id;
                     const isArchived = policy.status === "archived";
                     return (
                       <TableRow
@@ -227,7 +211,7 @@ export function PolicyTable() {
                         <TableCell>
                           <Switch
                             checked={policy.payFromHotWallet}
-                            disabled={isArchived || actionInProgress !== null}
+                            disabled={isArchived || isBusy}
                             onCheckedChange={() =>
                               handleToggleHotWallet(policy)
                             }
@@ -240,19 +224,19 @@ export function PolicyTable() {
                                 <Button
                                   size="sm"
                                   variant="default"
-                                  disabled={actionInProgress !== null}
+                                  disabled={isBusy}
                                   onClick={() => handleActivate(policy.id)}
                                 >
-                                  {isBusy ? "..." : "Activate"}
+                                  {isActionTarget ? "..." : "Activate"}
                                 </Button>
                               )}
                               <Button
                                 size="sm"
                                 variant="outline"
-                                disabled={actionInProgress !== null}
+                                disabled={isBusy}
                                 onClick={() => handleArchive(policy.id)}
                               >
-                                {isBusy ? "..." : "Archive"}
+                                {isActionTarget ? "..." : "Archive"}
                               </Button>
                             </div>
                           )}
@@ -270,7 +254,7 @@ export function PolicyTable() {
       <AddPolicyDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onSuccess={fetchPolicies}
+        onSuccess={handlePolicyCreated}
       />
     </Card>
   );

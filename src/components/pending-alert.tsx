@@ -1,31 +1,11 @@
-"use client"
-
-import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { AlertCircle } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { getPendingCount } from "@/lib/data/payments"
 
-export function PendingAlert() {
-  const [count, setCount] = useState(0)
-
-  const fetchPending = useCallback(async () => {
-    try {
-      const res = await fetch("/api/payments/pending")
-      if (res.ok) {
-        const data = await res.json()
-        setCount(Array.isArray(data) ? data.length : 0)
-      }
-    } catch {
-      // Network error — keep current count
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchPending()
-    const interval = setInterval(fetchPending, 10_000)
-    return () => clearInterval(interval)
-  }, [fetchPending])
+export async function PendingAlert({ userId }: { userId: string }) {
+  const count = await getPendingCount(userId)
 
   if (count === 0) {
     return null

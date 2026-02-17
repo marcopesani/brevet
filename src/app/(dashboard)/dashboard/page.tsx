@@ -68,21 +68,22 @@ function TableSkeleton() {
 }
 
 export default async function DashboardPage() {
-  await getAuthenticatedUser();
+  // Layout already redirects unauthenticated users — safe to assert non-null
+  const user = (await getAuthenticatedUser())!;
 
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
       <Suspense fallback={<CardsSkeleton />}>
-        <SectionCards />
+        <SectionCards userId={user.userId} />
       </Suspense>
       <Suspense fallback={null}>
-        <PendingAlert />
+        <PendingAlert userId={user.userId} />
       </Suspense>
       <Suspense fallback={<ChartSkeleton />}>
         <SpendingChart />
       </Suspense>
       <Suspense fallback={<TableSkeleton />}>
-        <RecentTransactions />
+        <RecentTransactions userId={user.userId} />
       </Suspense>
     </div>
   );

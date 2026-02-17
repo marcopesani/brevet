@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useQueryClient } from "@tanstack/react-query";
 import { parseUnits } from "viem";
 import { ArrowDownLeft, ExternalLink } from "lucide-react";
 import {
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { chainConfig } from "@/lib/chain-config";
+import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
 
 const USDC_DECIMALS = 6;
 
@@ -33,14 +35,13 @@ const ERC20_ABI = [
 
 interface FundWalletFormProps {
   hotWalletAddress: string;
-  onFunded?: () => void;
 }
 
 export default function FundWalletForm({
   hotWalletAddress,
-  onFunded,
 }: FundWalletFormProps) {
   const [amount, setAmount] = useState("");
+  const queryClient = useQueryClient();
 
   const { writeContract, data: txHash, isPending, error, reset } = useWriteContract();
 
@@ -64,9 +65,9 @@ export default function FundWalletForm({
 
   useEffect(() => {
     if (isSuccess) {
-      onFunded?.();
+      queryClient.invalidateQueries({ queryKey: WALLET_BALANCE_QUERY_KEY });
     }
-  }, [isSuccess, onFunded]);
+  }, [isSuccess, queryClient]);
 
   const statusText = isPending
     ? "Confirming in wallet..."

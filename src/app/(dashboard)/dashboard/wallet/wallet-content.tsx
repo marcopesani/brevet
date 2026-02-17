@@ -9,10 +9,9 @@ interface WalletData {
   hotWalletAddress: string;
   userId: string;
   balance: string | null;
-  fetchBalance: () => void;
 }
 
-export default function WalletContent({ userId }: { userId: string }) {
+export default function WalletContent() {
   const [walletData, setWalletData] = useState<WalletData | null>(null);
 
   const handleWalletReady = useCallback((data: WalletData) => {
@@ -27,12 +26,9 @@ export default function WalletContent({ userId }: { userId: string }) {
         <div className="grid gap-6 md:grid-cols-2">
           <FundWalletForm
             hotWalletAddress={walletData.hotWalletAddress}
-            onFunded={walletData.fetchBalance}
           />
           <WithdrawWalletForm
-            userId={walletData.userId}
             balance={walletData.balance}
-            onWithdrawn={walletData.fetchBalance}
           />
         </div>
       )}
