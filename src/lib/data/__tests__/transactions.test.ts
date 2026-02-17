@@ -138,4 +138,56 @@ describe("createTransaction", () => {
 
     expect(tx.type).toBe("payment");
   });
+
+  it("stores errorMessage and responseStatus when provided", async () => {
+    const tx = await createTransaction({
+      amount: 0.05,
+      endpoint: "https://api.example.com/resource",
+      network: "base",
+      status: "failed",
+      userId: "u1",
+      errorMessage: "Payment submitted but server responded with 500",
+      responseStatus: 500,
+    });
+
+    expect(tx.errorMessage).toBe("Payment submitted but server responded with 500");
+    expect(tx.responseStatus).toBe(500);
+    expect(tx.status).toBe("failed");
+  });
+
+  it("works without error fields (backward compatible)", async () => {
+    const tx = await createTransaction({
+      amount: 0.01,
+      endpoint: "https://api.example.com",
+      txHash: "0xdef",
+      network: "base",
+      status: "completed",
+      userId: "u1",
+    });
+
+    expect(tx.errorMessage).toBeUndefined();
+    expect(tx.responseStatus).toBeUndefined();
+    expect(tx.status).toBe("completed");
+  });
+});
+
+describe("getTransactions returns error fields", () => {
+  it("returns records with errorMessage and responseStatus", async () => {
+    await prisma.transaction.create({
+      data: {
+        userId: "u1",
+        amount: 0.05,
+        endpoint: "https://api.example.com",
+        network: "base",
+        status: "failed",
+        errorMessage: "Server error",
+        responseStatus: 503,
+      },
+    });
+
+    const result = await getTransactions("u1");
+    expect(result).toHaveLength(1);
+    expect(result[0].errorMessage).toBe("Server error");
+    expect(result[0].responseStatus).toBe(503);
+  });
 });

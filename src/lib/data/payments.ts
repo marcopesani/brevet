@@ -46,6 +46,8 @@ export async function createPendingPayment(data: {
   amount: number;
   paymentRequirements: string;
   expiresAt?: Date;
+  body?: string;
+  headers?: Record<string, string>;
 }) {
   return prisma.pendingPayment.create({
     data: {
@@ -55,6 +57,62 @@ export async function createPendingPayment(data: {
       amount: data.amount,
       paymentRequirements: data.paymentRequirements,
       expiresAt: data.expiresAt ?? new Date(Date.now() + 30 * 60 * 1000),
+      requestBody: data.body ?? null,
+      requestHeaders: data.headers ? JSON.stringify(data.headers) : null,
+    },
+  });
+}
+
+/**
+ * Get a single pending payment by ID.
+ */
+export async function getPendingPaymentById(paymentId: string) {
+  return prisma.pendingPayment.findUnique({
+    where: { id: paymentId },
+  });
+}
+
+/**
+ * Mark a pending payment as completed and store response data.
+ */
+export async function completePendingPayment(
+  paymentId: string,
+  data: {
+    responsePayload: string;
+    responseStatus: number;
+    txHash?: string;
+  },
+) {
+  return prisma.pendingPayment.update({
+    where: { id: paymentId },
+    data: {
+      status: "completed",
+      responsePayload: data.responsePayload,
+      responseStatus: data.responseStatus,
+      txHash: data.txHash ?? null,
+      completedAt: new Date(),
+    },
+  });
+}
+
+/**
+ * Mark a pending payment as failed and store error details.
+ */
+export async function failPendingPayment(
+  paymentId: string,
+  data: {
+    responsePayload?: string;
+    responseStatus?: number;
+    error?: string;
+  },
+) {
+  return prisma.pendingPayment.update({
+    where: { id: paymentId },
+    data: {
+      status: "failed",
+      responsePayload: data.responsePayload ?? data.error ?? null,
+      responseStatus: data.responseStatus ?? null,
+      completedAt: new Date(),
     },
   });
 }

@@ -110,9 +110,8 @@ export default function PendingPaymentCard({
   async function handleApprove() {
     setActionInProgress("approve");
     try {
-      const requirements: PaymentRequirements[] = JSON.parse(
-        payment.paymentRequirements
-      );
+      const parsed = JSON.parse(payment.paymentRequirements);
+      const requirements: PaymentRequirements[] = Array.isArray(parsed) ? parsed : parsed.accepts;
       const requirement = requirements.find(
         (r) => r.scheme === "exact" && r.network === chainConfig.networkString
       );

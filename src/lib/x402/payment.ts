@@ -11,6 +11,7 @@ import { parsePaymentRequired, extractTxHashFromResponse, extractSettleResponse 
 import type { ClientEvmSigner,
 PaymentResult, SigningStrategy } from "./types";
 import { chainConfig } from "../chain-config";
+import { logger } from "../logger";
 import { SIWxExtension } from "@x402/extensions";
 import { createSIWxPayload,
 encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
@@ -123,6 +124,7 @@ export async function executePayment(
   // Step 0: Validate URL
   const urlError = validateUrl(url);
   if (urlError) {
+    logger.warn("URL validation failed", { userId, url, action: "payment_rejected", error: urlError });
     return { success: false, status: "rejected", signingStrategy: "rejected", error: `URL validation failed: ${urlError}` };
   }
 
@@ -139,6 +141,7 @@ export async function executePayment(
 
   if (initialResponse.status !== 402) {
     // Not a paid endpoint — return the response as-is
+    logger.info("Non-402 response, returning directly", { userId, url, action: "payment_passthrough", status: initialResponse.status });
     return { success: true, status: "completed", signingStrategy: "hot_wallet", response: initialResponse };
   }
 
@@ -156,6 +159,7 @@ export async function executePayment(
 
   const paymentRequired = parsePaymentRequired(initialResponse, responseBody);
   if (!paymentRequired || !paymentRequired.accepts || paymentRequired.accepts.length === 0) {
+    logger.warn("No payment requirements in 402 response", { userId, url, action: "payment_rejected" });
     return {
       success: false,
       status: "rejected",
@@ -194,6 +198,7 @@ export async function executePayment(
   // Step 5: Check spending policy (returns action: hot_wallet | walletconnect | rejected)
   const policyResult = await checkPolicy(amountUsd, url, userId);
   if (policyResult.action === "rejected") {
+    logger.warn("Policy denied payment", { userId, url, action: "policy_denied", reason: policyResult.reason, amount: amountUsd });
     return {
       success: false,
       status: "rejected",
@@ -211,17 +216,19 @@ export async function executePayment(
     const balanceStr = await getUsdcBalance(hotWallet.address);
     const balance = parseFloat(balanceStr);
     if (balance < amountUsd) {
+      logger.info("Insufficient hot wallet balance, falling back to WalletConnect", { userId, url, action: "walletconnect_fallback", amount: amountUsd });
       signingStrategy = "walletconnect";
     }
   }
 
   // WalletConnect path: return pending_approval for client-side signing
   if (signingStrategy === "walletconnect") {
+    logger.info("Payment requires wallet approval", { userId, url, action: "pending_approval", amount: amountUsd });
     return {
       success: false,
       status: "pending_approval",
       signingStrategy: "walletconnect",
-      paymentRequirements: JSON.stringify(paymentRequired.accepts),
+      paymentRequirements: JSON.stringify(paymentRequired),
       amount: amountUsd,
     };
   }
@@ -308,9 +315,12 @@ export async function executePayment(
     type: "payment",
     userId,
     responsePayload,
+    errorMessage: !paidResponse.ok ? `Payment submitted but server responded with ${paidResponse.status}` : undefined,
+    responseStatus: paidResponse.status,
   });
 
   if (!paidResponse.ok) {
+    logger.error("Payment failed", { userId, url, action: "payment_failed", status: paidResponse.status, amount: amountUsd, responseBody: responsePayload?.slice(0, 500) });
     return {
       success: false,
       status: "rejected",
@@ -320,5 +330,6 @@ export async function executePayment(
     };
   }
 
+  logger.info("Payment completed successfully", { userId, url, action: "payment_completed", txHash, amount: amountUsd, status: paidResponse.status });
   return { success: true, status: "completed", signingStrategy: "hot_wallet", response: paidResponse, settlement };
 }

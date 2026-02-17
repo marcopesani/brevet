@@ -4,7 +4,10 @@ import {
   getPendingPayments,
   getPendingCount,
   getPendingPayment,
+  getPendingPaymentById,
   createPendingPayment,
+  completePendingPayment,
+  failPendingPayment,
   approvePendingPayment,
   rejectPendingPayment,
   expirePendingPayment,
@@ -109,6 +112,135 @@ describe("createPendingPayment", () => {
 
     expect(payment.method).toBe("POST");
     expect(payment.expiresAt.getTime()).toBe(customExpiry.getTime());
+  });
+
+  it("stores optional body and headers", async () => {
+    const payment = await createPendingPayment({
+      userId: "u1",
+      url: "https://api.example.com",
+      amount: 1,
+      paymentRequirements: "{}",
+      body: '{"query": "test"}',
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
+    });
+
+    expect(payment.requestBody).toBe('{"query": "test"}');
+    expect(payment.requestHeaders).toBe(JSON.stringify({ "Content-Type": "application/json", "Authorization": "Bearer token" }));
+  });
+
+  it("sets requestBody and requestHeaders to null when not provided", async () => {
+    const payment = await createPendingPayment({
+      userId: "u1",
+      url: "https://api.example.com",
+      amount: 1,
+      paymentRequirements: "{}",
+    });
+
+    expect(payment.requestBody).toBeNull();
+    expect(payment.requestHeaders).toBeNull();
+  });
+});
+
+describe("getPendingPaymentById", () => {
+  it("returns a payment by ID", async () => {
+    const future = new Date(Date.now() + 60_000);
+    const created = await prisma.pendingPayment.create({
+      data: { userId: "u1", url: "https://api.example.com", amount: 5, paymentRequirements: "{}", expiresAt: future },
+    });
+
+    const found = await getPendingPaymentById(created.id);
+    expect(found).not.toBeNull();
+    expect(found!.amount).toBe(5);
+  });
+
+  it("returns null for non-existent ID", async () => {
+    const found = await getPendingPaymentById("nonexistent");
+    expect(found).toBeNull();
+  });
+});
+
+describe("completePendingPayment", () => {
+  it("sets status to completed and stores response data", async () => {
+    const future = new Date(Date.now() + 60_000);
+    const created = await prisma.pendingPayment.create({
+      data: { userId: "u1", url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future },
+    });
+
+    const updated = await completePendingPayment(created.id, {
+      responsePayload: '{"result": "success"}',
+      responseStatus: 200,
+      txHash: "0xabc123",
+    });
+
+    expect(updated.status).toBe("completed");
+    expect(updated.responsePayload).toBe('{"result": "success"}');
+    expect(updated.responseStatus).toBe(200);
+    expect(updated.txHash).toBe("0xabc123");
+    expect(updated.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("stores null txHash when not provided", async () => {
+    const future = new Date(Date.now() + 60_000);
+    const created = await prisma.pendingPayment.create({
+      data: { userId: "u1", url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future },
+    });
+
+    const updated = await completePendingPayment(created.id, {
+      responsePayload: "OK",
+      responseStatus: 200,
+    });
+
+    expect(updated.status).toBe("completed");
+    expect(updated.txHash).toBeNull();
+    expect(updated.completedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe("failPendingPayment", () => {
+  it("sets status to failed and stores error details", async () => {
+    const future = new Date(Date.now() + 60_000);
+    const created = await prisma.pendingPayment.create({
+      data: { userId: "u1", url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future },
+    });
+
+    const updated = await failPendingPayment(created.id, {
+      responsePayload: "Internal Server Error",
+      responseStatus: 500,
+    });
+
+    expect(updated.status).toBe("failed");
+    expect(updated.responsePayload).toBe("Internal Server Error");
+    expect(updated.responseStatus).toBe(500);
+    expect(updated.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("stores error string when no response data", async () => {
+    const future = new Date(Date.now() + 60_000);
+    const created = await prisma.pendingPayment.create({
+      data: { userId: "u1", url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future },
+    });
+
+    const updated = await failPendingPayment(created.id, {
+      error: "Network timeout",
+    });
+
+    expect(updated.status).toBe("failed");
+    expect(updated.responsePayload).toBe("Network timeout");
+    expect(updated.responseStatus).toBeNull();
+    expect(updated.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("stores null when no error details provided", async () => {
+    const future = new Date(Date.now() + 60_000);
+    const created = await prisma.pendingPayment.create({
+      data: { userId: "u1", url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future },
+    });
+
+    const updated = await failPendingPayment(created.id, {});
+
+    expect(updated.status).toBe("failed");
+    expect(updated.responsePayload).toBeNull();
+    expect(updated.responseStatus).toBeNull();
   });
 });
 

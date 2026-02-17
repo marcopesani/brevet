@@ -64,6 +64,8 @@ export async function createTransaction(data: {
   type?: string;
   userId: string;
   responsePayload?: string | null;
+  errorMessage?: string | null;
+  responseStatus?: number | null;
 }) {
   return prisma.transaction.create({
     data: {
@@ -75,6 +77,8 @@ export async function createTransaction(data: {
       type: data.type ?? "payment",
       userId: data.userId,
       responsePayload: data.responsePayload,
+      errorMessage: data.errorMessage,
+      responseStatus: data.responseStatus,
     },
   });
 }

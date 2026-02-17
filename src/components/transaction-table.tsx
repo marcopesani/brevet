@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { ExternalLink, FileJson } from "lucide-react";
+import { AlertCircle, ExternalLink, FileJson } from "lucide-react";
 import { getTransactions } from "@/app/actions/transactions";
 import { cn } from "@/lib/utils";
 import {
@@ -42,6 +42,8 @@ interface Transaction {
   type: string;
   createdAt: string | Date;
   responsePayload: string | null;
+  errorMessage: string | null;
+  responseStatus: number | null;
 }
 
 interface TransactionTableProps {
@@ -200,7 +202,7 @@ function TransactionDetailSheet({
     <Sheet open={!!transaction} onOpenChange={(open) => !open && onClose()}>
       <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col">
         <SheetHeader>
-          <SheetTitle>Response Details</SheetTitle>
+          <SheetTitle>Transaction Details</SheetTitle>
           {transaction && (
             <SheetDescription
               className="truncate"
@@ -238,11 +240,37 @@ function TransactionDetailSheet({
                 </a>
               )}
             </div>
-            <ScrollArea className="flex-1 min-h-0 px-4 pb-4">
-              <div className="rounded-md border bg-muted/30 p-4 overflow-x-auto">
-                <JsonViewer data={transaction.responsePayload ?? ""} />
+            {transaction.status === "failed" && (
+              <div className="mx-4 rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-900 dark:bg-red-950">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="size-4 mt-0.5 text-red-600 dark:text-red-400 flex-shrink-0" />
+                  <div className="flex-1 space-y-1">
+                    {transaction.responseStatus && (
+                      <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                        HTTP {transaction.responseStatus}
+                      </p>
+                    )}
+                    {transaction.errorMessage && (
+                      <p className="text-sm text-red-700 dark:text-red-300">
+                        {transaction.errorMessage}
+                      </p>
+                    )}
+                    {!transaction.errorMessage && !transaction.responseStatus && (
+                      <p className="text-sm text-red-700 dark:text-red-300">
+                        Transaction failed
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
-            </ScrollArea>
+            )}
+            {transaction.responsePayload && (
+              <ScrollArea className="flex-1 min-h-0 px-4 pb-4">
+                <div className="rounded-md border bg-muted/30 p-4 overflow-x-auto">
+                  <JsonViewer data={transaction.responsePayload} />
+                </div>
+              </ScrollArea>
+            )}
           </>
         )}
       </SheetContent>
@@ -378,16 +406,17 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
               <TableBody>
                 {paged.map((tx) => {
                   const hasResponse = tx.responsePayload !== null;
+                  const isClickable = hasResponse || tx.errorMessage !== null || tx.status === "failed";
                   return (
                     <TableRow
                       key={tx.id}
                       className={
-                        hasResponse
+                        isClickable
                           ? "cursor-pointer hover:bg-muted/50"
                           : undefined
                       }
                       onClick={
-                        hasResponse
+                        isClickable
                           ? () => setSelectedTransaction(tx)
                           : undefined
                       }
