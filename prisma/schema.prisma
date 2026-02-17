@@ -54,6 +54,8 @@ model Transaction {
   userId          String
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   responsePayload String?
+  errorMessage    String?
+  responseStatus  Int?
   createdAt       DateTime @default(now())
 }
 

@@ -233,6 +233,29 @@ describe("executePayment", () => {
     });
     expect(tx).not.toBeNull();
     expect(tx!.status).toBe("failed");
+    expect(tx!.errorMessage).toContain("server responded with 500");
+    expect(tx!.responseStatus).toBe(500);
+  });
+
+  it("stores responseStatus without errorMessage on successful payment", async () => {
+    const txHash = "0x" + "d".repeat(64);
+
+    mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+    mockFetch.mockResolvedValueOnce(
+      make200Response({ success: true }, { "X-PAYMENT-TX-HASH": txHash }),
+    );
+
+    const result = await executePayment("https://api.example.com/resource", userId);
+
+    expect(result.success).toBe(true);
+
+    const tx = await prisma.transaction.findFirst({
+      where: { userId, endpoint: "https://api.example.com/resource" },
+    });
+    expect(tx).not.toBeNull();
+    expect(tx!.status).toBe("completed");
+    expect(tx!.responseStatus).toBe(200);
+    expect(tx!.errorMessage).toBeUndefined();
   });
 
   it("preserves POST method and body across 402 payment flow", async () => {

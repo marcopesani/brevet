@@ -121,11 +121,13 @@ describe("approvePendingPayment server action", () => {
     expect(updated!.txHash).toBe("0xtxhash123");
     expect(updated!.completedAt).toBeInstanceOf(Date);
 
-    // Verify a transaction was created
+    // Verify a transaction was created with responseStatus and no errorMessage
     const transactions = await prisma.transaction.findMany({});
     expect(transactions).toHaveLength(1);
     expect(transactions[0].status).toBe("completed");
     expect(transactions[0].txHash).toBe("0xtxhash123");
+    expect(transactions[0].responseStatus).toBe(200);
+    expect(transactions[0].errorMessage).toBeUndefined();
   });
 
   it("stores failed response when paid fetch returns non-2xx", async () => {
@@ -173,10 +175,12 @@ describe("approvePendingPayment server action", () => {
     expect(updated!.responsePayload).toBe("Bad Gateway");
     expect(updated!.responseStatus).toBe(502);
 
-    // Verify a failed transaction was created
+    // Verify a failed transaction was created with errorMessage and responseStatus
     const transactions = await prisma.transaction.findMany({});
     expect(transactions).toHaveLength(1);
     expect(transactions[0].status).toBe("failed");
+    expect(transactions[0].errorMessage).toContain("server responded with 502");
+    expect(transactions[0].responseStatus).toBe(502);
   });
 
   it("uses stored requestHeaders in the paid fetch", async () => {
@@ -375,5 +379,56 @@ describe("approvePendingPayment server action", () => {
       where: { id: payment!.id },
     });
     expect(updated!.status).toBe("expired");
+  });
+
+  it("handles network error: creates failed transaction and marks payment as failed", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: "0x1234",
+    });
+
+    // Mock fetch to throw a network error
+    vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(
+      new Error("fetch failed: DNS resolution failed"),
+    );
+
+    const future = new Date(Date.now() + 60_000);
+    await prisma.pendingPayment.create({
+      data: {
+        userId: TEST_USER_ID,
+        url: "https://api.example.com/paid-resource",
+        amount: 0.05,
+        paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
+        status: "pending",
+        expiresAt: future,
+      },
+    });
+
+    const payment = await prisma.pendingPayment.findFirst({});
+
+    const { approvePendingPayment } = await import("../payments");
+    const result = await approvePendingPayment(
+      payment!.id,
+      "0xmocksignature",
+      MOCK_AUTHORIZATION,
+    );
+
+    // Should return a failure result (not throw)
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(0);
+
+    // Verify a failed transaction was created with Network error message
+    const transactions = await prisma.transaction.findMany({});
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].status).toBe("failed");
+    expect(transactions[0].errorMessage).toMatch(/^Network error:/);
+    expect(transactions[0].errorMessage).toContain("DNS resolution failed");
+
+    // Verify the pending payment was marked as failed
+    const updated = await prisma.pendingPayment.findUnique({
+      where: { id: payment!.id },
+    });
+    expect(updated!.status).toBe("failed");
   });
 });

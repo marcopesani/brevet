@@ -14,6 +14,7 @@ import {
 } from "@/lib/data/payments";
 import { createTransaction } from "@/lib/data/transactions";
 import { buildPaymentHeaders, extractSettleResponse, extractTxHashFromResponse } from "@/lib/x402/headers";
+import { logger } from "@/lib/logger";
 import type { Hex } from "viem";
 
 export async function getPendingPayments() {
@@ -48,7 +49,10 @@ export async function approvePendingPayment(
   if (payment.userId !== auth.userId) throw new Error("Forbidden");
   if (payment.status !== "pending") throw new Error(`Payment is already ${payment.status}`);
 
+  logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: payment.amount });
+
   if (new Date() > payment.expiresAt) {
+    logger.warn("Payment expired during approval", { userId: auth.userId, paymentId, action: "payment_expired" });
     await _expirePendingPayment(paymentId);
     throw new Error("Payment has expired");
   }
@@ -82,78 +86,118 @@ export async function approvePendingPayment(
     ? JSON.parse(payment.requestHeaders)
     : {};
 
-  const paidResponse = await fetch(payment.url, {
-    method: payment.method,
-    headers: {
-      ...storedHeaders,
-      ...paymentHeaders,
-    },
-    ...(payment.requestBody ? { body: payment.requestBody } : {}),
-  });
-
-  // Mark as approved with signature first (transitional state)
-  await _approvePendingPayment(paymentId, signature);
-
-  // Read response body for storage
-  let responsePayload: string | null = null;
   try {
-    responsePayload = await paidResponse.clone().text();
-  } catch {
-    // If reading fails, leave as null
-  }
-
-  // Extract txHash from response headers
-  const settlement = extractSettleResponse(paidResponse) ?? undefined;
-  const txHash = settlement?.transaction ?? await extractTxHashFromResponse(paidResponse);
-
-  const txStatus = paidResponse.ok ? "completed" : "failed";
-
-  await createTransaction({
-    amount: payment.amount,
-    endpoint: payment.url,
-    network: acceptedRequirement.network ?? "base",
-    status: txStatus,
-    userId: payment.userId,
-    txHash: txHash ?? undefined,
-    responsePayload,
-  });
-
-  // Store response on the PendingPayment record
-  if (paidResponse.ok) {
-    await completePendingPayment(paymentId, {
-      responsePayload: responsePayload ?? "",
-      responseStatus: paidResponse.status,
-      txHash: txHash ?? undefined,
+    const paidResponse = await fetch(payment.url, {
+      method: payment.method,
+      headers: {
+        ...storedHeaders,
+        ...paymentHeaders,
+      },
+      ...(payment.requestBody ? { body: payment.requestBody } : {}),
     });
-  } else {
-    await failPendingPayment(paymentId, {
-      responsePayload: responsePayload ?? undefined,
-      responseStatus: paidResponse.status,
-    });
-  }
 
-  // Parse response data for the return value
-  let responseData: unknown = null;
-  const contentType = paidResponse.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) {
+    // Mark as approved with signature first (transitional state)
+    await _approvePendingPayment(paymentId, signature);
+
+    // Read response body for storage
+    let responsePayload: string | null = null;
     try {
-      responseData = JSON.parse(responsePayload ?? "");
+      responsePayload = await paidResponse.clone().text();
     } catch {
+      // If reading fails, leave as null
+    }
+
+    // Extract txHash from response headers
+    const settlement = extractSettleResponse(paidResponse) ?? undefined;
+    const txHash = settlement?.transaction ?? await extractTxHashFromResponse(paidResponse);
+
+    const txStatus = paidResponse.ok ? "completed" : "failed";
+
+    await createTransaction({
+      amount: payment.amount,
+      endpoint: payment.url,
+      network: acceptedRequirement.network ?? "base",
+      status: txStatus,
+      userId: payment.userId,
+      txHash: txHash ?? undefined,
+      responsePayload,
+      errorMessage: !paidResponse.ok ? `Payment approved but server responded with ${paidResponse.status}` : undefined,
+      responseStatus: paidResponse.status,
+    });
+
+    // Store response on the PendingPayment record
+    if (paidResponse.ok) {
+      logger.info("Payment approval completed", { userId: auth.userId, paymentId, url: payment.url, action: "approve_completed", status: paidResponse.status, txHash });
+      await completePendingPayment(paymentId, {
+        responsePayload: responsePayload ?? "",
+        responseStatus: paidResponse.status,
+        txHash: txHash ?? undefined,
+      });
+    } else {
+      logger.error("Payment approval failed - server returned error", { userId: auth.userId, paymentId, url: payment.url, action: "approve_failed", status: paidResponse.status });
+      await failPendingPayment(paymentId, {
+        responsePayload: responsePayload ?? undefined,
+        responseStatus: paidResponse.status,
+      });
+    }
+
+    // Parse response data for the return value
+    let responseData: unknown = null;
+    const contentType = paidResponse.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      try {
+        responseData = JSON.parse(responsePayload ?? "");
+      } catch {
+        responseData = responsePayload;
+      }
+    } else {
       responseData = responsePayload;
     }
-  } else {
-    responseData = responsePayload;
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/pending");
+    revalidatePath("/dashboard/transactions");
+
+    return {
+      success: paidResponse.ok,
+      status: paidResponse.status,
+      data: responseData,
+    };
+  } catch (error) {
+    // Network error — create a failed transaction and mark PendingPayment as failed
+    const errorMsg = error instanceof Error ? error.message : "Network error during payment";
+
+    logger.error("Network error during payment approval", {
+      userId: auth.userId,
+      paymentId,
+      url: payment.url,
+      action: "payment_network_error",
+      error: errorMsg,
+    });
+
+    await createTransaction({
+      amount: payment.amount,
+      endpoint: payment.url,
+      network: acceptedRequirement.network ?? "base",
+      status: "failed",
+      userId: payment.userId,
+      errorMessage: `Network error: ${errorMsg}`,
+    });
+
+    await failPendingPayment(paymentId, {
+      error: `Network error: ${errorMsg}`,
+    });
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/pending");
+    revalidatePath("/dashboard/transactions");
+
+    return {
+      success: false,
+      status: 0,
+      data: null,
+    };
   }
-
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/pending");
-  revalidatePath("/dashboard/transactions");
-
-  return {
-    success: paidResponse.ok,
-    status: paidResponse.status,
-    data: responseData,
-  };
 }
 
 export async function rejectPendingPayment(paymentId: string) {
