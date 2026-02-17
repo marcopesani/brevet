@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { getTransactions } from "@/lib/data/transactions";
 import { TransactionTable } from "@/components/transaction-table";
 
 export default async function TransactionsPage() {
@@ -7,6 +8,8 @@ export default async function TransactionsPage() {
   if (!user) {
     redirect("/login");
   }
+
+  const transactions = await getTransactions(user.userId);
 
   return (
     <div className="flex flex-col gap-6">
@@ -16,7 +19,7 @@ export default async function TransactionsPage() {
           View and filter all payments and withdrawals.
         </p>
       </div>
-      <TransactionTable />
+      <TransactionTable initialTransactions={transactions} />
     </div>
   );
 }

@@ -1,22 +1,27 @@
-import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { rateLimit, getClientIp } from "@/lib/rate-limit";
-import { getAuthenticatedUser } from "@/lib/auth";
+
+export interface AnalyticsSummary {
+  today: number;
+  thisWeek: number;
+  thisMonth: number;
+  totalTransactions: number;
+  avgPaymentSize: number;
+}
+
+export interface DailySpending {
+  date: string;
+  amount: number;
+}
+
+export interface AnalyticsData {
+  dailySpending: DailySpending[];
+  summary: AnalyticsSummary;
+}
 
 /**
- * GET /api/analytics
- * Returns aggregated spending data for the authenticated user.
+ * Get aggregated spending analytics for a user (last 30 days).
  */
-export async function GET(request: NextRequest) {
-  const limited = rateLimit(getClientIp(request), 30);
-  if (limited) return limited;
-
-  const auth = await getAuthenticatedUser();
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const { userId } = auth;
-
+export async function getAnalytics(userId: string): Promise<AnalyticsData> {
   const now = new Date();
   const thirtyDaysAgo = new Date(now);
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -31,7 +36,6 @@ export async function GET(request: NextRequest) {
 
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  // Fetch all payment transactions in the last 30 days
   const transactions = await prisma.transaction.findMany({
     where: {
       userId,
@@ -41,10 +45,8 @@ export async function GET(request: NextRequest) {
     orderBy: { createdAt: "asc" },
   });
 
-  // Build daily spending map
   const dailyMap = new Map<string, number>();
 
-  // Initialize all 30 days with 0
   for (let i = 0; i < 30; i++) {
     const d = new Date(now);
     d.setDate(d.getDate() - (29 - i));
@@ -79,7 +81,7 @@ export async function GET(request: NextRequest) {
     amount: Math.round(amount * 100) / 100,
   }));
 
-  const summary = {
+  const summary: AnalyticsSummary = {
     today: Math.round(today * 100) / 100,
     thisWeek: Math.round(thisWeek * 100) / 100,
     thisMonth: Math.round(thisMonth * 100) / 100,
@@ -90,5 +92,5 @@ export async function GET(request: NextRequest) {
         : 0,
   };
 
-  return NextResponse.json({ dailySpending, summary });
+  return { dailySpending, summary };
 }

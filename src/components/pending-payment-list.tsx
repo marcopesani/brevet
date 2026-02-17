@@ -1,44 +1,29 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import PendingPaymentCard from "@/components/pending-payment-card";
-import type { PendingPayment } from "@/components/pending-payment-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Inbox } from "lucide-react";
+import {
+  usePendingPayments,
+  PENDING_PAYMENTS_QUERY_KEY,
+} from "@/hooks/use-pending-payments";
 
 interface PendingPaymentListProps {
-  userId: string;
   walletAddress: string;
 }
 
 export default function PendingPaymentList({
-  userId,
   walletAddress,
 }: PendingPaymentListProps) {
-  const [payments, setPayments] = useState<PendingPayment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { payments, isLoading } = usePendingPayments();
+  const queryClient = useQueryClient();
 
-  const fetchPayments = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/payments/pending?userId=${userId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setPayments(data);
-      }
-    } catch {
-      // Network error — keep current state
-    } finally {
-      setLoading(false);
-    }
-  }, [userId]);
+  function handleAction() {
+    queryClient.invalidateQueries({ queryKey: PENDING_PAYMENTS_QUERY_KEY });
+  }
 
-  useEffect(() => {
-    fetchPayments();
-    const interval = setInterval(fetchPayments, 10_000);
-    return () => clearInterval(interval);
-  }, [fetchPayments]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-4">
         {[1, 2].map((i) => (
@@ -71,7 +56,7 @@ export default function PendingPaymentList({
           payment={payment}
           walletAddress={walletAddress}
           disabled={false}
-          onAction={fetchPayments}
+          onAction={handleAction}
         />
       ))}
     </div>

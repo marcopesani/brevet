@@ -2,11 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { useSignTypedData } from "wagmi";
+import { useQueryClient } from "@tanstack/react-query";
 import { authorizationTypes } from "@x402/evm";
 import type { PaymentRequirements } from "@x402/core/types";
 import { chainConfig } from "@/lib/chain-config";
 import type { Hex } from "viem";
 import { toast } from "sonner";
+import {
+  approvePendingPayment,
+  rejectPendingPayment,
+} from "@/app/actions/payments";
+import { PENDING_PAYMENTS_QUERY_KEY } from "@/hooks/use-pending-payments";
+import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
 import {
   Card,
   CardHeader,
@@ -90,8 +97,15 @@ export default function PendingPaymentCard({
     "approve" | "reject" | null
   >(null);
   const { signTypedDataAsync } = useSignTypedData();
+  const queryClient = useQueryClient();
   const remaining = useCountdown(payment.expiresAt);
   const isExpired = remaining <= 0;
+
+  function invalidateAndNotify() {
+    queryClient.invalidateQueries({ queryKey: PENDING_PAYMENTS_QUERY_KEY });
+    queryClient.invalidateQueries({ queryKey: WALLET_BALANCE_QUERY_KEY });
+    onAction();
+  }
 
   async function handleApprove() {
     setActionInProgress("approve");
@@ -135,29 +149,25 @@ export default function PendingPaymentCard({
         },
       });
 
-      const res = await fetch(`/api/payments/${payment.id}/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          signature,
-          authorization: {
-            from: authorization.from,
-            to: authorization.to,
-            value: authorization.value.toString(),
-            validAfter: authorization.validAfter.toString(),
-            validBefore: authorization.validBefore.toString(),
-            nonce: authorization.nonce,
-          },
-        }),
-      });
+      const result = await approvePendingPayment(
+        payment.id,
+        signature,
+        {
+          from: authorization.from,
+          to: authorization.to,
+          value: authorization.value.toString(),
+          validAfter: authorization.validAfter.toString(),
+          validBefore: authorization.validBefore.toString(),
+          nonce: authorization.nonce,
+        },
+      );
 
-      if (res.ok) {
+      if (result.success) {
         toast.success("Payment approved and submitted");
-        onAction();
       } else {
-        const err = await res.json();
-        toast.error(err.error || "Failed to approve payment");
+        toast.error("Payment submitted but server returned an error");
       }
+      invalidateAndNotify();
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to sign transaction"
@@ -170,19 +180,13 @@ export default function PendingPaymentCard({
   async function handleReject() {
     setActionInProgress("reject");
     try {
-      const res = await fetch(`/api/payments/${payment.id}/reject`, {
-        method: "POST",
-      });
-
-      if (res.ok) {
-        toast.success("Payment rejected");
-        onAction();
-      } else {
-        const err = await res.json();
-        toast.error(err.error || "Failed to reject payment");
-      }
-    } catch {
-      toast.error("Network error");
+      await rejectPendingPayment(payment.id);
+      toast.success("Payment rejected");
+      invalidateAndNotify();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to reject payment"
+      );
     } finally {
       setActionInProgress(null);
     }

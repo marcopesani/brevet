@@ -1,6 +1,3 @@
-"use client"
-
-import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 
 import { Badge } from "@/components/ui/badge"
@@ -20,16 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Skeleton } from "@/components/ui/skeleton"
-
-interface Transaction {
-  id: string
-  amount: number
-  endpoint: string
-  status: string
-  type: string
-  createdAt: string
-}
+import { getRecentTransactions } from "@/lib/data/transactions"
 
 function statusVariant(status: string) {
   switch (status) {
@@ -45,47 +33,8 @@ function statusVariant(status: string) {
   }
 }
 
-export function RecentTransactions() {
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const fetchTransactions = useCallback(async () => {
-    try {
-      const res = await fetch("/api/transactions")
-      if (res.ok) {
-        const data = await res.json()
-        setTransactions(Array.isArray(data) ? data.slice(0, 5) : [])
-      }
-    } catch {
-      // Network error
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchTransactions()
-  }, [fetchTransactions])
-
-  if (loading) {
-    return (
-      <div className="px-4 lg:px-6">
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-40" />
-            <Skeleton className="h-4 w-32" />
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-8 w-full" />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+export async function RecentTransactions({ userId }: { userId: string }) {
+  const transactions = await getRecentTransactions(userId, 5)
 
   return (
     <div className="px-4 lg:px-6">

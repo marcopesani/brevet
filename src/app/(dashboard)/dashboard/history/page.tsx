@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { getTransactions } from "@/lib/data/transactions";
 import { TransactionTable } from "@/components/transaction-table";
 
 export default async function HistoryPage() {
@@ -8,5 +9,7 @@ export default async function HistoryPage() {
     redirect("/login");
   }
 
-  return <TransactionTable />;
+  const transactions = await getTransactions(user.userId);
+
+  return <TransactionTable initialTransactions={transactions} />;
 }

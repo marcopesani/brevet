@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { Wallet, Copy, Check } from "lucide-react";
 import {
@@ -13,96 +13,65 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useWalletBalance } from "@/hooks/use-wallet-balance";
+import { ensureHotWallet } from "@/app/actions/wallet";
 
 interface WalletBalanceProps {
   onWalletReady?: (data: {
     hotWalletAddress: string;
     userId: string;
     balance: string | null;
-    fetchBalance: () => void;
   }) => void;
 }
 
 export default function WalletBalance({ onWalletReady }: WalletBalanceProps) {
-  const { address, isConnected } = useAccount();
+  const { isConnected } = useAccount();
   const [hotWalletAddress, setHotWalletAddress] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [balance, setBalance] = useState<string | null>(null);
-  const [balanceUnavailable, setBalanceUnavailable] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletError, setWalletError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const fetchBalance = useCallback(async (addr: string) => {
-    try {
-      const res = await fetch(`/api/wallet/balance?address=${addr}`, {
-        credentials: "include",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setBalance(data.balance);
-        setBalanceUnavailable(false);
-      } else if (res.status === 503) {
-        setBalanceUnavailable(true);
-      }
-    } catch {
-      // Balance fetch is non-critical; silently retry on next interval
-    }
-  }, []);
+  const { balance, error: balanceError, isLoading: balanceLoading } =
+    useWalletBalance(!!hotWalletAddress);
 
   useEffect(() => {
-    if (!isConnected || !address) {
+    if (!isConnected) {
       setHotWalletAddress(null);
-      setBalance(null);
+      setUserId(null);
       return;
     }
 
     let cancelled = false;
 
-    async function createWallet() {
-      setLoading(true);
-      setError(null);
+    async function initWallet() {
+      setWalletLoading(true);
+      setWalletError(null);
       try {
-        const res = await fetch("/api/wallet/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ walletAddress: address }),
-        });
-
-        if (!res.ok) {
-          throw new Error("Failed to create hot wallet");
-        }
-
-        const data = await res.json();
+        const data = await ensureHotWallet();
         if (!cancelled) {
           setHotWalletAddress(data.address);
           setUserId(data.userId);
-          fetchBalance(data.address);
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Unknown error");
+          setWalletError(
+            err instanceof Error ? err.message : "Unknown error"
+          );
         }
       } finally {
         if (!cancelled) {
-          setLoading(false);
+          setWalletLoading(false);
         }
       }
     }
 
-    createWallet();
+    initWallet();
 
     return () => {
       cancelled = true;
     };
-  }, [isConnected, address, fetchBalance]);
-
-  // Refresh balance every 15 seconds
-  useEffect(() => {
-    if (!hotWalletAddress) return;
-    const interval = setInterval(() => fetchBalance(hotWalletAddress), 15_000);
-    return () => clearInterval(interval);
-  }, [hotWalletAddress, fetchBalance]);
+  }, [isConnected]);
 
   // Notify parent when wallet is ready
   useEffect(() => {
@@ -111,10 +80,9 @@ export default function WalletBalance({ onWalletReady }: WalletBalanceProps) {
         hotWalletAddress,
         userId,
         balance,
-        fetchBalance: () => fetchBalance(hotWalletAddress),
       });
     }
-  }, [hotWalletAddress, userId, balance, onWalletReady, fetchBalance]);
+  }, [hotWalletAddress, userId, balance, onWalletReady]);
 
   async function handleCopy() {
     if (!hotWalletAddress) return;
@@ -125,7 +93,7 @@ export default function WalletBalance({ onWalletReady }: WalletBalanceProps) {
 
   if (!isConnected) return null;
 
-  if (loading) {
+  if (walletLoading) {
     return (
       <Card>
         <CardHeader>
@@ -142,7 +110,7 @@ export default function WalletBalance({ onWalletReady }: WalletBalanceProps) {
     );
   }
 
-  if (error) {
+  if (walletError) {
     return (
       <Card className="border-destructive">
         <CardHeader>
@@ -152,7 +120,7 @@ export default function WalletBalance({ onWalletReady }: WalletBalanceProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-destructive">{error}</p>
+          <p className="text-sm text-destructive">{walletError}</p>
         </CardContent>
       </Card>
     );
@@ -190,11 +158,13 @@ export default function WalletBalance({ onWalletReady }: WalletBalanceProps) {
           <p className="text-sm text-muted-foreground">USDC Balance</p>
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold tracking-tight">
-              {balanceUnavailable
+              {balanceError
                 ? "Unavailable"
-                : balance !== null
-                  ? `$${balance}`
-                  : "Loading..."}
+                : balanceLoading
+                  ? "Loading..."
+                  : balance !== null
+                    ? `$${balance}`
+                    : "Loading..."}
             </span>
             <Badge variant="secondary">USDC</Badge>
           </div>

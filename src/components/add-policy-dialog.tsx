@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { createPolicy } from "@/app/actions/policies";
 
 interface AddPolicyDialogProps {
   open: boolean;
@@ -36,23 +37,14 @@ export function AddPolicyDialog({
     setError(null);
     setSubmitting(true);
     try {
-      const res = await fetch("/api/policies", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpointPattern, payFromHotWallet }),
-      });
-      if (res.ok) {
-        toast.success("Policy created");
-        setEndpointPattern("");
-        setPayFromHotWallet(false);
-        onOpenChange(false);
-        onSuccess();
-      } else {
-        const data = await res.json();
-        setError(data.error || "Failed to create policy");
-      }
-    } catch {
-      setError("Network error");
+      await createPolicy({ endpointPattern, payFromHotWallet });
+      toast.success("Policy created");
+      setEndpointPattern("");
+      setPayFromHotWallet(false);
+      onOpenChange(false);
+      onSuccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create policy");
     } finally {
       setSubmitting(false);
     }

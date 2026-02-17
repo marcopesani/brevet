@@ -25,41 +25,13 @@ import {
 } from "@/components/ui/sidebar"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-
-function usePendingCount() {
-  const [count, setCount] = React.useState(0)
-
-  React.useEffect(() => {
-    let cancelled = false
-
-    async function fetchCount() {
-      try {
-        const res = await fetch("/api/payments/pending")
-        if (res.ok) {
-          const payments = await res.json()
-          if (!cancelled) setCount(Array.isArray(payments) ? payments.length : 0)
-        }
-      } catch {
-        // silently ignore fetch errors
-      }
-    }
-
-    fetchCount()
-    const interval = setInterval(fetchCount, 30_000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [])
-
-  return count
-}
+import { usePendingPayments } from "@/hooks/use-pending-payments"
 
 export function AppSidebar({
   walletAddress,
   ...props
 }: React.ComponentProps<typeof Sidebar> & { walletAddress: string }) {
-  const pendingCount = usePendingCount()
+  const { count: pendingCount } = usePendingPayments()
   const pathname = usePathname()
 
   const navMain = [

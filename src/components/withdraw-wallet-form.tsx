@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAccount } from "wagmi";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, ExternalLink } from "lucide-react";
 import {
   Card,
@@ -15,19 +16,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { chainConfig } from "@/lib/chain-config";
+import { withdrawFromWallet } from "@/app/actions/wallet";
+import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
 
 interface WithdrawWalletFormProps {
-  userId: string;
   balance: string | null;
-  onWithdrawn?: () => void;
 }
 
 export default function WithdrawWalletForm({
-  userId,
   balance,
-  onWithdrawn,
 }: WithdrawWalletFormProps) {
   const { address } = useAccount();
+  const queryClient = useQueryClient();
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,25 +47,11 @@ export default function WithdrawWalletForm({
     setTxHash(null);
 
     try {
-      const res = await fetch("/api/wallet/withdraw", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          amount: parseFloat(amount),
-          toAddress: address,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Withdrawal failed");
-      }
+      const data = await withdrawFromWallet(parseFloat(amount), address);
 
       setTxHash(data.txHash);
       setAmount("");
-      onWithdrawn?.();
+      queryClient.invalidateQueries({ queryKey: WALLET_BALANCE_QUERY_KEY });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Withdrawal failed");
     } finally {

@@ -2,7 +2,8 @@ import { createWalletClient, PrivateKeyAccount, WalletClient, type Hex } from "v
 import { formatUnits } from "viem";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
-import { prisma } from "@/lib/db";
+import { createTransaction } from "@/lib/data/transactions";
+import { getHotWallet } from "@/lib/data/wallet";
 import { decryptPrivateKey, getUsdcBalance, USDC_DECIMALS } from "@/lib/hot-wallet";
 import { checkPolicy } from "@/lib/policy";
 import { createEvmSigner } from "./eip712";
@@ -173,9 +174,7 @@ export async function executePayment(
   }
 
   // Step 3: Look up the user's hot wallet
-  const hotWallet = await prisma.hotWallet.findUnique({
-    where: { userId },
-  });
+  const hotWallet = await getHotWallet(userId);
 
   if (!hotWallet) {
     return { success: false, status: "rejected", signingStrategy: "rejected", error: "No hot wallet found for user" };
@@ -300,17 +299,15 @@ export async function executePayment(
 
   // Step 10: Log transaction
   const txStatus = paidResponse.ok ? "completed" : "failed";
-  await prisma.transaction.create({
-    data: {
-      amount: amountUsd,
-      endpoint: url,
-      txHash,
-      network: selectedRequirement.network,
-      status: txStatus,
-      type: "payment",
-      userId,
-      responsePayload,
-    },
+  await createTransaction({
+    amount: amountUsd,
+    endpoint: url,
+    txHash,
+    network: selectedRequirement.network,
+    status: txStatus,
+    type: "payment",
+    userId,
+    responsePayload,
   });
 
   if (!paidResponse.ok) {

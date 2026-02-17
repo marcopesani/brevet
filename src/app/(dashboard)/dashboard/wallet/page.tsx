@@ -9,5 +9,5 @@ export default async function WalletPage() {
     redirect("/login");
   }
 
-  return <WalletContent userId={user.userId} />;
+  return <WalletContent />;
 }

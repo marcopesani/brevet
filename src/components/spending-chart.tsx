@@ -43,34 +43,17 @@ const chartConfig = {
   },
 } satisfies ChartConfig
 
-export function SpendingChart() {
+export function SpendingChart({ initialData }: { initialData: DailySpending[] }) {
   const isMobile = useIsMobile()
   const [timeRange, setTimeRange] = React.useState("30d")
-  const [data, setData] = React.useState<DailySpending[]>([])
-  const [loading, setLoading] = React.useState(true)
+  const data = initialData
+  const loading = false
 
   React.useEffect(() => {
     if (isMobile) {
       setTimeRange("7d")
     }
   }, [isMobile])
-
-  React.useEffect(() => {
-    async function fetchData() {
-      try {
-        const res = await fetch("/api/analytics")
-        if (res.ok) {
-          const json = await res.json()
-          setData(json.dailySpending ?? [])
-        }
-      } catch {
-        // Network error
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchData()
-  }, [])
 
   const filteredData = React.useMemo(() => {
     if (!data.length) return []
