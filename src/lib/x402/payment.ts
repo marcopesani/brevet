@@ -228,7 +228,7 @@ export async function executePayment(
       success: false,
       status: "pending_approval",
       signingStrategy: "walletconnect",
-      paymentRequirements: JSON.stringify(paymentRequired.accepts),
+      paymentRequirements: JSON.stringify(paymentRequired),
       amount: amountUsd,
     };
   }
@@ -320,7 +320,7 @@ export async function executePayment(
   });
 
   if (!paidResponse.ok) {
-    logger.error("Payment failed", { userId, url, action: "payment_failed", status: paidResponse.status, amount: amountUsd });
+    logger.error("Payment failed", { userId, url, action: "payment_failed", status: paidResponse.status, amount: amountUsd, responseBody: responsePayload?.slice(0, 500) });
     return {
       success: false,
       status: "rejected",

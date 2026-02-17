@@ -57,14 +57,23 @@ export async function approvePendingPayment(
     throw new Error("Payment has expired");
   }
 
-  const storedRequirements = JSON.parse(payment.paymentRequirements);
-  const acceptedRequirement = Array.isArray(storedRequirements)
-    ? storedRequirements[0]
-    : storedRequirements;
+  const storedPaymentRequired = JSON.parse(payment.paymentRequirements);
+
+  // Backward compat: old records stored just the accepts array, new records store full PaymentRequired
+  const isFullFormat = !Array.isArray(storedPaymentRequired) && storedPaymentRequired.accepts;
+
+  const x402Version = isFullFormat ? (storedPaymentRequired.x402Version ?? 1) : 1;
+  const resource = isFullFormat
+    ? storedPaymentRequired.resource
+    : { url: payment.url, description: "", mimeType: "" };
+  const extensions = isFullFormat ? storedPaymentRequired.extensions : undefined;
+  const acceptedRequirement = isFullFormat
+    ? storedPaymentRequired.accepts[0]
+    : (Array.isArray(storedPaymentRequired) ? storedPaymentRequired[0] : storedPaymentRequired);
 
   const paymentPayload = {
-    x402Version: 1,
-    resource: { url: payment.url, description: "", mimeType: "" },
+    x402Version,
+    resource,
     accepted: acceptedRequirement,
     payload: {
       signature: signature as Hex,
@@ -77,6 +86,7 @@ export async function approvePendingPayment(
         nonce: authorization.nonce as Hex,
       },
     },
+    ...(extensions ? { extensions } : {}),
   };
 
   const paymentHeaders = buildPaymentHeaders(paymentPayload);
@@ -134,7 +144,7 @@ export async function approvePendingPayment(
         txHash: txHash ?? undefined,
       });
     } else {
-      logger.error("Payment approval failed - server returned error", { userId: auth.userId, paymentId, url: payment.url, action: "approve_failed", status: paidResponse.status });
+      logger.error("Payment approval failed - server returned error", { userId: auth.userId, paymentId, url: payment.url, action: "approve_failed", status: paidResponse.status, responseBody: responsePayload?.slice(0, 500) });
       await failPendingPayment(paymentId, {
         responsePayload: responsePayload ?? undefined,
         responseStatus: paidResponse.status,
