@@ -44,10 +44,11 @@ COPY --from=build /app/prisma.config.ts ./
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 
-RUN chown -R nextjs:nodejs /app
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh && chown -R nextjs:nodejs /app
 
 USER nextjs
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+CMD ["./docker-entrypoint.sh"]
