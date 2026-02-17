@@ -1,4 +1,4 @@
-import type { Hex } from "viem";
+import { createWalletClient, PrivateKeyAccount, WalletClient, type Hex } from "viem";
 import { formatUnits } from "viem";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
@@ -7,8 +7,14 @@ import { decryptPrivateKey, getUsdcBalance, USDC_DECIMALS } from "@/lib/hot-wall
 import { checkPolicy } from "@/lib/policy";
 import { createEvmSigner } from "./eip712";
 import { parsePaymentRequired, extractTxHashFromResponse, extractSettleResponse } from "./headers";
-import type { PaymentResult, SigningStrategy } from "./types";
+import type { ClientEvmSigner,
+PaymentResult, SigningStrategy } from "./types";
 import { chainConfig } from "../chain-config";
+import { SIWxExtension } from "@x402/extensions";
+import { createSIWxPayload,
+encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
+import { privateKeyToAccount } from "viem/accounts";
+import { http } from "wagmi";
 
 /**
  * Validate a URL before making an HTTP request.
@@ -71,12 +77,15 @@ function validateUrl(url: string): string | null {
  * Registers both V1 and V2 EVM exact schemes (EIP-3009 + Permit2)
  * via `registerExactEvmScheme` which handles wildcard eip155:* matching.
  */
-function createPaymentClient(privateKey: Hex): { client: x402Client; httpClient: x402HTTPClient } {
+function createPaymentClient(privateKey: Hex): { client: x402Client; httpClient: x402HTTPClient; account: PrivateKeyAccount } {
+  const account = privateKeyToAccount(privateKey);
+ 
   const signer = createEvmSigner(privateKey);
+  
   const client = new x402Client();
   registerExactEvmScheme(client, { signer });
   const httpClient = new x402HTTPClient(client);
-  return { client, httpClient };
+  return { client, httpClient, account };
 }
 
 /**
@@ -142,6 +151,7 @@ export async function executePayment(
   } catch {
     // Not valid JSON — that's fine, V2 uses headers only
   }
+
 
   const paymentRequired = parsePaymentRequired(initialResponse, responseBody);
   if (!paymentRequired || !paymentRequired.accepts || paymentRequired.accepts.length === 0) {
@@ -218,7 +228,7 @@ export async function executePayment(
   }
 
   // Step 7: Create payment payload via SDK (handles EIP-3009 + Permit2)
-  const { client, httpClient } = createPaymentClient(privateKey);
+  const { client, httpClient, account } = createPaymentClient(privateKey);
   let paymentPayload;
   try {
     paymentPayload = await client.createPaymentPayload(paymentRequired);
@@ -231,11 +241,45 @@ export async function executePayment(
     };
   }
 
+
+  // opt in SIVX support
+  const siwxExtension = paymentRequired.extensions?.['sign-in-with-x'] as SIWxExtension | undefined;
+  let signInWithXHeader: string | undefined;
+  if (siwxExtension) {
+    const matchingChain = siwxExtension?.supportedChains?.find(
+      (chain: { chainId: string }) => chain.chainId === chainConfig.networkString
+    );
+  
+    if (!matchingChain) {
+      return {
+        success: false,
+        status: "rejected",
+        signingStrategy: "rejected",
+        error: `SIVX failed: chain ${chainConfig.networkString} not supported by server`,
+      };
+    }
+  
+    // Build complete info with selected chain
+    const completeInfo = {
+      ...siwxExtension.info,
+      chainId: matchingChain.chainId,
+      type: matchingChain.type,
+    };
+  
+    // Create signed payload
+    const payload = await createSIWxPayload(completeInfo, account);
+    signInWithXHeader = encodeSIWxHeader(payload);
+  }
+
   // Step 8: Encode payment into HTTP headers and re-request (preserving original method/body/headers)
   const paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
   const paidRequestInit: RequestInit = {
     method,
-    headers: { ...options?.headers, ...paymentHeaders },
+    headers: {
+      ...options?.headers,
+      ...paymentHeaders,
+      ...(signInWithXHeader ? { 'SIGN-IN-WITH-X': signInWithXHeader } : {}),
+    },
   };
   if (options?.body) {
     paidRequestInit.body = options.body;
