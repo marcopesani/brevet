@@ -34,7 +34,7 @@ const ERC20_ABI = [
 ] as const;
 
 interface FundWalletFormProps {
-  hotWalletAddress: string;
+  hotWalletAddress: string | null;
 }
 
 export default function FundWalletForm({
@@ -50,7 +50,7 @@ export default function FundWalletForm({
   });
 
   function handleFund() {
-    if (!amount || parseFloat(amount) <= 0) return;
+    if (!hotWalletAddress || !amount || parseFloat(amount) <= 0) return;
 
     writeContract({
       address: chainConfig.usdcAddress,
@@ -94,7 +94,7 @@ export default function FundWalletForm({
             onChange={(e) => setAmount(e.target.value)}
             min="0"
             step="0.01"
-            disabled={isPending || isConfirming}
+            disabled={!hotWalletAddress || isPending || isConfirming}
           />
         </div>
         {error && (
@@ -139,7 +139,7 @@ export default function FundWalletForm({
         ) : (
           <Button
             onClick={handleFund}
-            disabled={isPending || isConfirming || !amount || parseFloat(amount) <= 0}
+            disabled={!hotWalletAddress || isPending || isConfirming || !amount || parseFloat(amount) <= 0}
             className="w-full"
           >
             {isPending

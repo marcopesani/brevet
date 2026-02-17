@@ -17,7 +17,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { getRecentTransactions } from "@/lib/data/transactions"
 
 function statusVariant(status: string) {
   switch (status) {
@@ -33,9 +32,15 @@ function statusVariant(status: string) {
   }
 }
 
-export async function RecentTransactions({ userId }: { userId: string }) {
-  const transactions = await getRecentTransactions(userId, 5)
+interface Transaction {
+  id: string
+  createdAt: Date
+  endpoint: string
+  amount: number
+  status: string
+}
 
+export function RecentTransactions({ transactions }: { transactions: Transaction[] }) {
   return (
     <div className="px-4 lg:px-6">
       <Card>

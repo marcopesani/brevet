@@ -9,15 +9,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { getAnalytics } from "@/lib/data/analytics"
-import { getWalletBalance } from "@/lib/data/wallet"
+import type { AnalyticsSummary } from "@/lib/data/analytics"
 
-export async function SectionCards({ userId }: { userId: string }) {
-  const [{ summary }, wallet] = await Promise.all([
-    getAnalytics(userId),
-    getWalletBalance(userId),
-  ])
+interface SectionCardsProps {
+  summary: AnalyticsSummary
+  wallet: { balance: string; address: string } | null
+}
 
+export function SectionCards({ summary, wallet }: SectionCardsProps) {
   const cards = [
     {
       label: "Today Spend",
