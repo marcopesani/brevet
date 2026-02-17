@@ -5,9 +5,10 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: x402_gateway
+      # Set in .env; no default to avoid hardcoded secrets (required for Docker Compose)
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required for docker-compose}
+      POSTGRES_DB: ${POSTGRES_DB:-x402_gateway}
     ports:
       - "5432:5432"
     healthcheck:
@@ -31,7 +32,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/x402_gateway
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-x402_gateway}
       NODE_ENV: production
       NEXTAUTH_URL: http://localhost:3000
       # Pass through from host .env (Compose loads .env from project dir for substitution)

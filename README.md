@@ -114,7 +114,7 @@ Create a `.env` or `.env.local` with required secrets before starting. The app d
 git clone https://github.com/marcopesani/x402-mcp-gateway.git
 cd x402-mcp-gateway
 cp .env.example .env
-# Edit .env: set HOT_WALLET_ENCRYPTION_KEY, NEXTAUTH_SECRET (required)
+# Edit .env: set HOT_WALLET_ENCRYPTION_KEY, NEXTAUTH_SECRET, POSTGRES_PASSWORD (required)
 # and NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID (optional; get one at https://dashboard.reown.com)
 docker compose up -d --build
 ```
