@@ -1,0 +1,96 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+x402 Gateway MCP is an MCP (Model Context Protocol) server and web dashboard that enables AI agents to make x402 HTTP payments on Base using USDC. When an AI agent accesses a paid API that returns HTTP 402, the gateway automatically handles the payment flow: parsing payment requirements, signing an EIP-712 message, retrying with payment proof, and logging the transaction.
+
+**Tech stack**: Next.js 16 (App Router), React 19, TypeScript 5, Prisma 7 (PostgreSQL), Tailwind CSS 4, shadcn/ui, viem/wagmi, Reown AppKit (WalletConnect), Vitest 4.
+
+## Commands
+
+```bash
+npm run dev              # Dev server on localhost:3000
+npm run build            # Production build (includes prisma generate)
+npm run lint             # ESLint
+npm test                 # Unit + integration tests (watch mode)
+npm run test:run         # All tests once (CI mode)
+npm run test:e2e         # E2E tests only (requires Base Sepolia RPC)
+npx prisma migrate deploy  # Run database migrations
+npx prisma generate        # Regenerate Prisma client
+```
+
+Run a single test file: `npx vitest run src/lib/__tests__/policy.test.ts`
+
+Run a single test by name: `npx vitest run -t "test name pattern"`
+
+Vitest has two projects configured in `vitest.config.ts`: `unit` (everything except `src/test/e2e/`) and `e2e` (only `src/test/e2e/`). Both run with `fileParallelism: false`.
+
+## Architecture
+
+### x402 Payment Flow
+
+The core logic lives in `src/lib/x402/payment.ts`:
+
+1. Agent calls the `x402_pay` MCP tool with a URL
+2. Gateway fetches the URL; if 402 returned, parses payment requirements from body (V1) or headers (V2) via `@x402/core` SDK
+3. Endpoint policy lookup determines signing strategy (hot wallet auto-sign vs WalletConnect manual approval)
+4. For hot wallet: verifies USDC balance, creates EIP-712 signed payment via SDK, retries request with payment headers
+5. For WalletConnect: creates a PendingPayment record for the user to approve in the dashboard
+6. On success: extracts settlement tx hash from `Payment-Response` header, stores Transaction record
+
+URL validation rejects localhost, private IPs, and internal hostnames (SSRF protection).
+
+### MCP Server
+
+Endpoint: `POST /api/mcp/[userId]` using Streamable HTTP transport. Stateless — fresh server instance per request.
+
+Five tools defined in `src/lib/mcp/tools.ts`: `x402_pay`, `x402_check_balance`, `x402_spending_history`, `x402_check_pending`, `x402_discover`.
+
+### Endpoint Policy System
+
+`src/lib/policy.ts` enforces per-endpoint spending rules. Policies match by longest URL prefix. When an agent tries to pay an unknown endpoint, a draft policy is auto-created — the user must activate it in the dashboard before payments are allowed.
+
+### Authentication
+
+Sign-In-With-Ethereum (SIWE) via Reown AppKit + NextAuth credentials provider. SIWX extension support for x402-aware auth flows. Configuration in `src/lib/auth-config.ts` and `src/lib/siwe-config.ts`.
+
+No middleware — route protection uses Next.js route groups: `(dashboard)` layout checks auth and redirects to `/login`.
+
+### Hot Wallet
+
+Auto-created on first login. Private key encrypted with AES-256-GCM, stored in `HotWallet` table. Encryption key from `HOT_WALLET_ENCRYPTION_KEY` env var (64-char hex). Logic in `src/lib/hot-wallet.ts`.
+
+### Route Groups
+
+- `(auth)` — login page (simple layout)
+- `(dashboard)` — protected pages: dashboard, wallet, policies, transactions, pending payments, settings
+- `(marketing)` — public landing page
+- `api/` — 16 API routes (RESTful, rate-limited)
+
+### Database
+
+PostgreSQL with Prisma. Schema in `prisma/schema.prisma`. Five models: `User`, `HotWallet`, `EndpointPolicy`, `Transaction`, `PendingPayment`. Row-Level Security applied via migrations. Prisma client generated to `src/generated/prisma/` (gitignored).
+
+### Chain Configuration
+
+`NEXT_PUBLIC_CHAIN_ID` env var toggles between Base mainnet (8453) and Base Sepolia testnet (84532). Singleton config exported from `src/lib/chain-config.ts`.
+
+## Code Conventions
+
+- Import alias: `@/*` maps to `src/*`
+- UI components: shadcn/ui (New York style, neutral theme) in `src/components/ui/`
+- File naming: kebab-case for utils (`hot-wallet.ts`), PascalCase for components
+- Runtime validation: Zod v4 for MCP tool schemas
+- Tests: co-located `__tests__/` directories; global mocks in `src/test/setup.ts` (Prisma client is always mocked)
+- E2E tests make real RPC calls to Base Sepolia
+- Rate limiting: in-memory sliding window (`src/lib/rate-limit.ts`), applied in API routes
+
+## Environment Setup
+
+Copy `.env.example` to `.env.local`. Required variables:
+- `DATABASE_URL` — PostgreSQL connection string
+- `HOT_WALLET_ENCRYPTION_KEY` — 64-char hex (generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
+- `NEXTAUTH_SECRET` — session encryption key
+- `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` — from https://dashboard.reown.com
