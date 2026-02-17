@@ -10,7 +10,8 @@
     "lint": "eslint",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:e2e": "vitest run --project e2e"
+    "test:e2e": "vitest run --project e2e",
+    "mcp:inspect": "npx @modelcontextprotocol/inspector --config mcp-inspector.json --server x402-gateway"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

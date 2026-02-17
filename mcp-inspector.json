@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "x402-gateway": {
+      "type": "streamable-http",
+      "url": "http://localhost:3000/api/mcp/00000000-0000-4000-a000-000000000001"
+    }
+  }
+}
