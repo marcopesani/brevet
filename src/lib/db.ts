@@ -5,9 +5,21 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+export function getPoolConfig() {
+  const raw = process.env.DATABASE_POOL_SIZE;
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  const max = Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
+
+  return {
+    connectionString: process.env.DATABASE_URL,
+    max,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+  };
+}
+
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL;
-  const adapter = new PrismaPg({ connectionString });
+  const adapter = new PrismaPg(getPoolConfig());
   return new PrismaClient({ adapter });
 }
 
