@@ -6,12 +6,22 @@ import {
 import { baseURL } from "@/../baseUrl";
 import { registerTools, WALLET_RESOURCE_URI } from "./tools";
 
-async function fetchPageHtml(path: string): Promise<string> {
-  const res = await fetch(`${baseURL}${path}`);
+async function fetchPageHtml(
+  path: string,
+  vercelBypassToken?: string,
+): Promise<string> {
+  const url = new URL(path, baseURL);
+  if (vercelBypassToken) {
+    url.searchParams.set("x-vercel-protection-bypass", vercelBypassToken);
+  }
+  const res = await fetch(url);
   return res.text();
 }
 
-export function createMcpServer(userId: string): McpServer {
+export function createMcpServer(
+  userId: string,
+  options?: { vercelBypassToken?: string },
+): McpServer {
   const server = new McpServer({
     name: "pay-mcp",
     version: "0.1.0",
@@ -25,7 +35,10 @@ export function createMcpServer(userId: string): McpServer {
     WALLET_RESOURCE_URI,
     { mimeType: RESOURCE_MIME_TYPE },
     async () => {
-      const html = await fetchPageHtml("/mcp-apps/wallet");
+      const html = await fetchPageHtml(
+        "/mcp-apps/wallet",
+        options?.vercelBypassToken,
+      );
       return {
         contents: [
           {

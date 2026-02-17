@@ -1,6 +1,7 @@
 import { baseURL } from "@/../baseUrl";
+import "../globals.css";
 
-export default function WalletLayout({
+export default function McpAppsLayout({
   children,
 }: {
   children: React.ReactNode;

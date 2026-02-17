@@ -24,7 +24,12 @@ async function handleMcpRequest(
     sessionIdGenerator: undefined, // stateless mode
   });
 
-  const server = createMcpServer(userId);
+  const vercelBypassToken =
+    url.searchParams.get("x-vercel-protection-bypass") ??
+    request.headers.get("x-vercel-protection-bypass") ??
+    undefined;
+
+  const server = createMcpServer(userId, { vercelBypassToken });
   await server.connect(transport);
 
   return transport.handleRequest(request);
