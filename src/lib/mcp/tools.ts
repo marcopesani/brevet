@@ -79,6 +79,8 @@ export function registerTools(server: McpServer, userId: string) {
             method: method ?? "GET",
             amount: pendingResult.amount,
             paymentRequirements: pendingResult.paymentRequirements,
+            body,
+            headers,
           });
 
           return {
@@ -276,7 +278,7 @@ export function registerTools(server: McpServer, userId: string) {
     "x402_check_pending",
     {
       description:
-        "Check the status of a pending payment that requires user approval via WalletConnect. Use this to poll for approval after x402_pay returns a pending_approval status.",
+        "Check the status of a pending payment that requires user approval via WalletConnect. Use this to poll for approval after x402_pay returns a pending_approval status. Once the payment is completed or failed, use x402_get_result to retrieve the full response data.",
       inputSchema: {
         paymentId: z
           .string()
@@ -319,6 +321,84 @@ export function registerTools(server: McpServer, userId: string) {
           };
         }
 
+        // Handle completed status
+        if (payment.status === "completed") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    status: "completed",
+                    message: "Payment is complete. Use x402_get_result to retrieve the response data.",
+                    paymentId: payment.id,
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        // Handle failed status
+        if (payment.status === "failed") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    status: "failed",
+                    message: "Payment failed. Use x402_get_result for error details.",
+                    paymentId: payment.id,
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        // Handle approved status (settlement in progress)
+        if (payment.status === "approved") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    status: "processing",
+                    message: "Payment is signed and settlement is in progress. Check again shortly.",
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        // Handle rejected status
+        if (payment.status === "rejected") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    status: "rejected",
+                    message: "Payment was rejected by the user.",
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
         const timeRemaining = Math.max(
           0,
           Math.floor(
@@ -349,6 +429,211 @@ export function registerTools(server: McpServer, userId: string) {
           error instanceof Error
             ? error.message
             : "Failed to check pending payment";
+        return {
+          content: [{ type: "text" as const, text: `Error: ${message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // --- x402_get_result: Retrieve the result of a pending payment ---
+  server.registerTool(
+    "x402_get_result",
+    {
+      description:
+        "Retrieves the result of a previously initiated x402 payment. Call this after the user confirms they have signed the payment in the dashboard. Returns the protected resource data if payment is complete, or the current status if still pending.",
+      inputSchema: {
+        paymentId: z
+          .string()
+          .describe("The payment ID returned by x402_pay"),
+      },
+    },
+    async ({ paymentId }) => {
+      try {
+        const payment = await getPendingPayment(paymentId);
+
+        if (!payment) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Error: Payment not found",
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        if (payment.status === "completed") {
+          let data: unknown = payment.responsePayload;
+          if (typeof payment.responsePayload === "string") {
+            try {
+              data = JSON.parse(payment.responsePayload);
+            } catch {
+              // Not JSON, keep as text
+            }
+          }
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    status: "completed",
+                    responseStatus: payment.responseStatus,
+                    data,
+                    txHash: payment.txHash,
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        if (payment.status === "pending") {
+          if (new Date() > payment.expiresAt) {
+            await expirePendingPayment(paymentId);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(
+                    {
+                      status: "expired",
+                      message:
+                        "Payment approval has expired. Initiate a new payment with x402_pay.",
+                    },
+                    null,
+                    2,
+                  ),
+                },
+              ],
+            };
+          }
+
+          const timeRemainingSeconds = Math.max(
+            0,
+            Math.floor(
+              (payment.expiresAt.getTime() - Date.now()) / 1000,
+            ),
+          );
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    status: "awaiting_signature",
+                    message:
+                      "Payment not yet signed. Ask the user to approve it in the dashboard.",
+                    timeRemainingSeconds,
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        if (payment.status === "approved") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    status: "processing",
+                    message:
+                      "Payment is signed and being processed. Try again shortly.",
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        if (payment.status === "failed") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    status: "failed",
+                    responseStatus: payment.responseStatus,
+                    error: payment.responsePayload,
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        if (payment.status === "rejected") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    status: "rejected",
+                    message: "Payment was rejected by the user.",
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        if (payment.status === "expired") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    status: "expired",
+                    message:
+                      "Payment approval has expired. Initiate a new payment with x402_pay.",
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        // Fallback for any unknown status
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                { status: payment.status, message: "Unknown payment status" },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to retrieve payment result";
         return {
           content: [{ type: "text" as const, text: `Error: ${message}` }],
           isError: true,

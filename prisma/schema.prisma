@@ -58,15 +58,21 @@ model Transaction {
 }
 
 model PendingPayment {
-  id                  String   @id @default(uuid())
+  id                  String    @id @default(uuid())
   userId              String
   url                 String
-  method              String   @default("GET")
+  method              String    @default("GET")
   amount              Float
-  paymentRequirements String   // JSON string of PaymentRequirements
-  status              String   @default("pending") // pending, approved, rejected, expired
-  signature           String?  // The EIP-712 signature once approved
+  paymentRequirements String    // JSON string of PaymentRequirements
+  status              String    @default("pending") // pending, approved, rejected, expired, completed, failed
+  signature           String?   // The EIP-712 signature once approved
+  requestBody         String?   // Original request body
+  requestHeaders      String?   // Original request headers as JSON string
+  responsePayload     String?   // Response body after paid fetch
+  responseStatus      Int?      // HTTP status code of the paid response
+  txHash              String?   // Settlement transaction hash
+  completedAt         DateTime? // When the payment was completed
   expiresAt           DateTime
-  createdAt           DateTime @default(now())
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt           DateTime  @default(now())
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

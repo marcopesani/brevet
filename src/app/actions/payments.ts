@@ -9,9 +9,11 @@ import {
   approvePendingPayment as _approvePendingPayment,
   rejectPendingPayment as _rejectPendingPayment,
   expirePendingPayment as _expirePendingPayment,
+  completePendingPayment,
+  failPendingPayment,
 } from "@/lib/data/payments";
 import { createTransaction } from "@/lib/data/transactions";
-import { buildPaymentHeaders } from "@/lib/x402/headers";
+import { buildPaymentHeaders, extractSettleResponse, extractTxHashFromResponse } from "@/lib/x402/headers";
 import type { Hex } from "viem";
 
 export async function getPendingPayments() {
@@ -75,10 +77,34 @@ export async function approvePendingPayment(
 
   const paymentHeaders = buildPaymentHeaders(paymentPayload);
 
+  // Include stored request headers and body in the paid fetch
+  const storedHeaders: Record<string, string> = payment.requestHeaders
+    ? JSON.parse(payment.requestHeaders)
+    : {};
+
   const paidResponse = await fetch(payment.url, {
     method: payment.method,
-    headers: paymentHeaders,
+    headers: {
+      ...storedHeaders,
+      ...paymentHeaders,
+    },
+    ...(payment.requestBody ? { body: payment.requestBody } : {}),
   });
+
+  // Mark as approved with signature first (transitional state)
+  await _approvePendingPayment(paymentId, signature);
+
+  // Read response body for storage
+  let responsePayload: string | null = null;
+  try {
+    responsePayload = await paidResponse.clone().text();
+  } catch {
+    // If reading fails, leave as null
+  }
+
+  // Extract txHash from response headers
+  const settlement = extractSettleResponse(paidResponse) ?? undefined;
+  const txHash = settlement?.transaction ?? await extractTxHashFromResponse(paidResponse);
 
   const txStatus = paidResponse.ok ? "completed" : "failed";
 
@@ -88,16 +114,35 @@ export async function approvePendingPayment(
     network: acceptedRequirement.network ?? "base",
     status: txStatus,
     userId: payment.userId,
+    txHash: txHash ?? undefined,
+    responsePayload,
   });
 
-  await _approvePendingPayment(paymentId, signature);
+  // Store response on the PendingPayment record
+  if (paidResponse.ok) {
+    await completePendingPayment(paymentId, {
+      responsePayload: responsePayload ?? "",
+      responseStatus: paidResponse.status,
+      txHash: txHash ?? undefined,
+    });
+  } else {
+    await failPendingPayment(paymentId, {
+      responsePayload: responsePayload ?? undefined,
+      responseStatus: paidResponse.status,
+    });
+  }
 
+  // Parse response data for the return value
   let responseData: unknown = null;
   const contentType = paidResponse.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
-    responseData = await paidResponse.json();
+    try {
+      responseData = JSON.parse(responsePayload ?? "");
+    } catch {
+      responseData = responsePayload;
+    }
   } else {
-    responseData = await paidResponse.text();
+    responseData = responsePayload;
   }
 
   revalidatePath("/dashboard");
