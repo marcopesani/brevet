@@ -1,14 +1,18 @@
 import { z } from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { executePayment } from "@/lib/x402/payment";
 import { createPendingPayment, getPendingPayment, expirePendingPayment } from "@/lib/data/payments";
 import { getSpendingHistory } from "@/lib/data/transactions";
 import { getUserWithWalletAndPolicies } from "@/lib/data/wallet";
 import { getUsdcBalance } from "@/lib/hot-wallet";
+import { chainConfig } from "@/lib/chain-config";
 
 
 const DISCOVERY_API_URL =
   "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources";
+
+export const WALLET_RESOURCE_URI = "ui://x402-wallet/index.html";
 
 export interface DiscoveryItem {
   resource: string;
@@ -634,6 +638,78 @@ export function registerTools(server: McpServer, userId: string) {
           error instanceof Error
             ? error.message
             : "Failed to retrieve payment result";
+        return {
+          content: [{ type: "text" as const, text: `Error: ${message}` }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // --- x402_wallet: Display wallet info as an interactive MCP App widget ---
+  registerAppTool(
+    server,
+    "x402_wallet",
+    {
+      title: "x402 Wallet",
+      description:
+        "Display the user's x402 wallet information including wallet address, hot wallet address, network, and USDC balance. Renders as an interactive widget when supported by the MCP host.",
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: { resourceUri: WALLET_RESOURCE_URI },
+      },
+    },
+    async () => {
+      try {
+        const user = await getUserWithWalletAndPolicies(userId);
+
+        if (!user) {
+          return {
+            content: [
+              { type: "text" as const, text: "Error: User not found" },
+            ],
+            isError: true,
+          };
+        }
+
+        if (!user.hotWallet) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Error: No hot wallet configured for this user",
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const balance = await getUsdcBalance(user.hotWallet.address);
+        const network = chainConfig.chain.name;
+
+        const walletData = {
+          walletAddress: user.walletAddress,
+          hotWalletAddress: user.hotWallet.address,
+          network,
+          usdcBalance: balance,
+        };
+
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(walletData, null, 2),
+            },
+          ],
+          structuredContent: walletData,
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Failed to fetch wallet info";
         return {
           content: [{ type: "text" as const, text: `Error: ${message}` }],
           isError: true,

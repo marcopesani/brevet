@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { prisma } from "@/lib/db";
+import { getUsdcBalance } from "@/lib/hot-wallet";
 
 // Mock dependencies used by registerTools
 vi.mock("@/lib/x402/payment", () => ({
@@ -453,5 +454,70 @@ describe("x402_check_pending tool", () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("not found");
+  });
+});
+
+describe("x402_wallet tool", () => {
+  let server: McpServer;
+
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    const mock = prisma as PrismaMock;
+    for (const store of Object.values(mock._stores)) {
+      (store as unknown[]).length = 0;
+    }
+    server = new McpServer({ name: "test", version: "0.0.1" });
+    const { registerTools } = await import("../tools");
+    registerTools(server, TEST_USER_ID);
+  });
+
+  it("returns wallet info with balance in structuredContent for user with hot wallet", async () => {
+    await prisma.user.create({
+      data: {
+        id: TEST_USER_ID,
+        walletAddress: "0xUserWalletAddress",
+      },
+    });
+    await prisma.hotWallet.create({
+      data: {
+        userId: TEST_USER_ID,
+        address: "0xHotWalletAddress",
+        encryptedPrivateKey: "encrypted-key",
+      },
+    });
+
+    vi.mocked(getUsdcBalance).mockResolvedValue("12.500000");
+
+    const result = (await callTool(server, "x402_wallet")) as ToolResult & {
+      structuredContent?: Record<string, unknown>;
+    };
+
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toBeDefined();
+    expect(result.structuredContent!.walletAddress).toBe("0xUserWalletAddress");
+    expect(result.structuredContent!.hotWalletAddress).toBe("0xHotWalletAddress");
+    expect(result.structuredContent!.network).toBe("Base Sepolia");
+    expect(result.structuredContent!.usdcBalance).toBe("12.500000");
+  });
+
+  it("returns error when user not found", async () => {
+    const result = (await callTool(server, "x402_wallet")) as ToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("User not found");
+  });
+
+  it("returns error when user has no hot wallet", async () => {
+    await prisma.user.create({
+      data: {
+        id: TEST_USER_ID,
+        walletAddress: "0xUserWalletAddress",
+      },
+    });
+
+    const result = (await callTool(server, "x402_wallet")) as ToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("No hot wallet configured");
   });
 });
