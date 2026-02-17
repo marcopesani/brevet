@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { getAnalytics } from "@/lib/data/analytics";
 import { SectionCards } from "@/components/section-cards";
 import { PendingAlert } from "@/components/pending-alert";
 import { SpendingChart } from "@/components/spending-chart";
@@ -70,6 +71,7 @@ function TableSkeleton() {
 export default async function DashboardPage() {
   // Layout already redirects unauthenticated users — safe to assert non-null
   const user = (await getAuthenticatedUser())!;
+  const analytics = await getAnalytics(user.userId);
 
   return (
     <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
@@ -80,7 +82,7 @@ export default async function DashboardPage() {
         <PendingAlert userId={user.userId} />
       </Suspense>
       <Suspense fallback={<ChartSkeleton />}>
-        <SpendingChart />
+        <SpendingChart initialData={analytics.dailySpending} />
       </Suspense>
       <Suspense fallback={<TableSkeleton />}>
         <RecentTransactions userId={user.userId} />

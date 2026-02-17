@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { ExternalLink, FileJson } from "lucide-react";
+import { getTransactions } from "@/app/actions/transactions";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -39,8 +40,12 @@ interface Transaction {
   network: string;
   status: string;
   type: string;
-  createdAt: string;
+  createdAt: string | Date;
   responsePayload: string | null;
+}
+
+interface TransactionTableProps {
+  initialTransactions: Transaction[];
 }
 
 function getExplorerUrl(network: string): string {
@@ -50,7 +55,7 @@ function getExplorerUrl(network: string): string {
   return "https://basescan.org";
 }
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string | Date): string {
   return new Date(dateStr).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
@@ -245,9 +250,9 @@ function TransactionDetailSheet({
   );
 }
 
-export function TransactionTable() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
+export function TransactionTable({ initialTransactions }: TransactionTableProps) {
+  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
+  const [isPending, startTransition] = useTransition();
   const [since, setSince] = useState("");
   const [until, setUntil] = useState("");
   const [pageSize, setPageSize] = useState(10);
@@ -256,32 +261,24 @@ export function TransactionTable() {
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
 
-  const fetchTransactions = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (since) params.set("since", new Date(since).toISOString());
+  useEffect(() => {
+    if (!since && !until) {
+      setTransactions(initialTransactions);
+      return;
+    }
+
+    startTransition(async () => {
+      const sinceParam = since ? new Date(since).toISOString() : undefined;
+      let untilParam: string | undefined;
       if (until) {
         const untilDate = new Date(until);
         untilDate.setHours(23, 59, 59, 999);
-        params.set("until", untilDate.toISOString());
+        untilParam = untilDate.toISOString();
       }
-
-      const res = await fetch(`/api/transactions?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTransactions(data);
-      }
-    } catch {
-      // Network error — leave list empty
-    } finally {
-      setLoading(false);
-    }
-  }, [since, until]);
-
-  useEffect(() => {
-    fetchTransactions();
-  }, [fetchTransactions]);
+      const data = await getTransactions(sinceParam, untilParam);
+      setTransactions(data);
+    });
+  }, [since, until, initialTransactions]);
 
   // Reset to first page when filters or page size change
   useEffect(() => {
@@ -341,7 +338,7 @@ export function TransactionTable() {
       </div>
 
       {/* Table */}
-      {loading ? (
+      {isPending ? (
         <p className="text-sm text-muted-foreground py-8 text-center">
           Loading transactions…
         </p>
