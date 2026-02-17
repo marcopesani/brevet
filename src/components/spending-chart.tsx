@@ -29,7 +29,6 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@/components/ui/toggle-group"
-import { Skeleton } from "@/components/ui/skeleton"
 
 interface DailySpending {
   date: string
@@ -47,7 +46,6 @@ export function SpendingChart({ initialData }: { initialData: DailySpending[] })
   const isMobile = useIsMobile()
   const [timeRange, setTimeRange] = React.useState("30d")
   const data = initialData
-  const loading = false
 
   React.useEffect(() => {
     if (isMobile) {
@@ -68,22 +66,6 @@ export function SpendingChart({ initialData }: { initialData: DailySpending[] })
     startDate.setDate(startDate.getDate() - daysToSubtract)
     return data.filter((item) => new Date(item.date) >= startDate)
   }, [data, timeRange])
-
-  if (loading) {
-    return (
-      <div className="px-4 lg:px-6">
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-4 w-48" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-[250px] w-full" />
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
 
   const hasSpending = data.some((d) => d.amount > 0)
 

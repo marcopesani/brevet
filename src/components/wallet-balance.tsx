@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useAccount } from "wagmi";
+import { useState } from "react";
 import { Wallet, Copy, Check } from "lucide-react";
 import {
   Card,
@@ -12,77 +11,22 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useWalletBalance } from "@/hooks/use-wallet-balance";
-import { ensureHotWallet } from "@/app/actions/wallet";
 
 interface WalletBalanceProps {
-  onWalletReady?: (data: {
-    hotWalletAddress: string;
-    userId: string;
-    balance: string | null;
-  }) => void;
+  hotWalletAddress: string | null;
+  userId: string;
+  balance: string | null;
+  balanceLoading: boolean;
+  balanceError: Error | null;
 }
 
-export default function WalletBalance({ onWalletReady }: WalletBalanceProps) {
-  const { isConnected } = useAccount();
-  const [hotWalletAddress, setHotWalletAddress] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [walletLoading, setWalletLoading] = useState(false);
-  const [walletError, setWalletError] = useState<string | null>(null);
+export default function WalletBalance({
+  hotWalletAddress,
+  balance,
+  balanceLoading,
+  balanceError,
+}: WalletBalanceProps) {
   const [copied, setCopied] = useState(false);
-
-  const { balance, error: balanceError, isLoading: balanceLoading } =
-    useWalletBalance(!!hotWalletAddress);
-
-  useEffect(() => {
-    if (!isConnected) {
-      setHotWalletAddress(null);
-      setUserId(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function initWallet() {
-      setWalletLoading(true);
-      setWalletError(null);
-      try {
-        const data = await ensureHotWallet();
-        if (!cancelled) {
-          setHotWalletAddress(data.address);
-          setUserId(data.userId);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setWalletError(
-            err instanceof Error ? err.message : "Unknown error"
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setWalletLoading(false);
-        }
-      }
-    }
-
-    initWallet();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isConnected]);
-
-  // Notify parent when wallet is ready
-  useEffect(() => {
-    if (hotWalletAddress && userId) {
-      onWalletReady?.({
-        hotWalletAddress,
-        userId,
-        balance,
-      });
-    }
-  }, [hotWalletAddress, userId, balance, onWalletReady]);
 
   async function handleCopy() {
     if (!hotWalletAddress) return;
@@ -91,9 +35,7 @@ export default function WalletBalance({ onWalletReady }: WalletBalanceProps) {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  if (!isConnected) return null;
-
-  if (walletLoading) {
+  if (!hotWalletAddress) {
     return (
       <Card>
         <CardHeader>
@@ -102,31 +44,14 @@ export default function WalletBalance({ onWalletReady }: WalletBalanceProps) {
             Hot Wallet
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-4 w-64" />
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (walletError) {
-    return (
-      <Card className="border-destructive">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Wallet className="h-5 w-5" />
-            Hot Wallet
-          </CardTitle>
-        </CardHeader>
         <CardContent>
-          <p className="text-sm text-destructive">{walletError}</p>
+          <p className="text-sm text-muted-foreground">
+            No hot wallet found. Please reconnect your wallet.
+          </p>
         </CardContent>
       </Card>
     );
   }
-
-  if (!hotWalletAddress) return null;
 
   const truncatedAddress = `${hotWalletAddress.slice(0, 6)}...${hotWalletAddress.slice(-4)}`;
 
@@ -160,7 +85,7 @@ export default function WalletBalance({ onWalletReady }: WalletBalanceProps) {
             <span className="text-3xl font-bold tracking-tight">
               {balanceError
                 ? "Unavailable"
-                : balanceLoading
+                : balanceLoading && balance === null
                   ? "Loading..."
                   : balance !== null
                     ? `$${balance}`
