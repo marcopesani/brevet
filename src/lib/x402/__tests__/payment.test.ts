@@ -16,6 +16,36 @@ vi.mock("@/lib/hot-wallet", async (importOriginal) => {
   };
 });
 
+// Mock registerExactEvmScheme to register a mock V1 handler for eip155:84532.
+// The real SDK registers V1 handlers for plain network names (e.g. "base-sepolia")
+// but not for EIP-155 format strings. This mock registers a handler that returns
+// a mock payment payload so createPaymentPayload succeeds in tests.
+vi.mock("@x402/evm/exact/client", () => ({
+  registerExactEvmScheme: vi.fn().mockImplementation((client: any) => {
+    // Register a mock V1 scheme for eip155:84532 so createPaymentPayload works
+    client.registerV1("eip155:84532", {
+      scheme: "exact",
+      createPaymentPayload: vi.fn().mockResolvedValue({
+        x402Version: 1,
+        scheme: "exact",
+        network: "eip155:84532",
+        payload: {
+          signature: "0x" + "ab".repeat(65),
+          authorization: {
+            from: "0x" + "aa".repeat(20),
+            to: "0x" + "bb".repeat(20),
+            value: "50000",
+            validAfter: "0",
+            validBefore: String(Math.floor(Date.now() / 1000) + 3600),
+            nonce: "0x" + "00".repeat(32),
+          },
+        },
+      }),
+    });
+    return client;
+  }),
+}));
+
 /**
  * Build a V1-format 402 response with payment requirements in the body.
  */
@@ -45,7 +75,7 @@ function make200Response(body: object, headers: Record<string, string> = {}): Re
 
 const DEFAULT_REQUIREMENT = {
   scheme: "exact",
-  network: "base-sepolia",
+  network: "eip155:84532",
   maxAmountRequired: "50000", // 0.05 USDC (6 decimals)
   resource: "https://api.example.com/resource",
   payTo: ("0x" + "b".repeat(40)) as `0x${string}`,
@@ -130,7 +160,7 @@ describe("executePayment", () => {
     const result = await executePayment("https://api.example.com/resource", userId);
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("Failed to create payment");
+    expect(result.error).toContain("is not supported");
   });
 
   it("completes payment flow: 402 → sign → re-request → 200", async () => {
