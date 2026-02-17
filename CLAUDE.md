@@ -46,7 +46,7 @@ URL validation rejects localhost, private IPs, and internal hostnames (SSRF prot
 
 Endpoint: `POST /api/mcp/[userId]` using Streamable HTTP transport. Stateless — fresh server instance per request.
 
-Five tools defined in `src/lib/mcp/tools.ts`: `x402_pay`, `x402_check_balance`, `x402_spending_history`, `x402_check_pending`, `x402_discover`.
+Five tools defined in `src/lib/mcp/tools.ts`: `x402_pay`, `x402_check_balance`, `x402_spending_history`, `x402_check_pending`, `x402_discover`. MCP tools import from `src/lib/data/` (shared data layer) — they do not use API routes or inline Prisma queries.
 
 ### Endpoint Policy System
 
@@ -67,7 +67,30 @@ Auto-created on first login. Private key encrypted with AES-256-GCM, stored in `
 - `(auth)` — login page (simple layout)
 - `(dashboard)` — protected pages: dashboard, wallet, policies, transactions, pending payments, settings
 - `(marketing)` — public landing page
-- `api/` — 16 API routes (RESTful, rate-limited)
+- `api/` — 3 API routes: `auth/[...nextauth]` (NextAuth), `mcp/[userId]` (MCP server), `payments/pending` (React Query polling)
+
+### Data Architecture
+
+**Shared Data Layer** (`src/lib/data/`): Five modules — `payments.ts`, `policies.ts`, `transactions.ts`, `analytics.ts`, `wallet.ts`. Pure async functions that take `userId` as first parameter. No `"use server"` directive, no HTTP concerns, no auth checks. This is the single source of truth for all Prisma queries — both MCP tools and the dashboard use these.
+
+**Server Actions** (`src/app/actions/`): Thin wrappers with `"use server"` directive. Each action authenticates via `getAuthenticatedUser()`, calls the data layer, and calls `revalidatePath()` for mutations. Used by dashboard components for mutations (approve, reject, activate, create, etc.).
+
+**React Query Hooks** (`src/hooks/`):
+- `use-pending-payments.ts` — shared hook for pending payment data, polls every 10s, deduplicates across components
+- `use-wallet-balance.ts` — event-driven balance refresh (no polling interval, refetch on window focus + after mutations)
+
+### Server-First Rules
+
+These rules prevent regression to the old polling-heavy architecture:
+
+- **Never create new API routes for dashboard data.** Use Server Components + data layer for reads, Server Actions for mutations.
+- **Never add `setInterval` or polling in components.** If data needs periodic updates, use React Query with `refetchInterval` and a shared hook in `src/hooks/`.
+- **Never write inline Prisma queries in components, API routes, or MCP tools.** All database access goes through `src/lib/data/`.
+- **Never duplicate data-fetching logic.** If MCP tools and the dashboard need the same data, both must import from `src/lib/data/`.
+- **Server Components for read-only data.** If a component only displays data (no interactivity), it should be an async Server Component calling the data layer directly.
+- **Client Components only when needed.** Only use `"use client"` for: event handlers, useState/useEffect, browser APIs (wagmi, clipboard), interactive controls (sorting, filtering).
+- **Mutations via Server Actions.** Dashboard mutations call Server Actions from `src/app/actions/`, which handle auth + data layer + `revalidatePath()`.
+- **React Query only for external events.** Only use React Query polling when data changes come from outside the dashboard (e.g., MCP agent creates a pending payment). For data that only changes via dashboard mutations, `revalidatePath()` is sufficient.
 
 ### Database
 
@@ -85,7 +108,10 @@ PostgreSQL with Prisma. Schema in `prisma/schema.prisma`. Five models: `User`, `
 - Runtime validation: Zod v4 for MCP tool schemas
 - Tests: co-located `__tests__/` directories; global mocks in `src/test/setup.ts` (Prisma client is always mocked)
 - E2E tests make real RPC calls to Base Sepolia
-- Rate limiting: in-memory sliding window (`src/lib/rate-limit.ts`), applied in API routes
+- Data access: all Prisma queries in `src/lib/data/` — never inline
+- Server Actions: `src/app/actions/` for authenticated mutations with revalidation
+- React Query hooks: `src/hooks/` for client-side data that needs polling or cache invalidation
+- Rate limiting: in-memory sliding window (`src/lib/rate-limit.ts`), applied to `/api/mcp/[userId]` and `/api/payments/pending`
 
 ## Environment Setup
 
