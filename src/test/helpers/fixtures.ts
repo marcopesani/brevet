@@ -8,7 +8,7 @@ export const TEST_USER_ID = "00000000-0000-4000-a000-000000000001";
 
 /**
  * Create test user data with sensible defaults.
- * Uses UUID IDs to match Supabase Auth / Postgres schema.
+ * Uses UUID IDs to match Postgres schema.
  */
 export function createTestUser(overrides?: {
   id?: string;

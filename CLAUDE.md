@@ -19,6 +19,9 @@ npm run test:run         # All tests once (CI mode)
 npm run test:e2e         # E2E tests only (requires Base Sepolia RPC)
 npx prisma migrate deploy  # Run database migrations
 npx prisma generate        # Regenerate Prisma client
+docker compose up -d     # Start app + PostgreSQL
+docker compose down       # Stop all services
+docker compose build      # Rebuild after code changes
 ```
 
 Run a single test file: `npx vitest run src/lib/__tests__/policy.test.ts`
@@ -94,7 +97,7 @@ These rules prevent regression to the old polling-heavy architecture:
 
 ### Database
 
-PostgreSQL with Prisma. Schema in `prisma/schema.prisma`. Five models: `User`, `HotWallet`, `EndpointPolicy`, `Transaction`, `PendingPayment`. Row-Level Security applied via migrations. Prisma client generated to `src/generated/prisma/` (gitignored).
+PostgreSQL with Prisma. Schema in `prisma/schema.prisma`. Five models: `User`, `HotWallet`, `EndpointPolicy`, `Transaction`, `PendingPayment`. Prisma client generated to `src/generated/prisma/` (gitignored). In Docker, PostgreSQL runs as a companion container with data persisted via named volume.
 
 ### Chain Configuration
 
@@ -115,8 +118,8 @@ PostgreSQL with Prisma. Schema in `prisma/schema.prisma`. Five models: `User`, `
 
 ## Environment Setup
 
-Copy `.env.example` to `.env.local`. Required variables:
-- `DATABASE_URL` — PostgreSQL connection string
-- `HOT_WALLET_ENCRYPTION_KEY` — 64-char hex (generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
-- `NEXTAUTH_SECRET` — session encryption key
+Copy `.env.example` to `.env`. Required variables:
+- `DATABASE_URL` — PostgreSQL connection string (provided automatically in Docker Compose)
+- `HOT_WALLET_ENCRYPTION_KEY` — 64-char hex (required; set explicitly in Docker/production, no auto-generation)
+- `NEXTAUTH_SECRET` — session encryption key (required; set explicitly in Docker/production, no auto-generation)
 - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` — from https://dashboard.reown.com

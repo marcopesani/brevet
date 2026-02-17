@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: x402_gateway
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  app:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID:-}
+        NEXT_PUBLIC_CHAIN_ID: ${NEXT_PUBLIC_CHAIN_ID:-8453}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/x402_gateway
+      NODE_ENV: production
+      NEXTAUTH_URL: http://localhost:3000
+      # Pass through from host .env (Compose loads .env from project dir for substitution)
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      HOT_WALLET_ENCRYPTION_KEY: ${HOT_WALLET_ENCRYPTION_KEY}
+      NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID:-}
+      NEXT_PUBLIC_CHAIN_ID: ${NEXT_PUBLIC_CHAIN_ID:-8453}
+    env_file:
+      - path: .env
+        required: false
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    name: app-network
+
+volumes:
+  pgdata:

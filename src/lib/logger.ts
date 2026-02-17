@@ -1,6 +1,5 @@
 /**
- * Lightweight structured logger for Vercel.
- * Outputs JSON that Vercel auto-parses into searchable fields.
+ * Lightweight structured JSON logger.
  */
 
 type LogLevel = "debug" | "info" | "warn" | "error";

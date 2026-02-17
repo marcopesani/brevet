@@ -7,6 +7,8 @@ An MCP server and web dashboard that enables AI agents to make [x402](https://ww
 ![Next.js 16](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6)
 
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/from-repo?repoUrl=https%3A%2F%2Fgithub.com%2Fmarcopesani%2Fx402-mcp-gateway)
+
 ## What is this?
 
 PayMCP is a payment gateway for AI agents. When an AI agent needs to access a paid API that uses the [x402 payment protocol](https://www.x402.org/), PayMCP handles the entire payment flow automatically: it detects HTTP 402 responses, constructs EIP-712 signatures (EIP-3009 `TransferWithAuthorization`), and retries the request with cryptographic payment proof -- all within a single MCP tool call.
@@ -50,6 +52,7 @@ flowchart LR
 
 - Node.js 18+
 - npm
+- Docker and Docker Compose (for self-hosted deployment)
 
 ### Setup
 
@@ -76,6 +79,46 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) to access the dashboard.
+
+## Deploy on Railway
+
+Railway does **not** run your Docker Compose file in the cloud — it builds and runs only the app service. The `docker-compose.yml` in this repo is for **local dev** (app + Postgres on your machine). On Railway, Postgres is a separate service you add in the dashboard (or via a template).
+
+### Option A: Deploy from GitHub, then add Postgres
+
+1. Click the **Deploy on Railway** button at the top of this README (or connect the repo in the dashboard).
+2. In the project, click **+ New** → **Database** → **PostgreSQL** (or **Template** → search “Postgres”). Link the new Postgres service to your app so the app gets `DATABASE_URL`.
+3. In the app service, set variables:
+   - `DATABASE_URL` — use reference `${{Postgres.DATABASE_URL}}` if you named the DB service “Postgres”
+   - `HOT_WALLET_ENCRYPTION_KEY` — 64-char hex: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+   - `NEXTAUTH_SECRET` — same command as above
+   - `NEXTAUTH_URL` — your app URL (e.g. `https://your-service.up.railway.app`)
+   - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` — from [dashboard.reown.com](https://dashboard.reown.com)
+4. Railway auto-detects the Dockerfile and deploys.
+
+   **Note:** `NEXT_PUBLIC_*` vars are inlined at **build** time. Set them before the first build (or trigger a new deploy after adding them) so AppKit gets the project ID.
+
+### Option B: One-click template (app + Postgres)
+
+To give others a single “Deploy” that creates both the app and Postgres:
+
+1. Deploy this repo to Railway and add a Postgres database as above; wire `DATABASE_URL` to the app.
+2. In the project: **Settings** → **Generate Template from Project** → create the template.
+3. Share the template URL so others get app + Postgres in one click (they still set `NEXTAUTH_SECRET`, `HOT_WALLET_ENCRYPTION_KEY`, etc. in the app service).
+
+## Self-hosted (Docker Compose)
+
+Create a `.env` or `.env.local` with required secrets before starting. The app does not auto-generate secrets in Docker.
+
+```bash
+git clone https://github.com/marcopesani/x402-mcp-gateway.git
+cd x402-mcp-gateway
+cp .env.example .env
+# Edit .env: set HOT_WALLET_ENCRYPTION_KEY, NEXTAUTH_SECRET (required)
+# and NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID (optional; get one at https://dashboard.reown.com)
+docker compose up -d --build
+```
+If you add or change `NEXT_PUBLIC_*` vars later, rebuild so they're inlined: `docker compose up -d --build`.
 
 ## MCP Integration
 
@@ -217,7 +260,7 @@ pay-mcp/
 | `NEXT_PUBLIC_ALCHEMY_ID` | No | Alchemy API key for enhanced RPC access |
 | `RPC_URL` | No | Custom RPC URL (defaults to public Base RPC) |
 | `HOT_WALLET_ENCRYPTION_KEY` | Yes | 64-character hex string for AES-256 key encryption |
-| `DATABASE_URL` | No | SQLite database path (defaults to `file:./prisma/dev.db`) |
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
 
 ## How x402 Works
 
