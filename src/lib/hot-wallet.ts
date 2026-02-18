@@ -45,9 +45,11 @@ const USDC_ABI = [
 function getEncryptionKey(): Buffer {
   const key = process.env.HOT_WALLET_ENCRYPTION_KEY;
   if (!key) {
+    console.error("[BREVET:hot-wallet] getEncryptionKey: HOT_WALLET_ENCRYPTION_KEY is not set");
     throw new Error("HOT_WALLET_ENCRYPTION_KEY is not set");
   }
   if (!/^[0-9a-fA-F]{64}$/.test(key)) {
+    console.error(`[BREVET:hot-wallet] getEncryptionKey: invalid key format (length=${key.length})`);
     throw new Error(
       "HOT_WALLET_ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes)",
     );
@@ -87,9 +89,11 @@ export function createHotWallet(): {
   address: string;
   encryptedPrivateKey: string;
 } {
+  console.log("[BREVET:hot-wallet] createHotWallet called");
   const privateKey = generatePrivateKey();
   const account = privateKeyToAccount(privateKey);
   const encryptedPrivateKey = encryptPrivateKey(privateKey);
+  console.log(`[BREVET:hot-wallet] createHotWallet: created wallet — address=${account.address}`);
   return {
     address: account.address,
     encryptedPrivateKey,

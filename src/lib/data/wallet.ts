@@ -39,9 +39,10 @@ export async function getWalletBalance(userId: string, chainId?: number) {
  * Returns the wallet address and userId.
  */
 export async function ensureHotWallet(userId: string, chainId?: number) {
+  const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
+  console.log(`[BREVET:wallet] ensureHotWallet called — userId=${userId}, chainId=${resolvedChainId}`);
   await connectDB();
   const userObjectId = new Types.ObjectId(userId);
-  const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
 
   const user = await User.findById(userObjectId).lean();
   if (!user) {
@@ -50,6 +51,7 @@ export async function ensureHotWallet(userId: string, chainId?: number) {
 
   const existingWallet = await HotWallet.findOne({ userId: userObjectId, chainId: resolvedChainId }).lean();
   if (existingWallet) {
+    console.log(`[BREVET:wallet] ensureHotWallet: wallet already exists — address=${existingWallet.address}`);
     return { address: existingWallet.address, userId: user._id.toString() };
   }
 
@@ -62,6 +64,7 @@ export async function ensureHotWallet(userId: string, chainId?: number) {
     chainId: resolvedChainId,
   });
 
+  console.log(`[BREVET:wallet] ensureHotWallet: created new wallet — address=${address}`);
   return { address, userId: user._id.toString() };
 }
 
@@ -70,6 +73,7 @@ export async function ensureHotWallet(userId: string, chainId?: number) {
  * Skips chains where a wallet already exists. Returns the number of wallets created.
  */
 export async function ensureAllHotWallets(userId: string): Promise<number> {
+  console.log(`[BREVET:wallet] ensureAllHotWallets called — userId=${userId}`);
   await connectDB();
   const userObjectId = new Types.ObjectId(userId);
 
@@ -77,10 +81,12 @@ export async function ensureAllHotWallets(userId: string): Promise<number> {
   if (!user) return 0;
 
   const chains = getEnvironmentChains();
+  console.log(`[BREVET:wallet] ensureAllHotWallets: environment chains=${JSON.stringify(chains.map((c) => c.chain.id))}`);
   const existingWallets = await HotWallet.find({ userId: userObjectId }).lean();
   const existingChainIds = new Set(existingWallets.map((w) => w.chainId));
 
   const missing = chains.filter((c) => !existingChainIds.has(c.chain.id));
+  console.log(`[BREVET:wallet] ensureAllHotWallets: missing chains=${JSON.stringify(missing.map((c) => c.chain.id))}`);
   if (missing.length === 0) return 0;
 
   const docs = missing.map((c) => {
@@ -90,6 +96,7 @@ export async function ensureAllHotWallets(userId: string): Promise<number> {
 
   try {
     await HotWallet.insertMany(docs, { ordered: false });
+    console.log(`[BREVET:wallet] ensureAllHotWallets: created ${docs.length} wallet(s)`);
   } catch (err: unknown) {
     // Ignore duplicate key errors (code 11000) — a concurrent login already created the wallet.
     // With ordered: false, non-duplicate inserts still succeed.
@@ -101,6 +108,7 @@ export async function ensureAllHotWallets(userId: string): Promise<number> {
     if (!isDuplicateKeyError) {
       throw err;
     }
+    console.log("[BREVET:wallet] ensureAllHotWallets: caught duplicate key error (concurrent insert), continuing");
   }
   return docs.length;
 }

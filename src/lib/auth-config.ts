@@ -67,17 +67,23 @@ export async function verifySignature(
 
 /** Find or create a user by wallet address, ensuring hot wallets exist on all environment chains. */
 export async function upsertUser(walletAddress: string) {
+  console.log(`[BREVET:auth] upsertUser called — walletAddress=${walletAddress}`);
   await connectDB();
 
   let user = await User.findOne({ walletAddress });
 
   if (!user) {
     user = await User.create({ walletAddress });
+    console.log(`[BREVET:auth] upsertUser: created new user — id=${user._id.toString()}`);
+  } else {
+    console.log(`[BREVET:auth] upsertUser: found existing user — id=${user._id.toString()}`);
   }
 
   // Create hot wallets for any chains that don't have one yet.
   // For new users this creates all wallets; for existing users it backfills missing chains.
+  console.log("[BREVET:auth] upsertUser: calling ensureAllHotWallets");
   await ensureAllHotWallets(user._id.toString());
+  console.log("[BREVET:auth] upsertUser: ensureAllHotWallets completed");
 
   return user;
 }
@@ -95,25 +101,30 @@ export const authOptions: NextAuthOptions = {
         signature: { label: "Signature", type: "text" },
       },
       async authorize(credentials) {
-        const { message, signature } = extractCredentials(credentials);
+        try {
+          const { message, signature } = extractCredentials(credentials);
 
-        const address = getAddressFromMessage(message);
-        const chainId = getChainIdFromMessage(message);
+          const address = getAddressFromMessage(message);
+          const chainId = getChainIdFromMessage(message);
 
-        const isValid = await verifySignature(message, address, signature, chainId);
-        if (!isValid) return null;
+          const isValid = await verifySignature(message, address, signature, chainId);
+          if (!isValid) return null;
 
-        const walletAddress = address.toLowerCase();
-        const user = await upsertUser(walletAddress);
+          const walletAddress = address.toLowerCase();
+          const user = await upsertUser(walletAddress);
 
-        // getChainIdFromMessage returns CAIP-2 format "eip155:8453"; extract the numeric part
-        const numericChainId = parseInt(chainId.split(":").pop() || chainId, 10);
-        const result = {
-          id: user.id,
-          address: walletAddress,
-          chainId: numericChainId,
-        };
-        return result;
+          // getChainIdFromMessage returns CAIP-2 format "eip155:8453"; extract the numeric part
+          const numericChainId = parseInt(chainId.split(":").pop() || chainId, 10);
+          const result = {
+            id: user.id,
+            address: walletAddress,
+            chainId: numericChainId,
+          };
+          return result;
+        } catch (error) {
+          console.error("[BREVET:auth] authorize failed:", error);
+          return null;
+        }
       },
     }),
   ],
