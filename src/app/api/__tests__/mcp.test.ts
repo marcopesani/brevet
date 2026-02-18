@@ -77,13 +77,15 @@ describe("MCP API route", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const data = (await parseMcpResponse(response)) as Record<string, any>;
+      const data = (await parseMcpResponse(response)) as Record<string, unknown>;
       expect(data.jsonrpc).toBe("2.0");
       expect(data.id).toBe(1);
       expect(data.result).toBeDefined();
-      expect(data.result.protocolVersion).toBeDefined();
-      expect(data.result.serverInfo).toBeDefined();
-      expect(data.result.serverInfo.name).toBe("brevet");
+      const result = data.result as Record<string, unknown>;
+      expect(result.protocolVersion).toBeDefined();
+      expect(result.serverInfo).toBeDefined();
+      const serverInfo = result.serverInfo as Record<string, unknown>;
+      expect(serverInfo.name).toBe("brevet");
     });
 
     it("should include tool capabilities in initialize response", async () => {
@@ -111,8 +113,9 @@ describe("MCP API route", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const data = (await parseMcpResponse(response)) as Record<string, any>;
-      expect(data.result.capabilities).toBeDefined();
+      const data = (await parseMcpResponse(response)) as Record<string, unknown>;
+      const result = data.result as Record<string, unknown>;
+      expect(result.capabilities).toBeDefined();
     });
 
     it("should handle invalid JSON-RPC method gracefully", async () => {
@@ -133,7 +136,7 @@ describe("MCP API route", () => {
       );
 
       const response = await POST(request);
-      const data = (await parseMcpResponse(response)) as Record<string, any>;
+      const data = (await parseMcpResponse(response)) as Record<string, unknown>;
       expect(data.jsonrpc).toBe("2.0");
       expect(data.error).toBeDefined();
     });

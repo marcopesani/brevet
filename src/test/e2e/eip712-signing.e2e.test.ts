@@ -304,7 +304,7 @@ describe("E2E: EIP-712 Signing", () => {
 
       // Cast needed: SDK types PaymentPayloadV1.network as `${string}:${string}`,
       // but V1 networks are plain names like "base-sepolia"
-      const headers = buildPaymentHeaders(paymentPayload as any);
+      const headers = buildPaymentHeaders(paymentPayload as unknown as Parameters<typeof buildPaymentHeaders>[0]);
 
       // V1 uses X-PAYMENT header
       expect(headers).toHaveProperty("X-PAYMENT");

@@ -9,9 +9,9 @@ vi.mock("next-auth/react", () => ({
 
 vi.mock("@reown/appkit-siwe", () => ({
   formatMessage: vi.fn(
-    (args: any, address: string) => `formatted:${address}`,
+    (_args: unknown, address: string) => `formatted:${address}`,
   ),
-  createSIWEConfig: vi.fn((config: any) => config),
+  createSIWEConfig: vi.fn((config: unknown) => config),
 }));
 
 vi.mock("@/lib/walletconnect", () => ({
@@ -85,13 +85,13 @@ describe("fetchNonce", () => {
   });
 
   it("throws when getCsrfToken returns null", async () => {
-    mockGetCsrfToken.mockResolvedValue(null as any);
+    mockGetCsrfToken.mockResolvedValue(null as unknown as string);
 
     await expect(fetchNonce()).rejects.toThrow("Failed to get nonce!");
   });
 
   it("throws when getCsrfToken returns undefined", async () => {
-    mockGetCsrfToken.mockResolvedValue(undefined as any);
+    mockGetCsrfToken.mockResolvedValue(undefined as unknown as string);
 
     await expect(fetchNonce()).rejects.toThrow("Failed to get nonce!");
   });
@@ -107,7 +107,7 @@ describe("fetchSession", () => {
       address: "0xabc",
       chainId: 1,
       expires: "",
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof getSession>>);
 
     const session = await fetchSession();
 
@@ -127,7 +127,7 @@ describe("fetchSession", () => {
       address: 123,
       chainId: 1,
       expires: "",
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof getSession>>);
 
     const session = await fetchSession();
 
@@ -139,7 +139,7 @@ describe("fetchSession", () => {
       address: "0xabc",
       chainId: "1",
       expires: "",
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof getSession>>);
 
     const session = await fetchSession();
 
@@ -153,7 +153,7 @@ describe("verifySiweMessage", () => {
   });
 
   it("calls signIn with correct params", async () => {
-    mockSignIn.mockResolvedValue({ ok: true } as any);
+    mockSignIn.mockResolvedValue({ ok: true } as unknown as Awaited<ReturnType<typeof signIn>>);
 
     await verifySiweMessage({ message: "msg", signature: "sig" });
 
@@ -166,7 +166,7 @@ describe("verifySiweMessage", () => {
   });
 
   it("returns true when signIn returns ok: true", async () => {
-    mockSignIn.mockResolvedValue({ ok: true } as any);
+    mockSignIn.mockResolvedValue({ ok: true } as unknown as Awaited<ReturnType<typeof signIn>>);
 
     const result = await verifySiweMessage({
       message: "msg",
@@ -177,7 +177,7 @@ describe("verifySiweMessage", () => {
   });
 
   it("returns false when signIn returns ok: false", async () => {
-    mockSignIn.mockResolvedValue({ ok: false } as any);
+    mockSignIn.mockResolvedValue({ ok: false } as unknown as Awaited<ReturnType<typeof signIn>>);
 
     const result = await verifySiweMessage({
       message: "msg",
@@ -205,7 +205,7 @@ describe("signOutSession", () => {
   });
 
   it("calls signOut with redirect: false", async () => {
-    mockSignOut.mockResolvedValue(undefined as any);
+    mockSignOut.mockResolvedValue(undefined as unknown as Awaited<ReturnType<typeof signOut>>);
 
     await signOutSession();
 
@@ -213,7 +213,7 @@ describe("signOutSession", () => {
   });
 
   it("returns true on success", async () => {
-    mockSignOut.mockResolvedValue(undefined as any);
+    mockSignOut.mockResolvedValue(undefined as unknown as Awaited<ReturnType<typeof signOut>>);
 
     const result = await signOutSession();
 

@@ -45,7 +45,7 @@ describe("getAuthenticatedUser", () => {
       address: "0xabc",
       chainId: 1,
       expires: "",
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof getServerSession>>);
 
     const user = await getAuthenticatedUser();
     expect(user).toBeNull();
@@ -56,7 +56,7 @@ describe("getAuthenticatedUser", () => {
       userId: "user-123",
       chainId: 1,
       expires: "",
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof getServerSession>>);
 
     const user = await getAuthenticatedUser();
     expect(user).toBeNull();

@@ -312,10 +312,9 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
     });
   }, [since, until, activeChain.chain.id]);
 
-  // Reset to first page when filters or page size change
-  useEffect(() => {
-    setCurrentPage(0);
-  }, [since, until, pageSize]);
+  const handleSinceChange = (value: string) => { setSince(value); setCurrentPage(0); };
+  const handleUntilChange = (value: string) => { setUntil(value); setCurrentPage(0); };
+  const handlePageSizeChange = (value: number) => { setPageSize(value); setCurrentPage(0); };
 
   const sorted = useMemo(() => {
     return [...transactions].sort((a, b) => {
@@ -341,7 +340,7 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
             id="filter-since"
             type="date"
             value={since}
-            onChange={(e) => setSince(e.target.value)}
+            onChange={(e) => handleSinceChange(e.target.value)}
             className="w-auto"
           />
         </div>
@@ -351,7 +350,7 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
             id="filter-until"
             type="date"
             value={until}
-            onChange={(e) => setUntil(e.target.value)}
+            onChange={(e) => handleUntilChange(e.target.value)}
             className="w-auto"
           />
         </div>
@@ -360,8 +359,8 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
             variant="ghost"
             size="sm"
             onClick={() => {
-              setSince("");
-              setUntil("");
+              handleSinceChange("");
+              handleUntilChange("");
             }}
           >
             Clear
@@ -475,7 +474,7 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
               <span>Rows per page</span>
               <Select
                 value={String(pageSize)}
-                onValueChange={(v) => setPageSize(Number(v))}
+                onValueChange={(v) => handlePageSizeChange(Number(v))}
               >
                 <SelectTrigger size="sm">
                   <SelectValue />

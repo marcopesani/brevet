@@ -365,6 +365,7 @@ export function DataTable({
     [data]
   )
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table API returns unstable references by design
   const table = useReactTable({
     data,
     columns,
