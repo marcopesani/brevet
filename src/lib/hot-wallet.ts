@@ -8,7 +8,10 @@ import {
   isAddress,
 } from "viem";
 import crypto from "crypto";
-import { prisma } from "@/lib/db";
+import { connectDB } from "@/lib/db";
+import { HotWallet as HotWalletModel } from "@/lib/models/hot-wallet";
+import { Transaction } from "@/lib/models/transaction";
+import { Types } from "mongoose";
 import { chainConfig } from "@/lib/chain-config";
 
 const USDC_ADDRESS = chainConfig.usdcAddress;
@@ -130,9 +133,11 @@ export async function withdrawFromHotWallet(
     throw new Error("Amount must be greater than 0");
   }
 
+  await connectDB();
+
   // Look up the user's hot wallet
-  const hotWallet = await prisma.hotWallet.findUnique({
-    where: { userId },
+  const hotWallet = await HotWalletModel.findOne({
+    userId: new Types.ObjectId(userId),
   });
   if (!hotWallet) {
     throw new Error("No hot wallet found for this user");
@@ -165,16 +170,14 @@ export async function withdrawFromHotWallet(
   });
 
   // Log withdrawal transaction
-  await prisma.transaction.create({
-    data: {
-      amount,
-      endpoint: `withdrawal:${toAddress}`,
-      txHash,
-      network: chainConfig.chain.name.toLowerCase(),
-      status: "completed",
-      type: "withdrawal",
-      userId,
-    },
+  await Transaction.create({
+    amount,
+    endpoint: `withdrawal:${toAddress}`,
+    txHash,
+    network: chainConfig.chain.name.toLowerCase(),
+    status: "completed",
+    type: "withdrawal",
+    userId: new Types.ObjectId(userId),
   });
 
   return { txHash };

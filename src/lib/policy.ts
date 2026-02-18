@@ -1,4 +1,6 @@
-import { prisma } from "@/lib/db";
+import { connectDB } from "@/lib/db";
+import { EndpointPolicy, IEndpointPolicyDocument } from "@/lib/models/endpoint-policy";
+import { Types } from "mongoose";
 
 export type PolicyAction = "hot_wallet" | "walletconnect" | "rejected";
 
@@ -18,11 +20,12 @@ export interface PolicyCheckResult {
  * Only returns active policies.
  */
 async function findMatchingPolicy(userId: string, endpoint: string) {
-  const policies = await prisma.endpointPolicy.findMany({
-    where: { userId, status: "active" },
+  const policies = await EndpointPolicy.find({
+    userId: new Types.ObjectId(userId),
+    status: "active",
   });
 
-  let bestMatch: (typeof policies)[number] | null = null;
+  let bestMatch: IEndpointPolicyDocument | null = null;
   for (const policy of policies) {
     if (endpoint.startsWith(policy.endpointPattern)) {
       if (!bestMatch || policy.endpointPattern.length > bestMatch.endpointPattern.length) {
@@ -63,18 +66,21 @@ export async function checkPolicy(
   endpoint: string,
   userId: string,
 ): Promise<PolicyCheckResult> {
+  await connectDB();
+
   const policy = await findMatchingPolicy(userId, endpoint);
 
   if (!policy) {
     // Auto-create a draft policy so the user can review and activate it
     const host = extractHost(endpoint);
+    const userObjectId = new Types.ObjectId(userId);
 
     // Upsert: create a draft if none exists, or reactivate an archived policy
-    await prisma.endpointPolicy.upsert({
-      where: { userId_endpointPattern: { userId, endpointPattern: host } },
-      create: { endpointPattern: host, userId, status: "draft" },
-      update: { status: "draft", archivedAt: null },
-    });
+    await EndpointPolicy.findOneAndUpdate(
+      { userId: userObjectId, endpointPattern: host },
+      { $set: { status: "draft", archivedAt: null }, $setOnInsert: { endpointPattern: host, userId: userObjectId } },
+      { upsert: true, returnDocument: "after" },
+    );
 
     return {
       action: "rejected",
@@ -83,7 +89,7 @@ export async function checkPolicy(
   }
 
   const result = {
-    policyId: policy.id,
+    policyId: policy._id.toString(),
     payFromHotWallet: policy.payFromHotWallet,
   };
 
