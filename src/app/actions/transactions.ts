@@ -6,17 +6,17 @@ import {
   getTransactions as _getTransactions,
 } from "@/lib/data/transactions";
 
-export async function getRecentTransactions(limit?: number) {
+export async function getRecentTransactions(limit?: number, chainId?: number) {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
-  return _getRecentTransactions(auth.userId, limit);
+  return _getRecentTransactions(auth.userId, limit, chainId !== undefined ? { chainId } : undefined);
 }
 
-export async function getTransactions(since?: string, until?: string) {
+export async function getTransactions(since?: string, until?: string, chainId?: number) {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
 
-  const options: { since?: Date; until?: Date } = {};
+  const options: { since?: Date; until?: Date; chainId?: number } = {};
   if (since) {
     const sinceDate = new Date(since);
     if (isNaN(sinceDate.getTime())) throw new Error("Invalid 'since' date format");
@@ -26,6 +26,9 @@ export async function getTransactions(since?: string, until?: string) {
     const untilDate = new Date(until);
     if (isNaN(untilDate.getTime())) throw new Error("Invalid 'until' date format");
     options.until = untilDate;
+  }
+  if (chainId !== undefined) {
+    options.chainId = chainId;
   }
 
   return _getTransactions(auth.userId, options);

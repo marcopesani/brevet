@@ -27,12 +27,14 @@ import {
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { usePendingPayments } from "@/hooks/use-pending-payments"
+import { useChain } from "@/contexts/chain-context"
 
 export function AppSidebar({
   walletAddress,
   ...props
 }: React.ComponentProps<typeof Sidebar> & { walletAddress: string }) {
-  const { count: pendingCount } = usePendingPayments()
+  const { activeChain } = useChain()
+  const { count: pendingCount } = usePendingPayments(activeChain.chain.id)
   const pathname = usePathname()
 
   const navMain = [

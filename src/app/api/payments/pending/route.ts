@@ -17,7 +17,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const payments = await getPendingPayments(auth.userId);
+  const chainIdParam = request.nextUrl.searchParams.get("chainId");
+  const chainId = chainIdParam ? parseInt(chainIdParam, 10) : undefined;
+  const options = chainId !== undefined && !isNaN(chainId) ? { chainId } : undefined;
+
+  const payments = await getPendingPayments(auth.userId, options);
 
   return NextResponse.json(payments);
 }

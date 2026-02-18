@@ -5,16 +5,19 @@ import type { PendingPayment } from "@/components/pending-payment-card";
 
 export const PENDING_PAYMENTS_QUERY_KEY = ["pending-payments"] as const;
 
-async function fetchPendingPayments(): Promise<PendingPayment[]> {
-  const res = await fetch("/api/payments/pending");
+async function fetchPendingPayments(chainId?: number): Promise<PendingPayment[]> {
+  const url = chainId !== undefined
+    ? `/api/payments/pending?chainId=${chainId}`
+    : "/api/payments/pending";
+  const res = await fetch(url);
   if (!res.ok) throw new Error("Failed to fetch pending payments");
   return res.json();
 }
 
-export function usePendingPayments() {
+export function usePendingPayments(chainId?: number) {
   const { data, isLoading, error } = useQuery({
-    queryKey: PENDING_PAYMENTS_QUERY_KEY,
-    queryFn: fetchPendingPayments,
+    queryKey: [...PENDING_PAYMENTS_QUERY_KEY, chainId],
+    queryFn: () => fetchPendingPayments(chainId),
     refetchInterval: 10_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,

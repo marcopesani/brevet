@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import PendingPaymentCard from "@/components/pending-payment-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Inbox } from "lucide-react";
+import { useChain } from "@/contexts/chain-context";
 import {
   usePendingPayments,
   PENDING_PAYMENTS_QUERY_KEY,
@@ -16,7 +17,8 @@ interface PendingPaymentListProps {
 export default function PendingPaymentList({
   walletAddress,
 }: PendingPaymentListProps) {
-  const { payments, isLoading } = usePendingPayments();
+  const { activeChain } = useChain();
+  const { payments, isLoading } = usePendingPayments(activeChain.chain.id);
   const queryClient = useQueryClient();
 
   function handleAction() {

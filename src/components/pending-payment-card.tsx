@@ -5,7 +5,8 @@ import { useSignTypedData } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { authorizationTypes } from "@x402/evm";
 import type { PaymentRequirements } from "@x402/core/types";
-import { getDefaultChainConfig } from "@/lib/chain-config";
+import { useChain } from "@/contexts/chain-context";
+import { CHAIN_CONFIGS } from "@/lib/chain-config";
 import type { Hex } from "viem";
 import { toast } from "sonner";
 import {
@@ -30,6 +31,7 @@ export interface PendingPayment {
   id: string;
   url: string;
   amount: number;
+  chainId?: number;
   paymentRequirements: string;
   status: string;
   expiresAt: string;
@@ -98,8 +100,14 @@ export default function PendingPaymentCard({
   >(null);
   const { signTypedDataAsync } = useSignTypedData();
   const queryClient = useQueryClient();
+  const { activeChain } = useChain();
   const remaining = useCountdown(payment.expiresAt);
   const isExpired = remaining <= 0;
+
+  // Use the payment's stored chainId if available, otherwise fall back to active chain
+  const paymentChainConfig = payment.chainId !== undefined
+    ? CHAIN_CONFIGS[payment.chainId] ?? activeChain
+    : activeChain;
 
   function invalidateAndNotify() {
     queryClient.invalidateQueries({ queryKey: PENDING_PAYMENTS_QUERY_KEY });
@@ -113,7 +121,7 @@ export default function PendingPaymentCard({
       const parsed = JSON.parse(payment.paymentRequirements);
       const requirements: PaymentRequirements[] = Array.isArray(parsed) ? parsed : parsed.accepts;
       const requirement = requirements.find(
-        (r) => r.scheme === "exact" && r.network === getDefaultChainConfig().networkString
+        (r) => r.scheme === "exact" && r.network === paymentChainConfig.networkString
       );
 
       if (!requirement) {
@@ -135,7 +143,7 @@ export default function PendingPaymentCard({
       };
 
       const signature = await signTypedDataAsync({
-        domain: getDefaultChainConfig().usdcDomain,
+        domain: paymentChainConfig.usdcDomain,
         types: authorizationTypes,
         primaryType: "TransferWithAuthorization",
         message: {
@@ -211,6 +219,8 @@ export default function PendingPaymentCard({
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <div className="text-muted-foreground">Amount</div>
           <div className="font-medium">${payment.amount.toFixed(6)} USDC</div>
+          <div className="text-muted-foreground">Chain</div>
+          <div>{paymentChainConfig.chain.name}</div>
           <div className="text-muted-foreground">Created</div>
           <div>{new Date(payment.createdAt).toLocaleString()}</div>
           <div className="text-muted-foreground">Expires</div>
