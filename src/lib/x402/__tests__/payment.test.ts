@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { prisma } from "../../db";
 import { resetTestDb, seedTestUser } from "../../../test/helpers/db";
 import { executePayment } from "../payment";
+import { Transaction } from "../../models/transaction";
+import { HotWallet } from "../../models/hot-wallet";
+import { EndpointPolicy } from "../../models/endpoint-policy";
+import mongoose from "mongoose";
 
 // Mock global fetch to avoid real network calls and bypass URL validation on loopback
 const mockFetch = vi.fn();
@@ -185,9 +188,10 @@ describe("executePayment", () => {
       "X-PAYMENT" in headers || "PAYMENT-SIGNATURE" in headers;
     expect(hasPaymentHeader).toBe(true);
 
-    const tx = await prisma.transaction.findFirst({
-      where: { userId, endpoint: "https://api.example.com/resource" },
-    });
+    const tx = await Transaction.findOne({
+      userId: new mongoose.Types.ObjectId(userId),
+      endpoint: "https://api.example.com/resource",
+    }).lean();
     expect(tx).not.toBeNull();
     expect(tx!.status).toBe("completed");
     expect(tx!.txHash).toBe(txHash);
@@ -195,7 +199,7 @@ describe("executePayment", () => {
   });
 
   it("rejects when no hot wallet exists", async () => {
-    await prisma.hotWallet.deleteMany({ where: { userId } });
+    await HotWallet.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
 
     mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
 
@@ -206,7 +210,7 @@ describe("executePayment", () => {
   });
 
   it("rejects when policy denies the payment (no active policy)", async () => {
-    await prisma.endpointPolicy.deleteMany({ where: { userId } });
+    await EndpointPolicy.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
 
     mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
 
@@ -228,9 +232,10 @@ describe("executePayment", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("server responded with 500");
 
-    const tx = await prisma.transaction.findFirst({
-      where: { userId, endpoint: "https://api.example.com/resource" },
-    });
+    const tx = await Transaction.findOne({
+      userId: new mongoose.Types.ObjectId(userId),
+      endpoint: "https://api.example.com/resource",
+    }).lean();
     expect(tx).not.toBeNull();
     expect(tx!.status).toBe("failed");
     expect(tx!.errorMessage).toContain("server responded with 500");
@@ -249,13 +254,14 @@ describe("executePayment", () => {
 
     expect(result.success).toBe(true);
 
-    const tx = await prisma.transaction.findFirst({
-      where: { userId, endpoint: "https://api.example.com/resource" },
-    });
+    const tx = await Transaction.findOne({
+      userId: new mongoose.Types.ObjectId(userId),
+      endpoint: "https://api.example.com/resource",
+    }).lean();
     expect(tx).not.toBeNull();
     expect(tx!.status).toBe("completed");
     expect(tx!.responseStatus).toBe(200);
-    expect(tx!.errorMessage).toBeUndefined();
+    expect(tx!.errorMessage).toBeNull();
   });
 
   it("preserves POST method and body across 402 payment flow", async () => {
@@ -325,10 +331,10 @@ describe("executePayment", () => {
   });
 
   it("returns walletconnect when payFromHotWallet is false", async () => {
-    await prisma.endpointPolicy.update({
-      where: { userId_endpointPattern: { userId, endpointPattern: "https://api.example.com" } },
-      data: { payFromHotWallet: false },
-    });
+    await EndpointPolicy.findOneAndUpdate(
+      { userId: new mongoose.Types.ObjectId(userId), endpointPattern: "https://api.example.com" },
+      { $set: { payFromHotWallet: false } },
+    );
 
     mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
 

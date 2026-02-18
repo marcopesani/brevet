@@ -4,17 +4,15 @@ import {
   decryptPrivateKey,
   createHotWallet,
   withdrawFromHotWallet,
-  getUsdcBalance,
   USDC_ADDRESS,
-  USDC_DECIMALS,
 } from "../hot-wallet";
 import {
   TEST_PRIVATE_KEY,
-  TEST_WALLET_ADDRESS,
-  TEST_ENCRYPTED_PRIVATE_KEY,
 } from "../../test/helpers/crypto";
-import { resetTestDb, seedTestUser, cleanupTestDb } from "../../test/helpers/db";
-import { prisma } from "../db";
+import { resetTestDb, seedTestUser } from "../../test/helpers/db";
+import { User } from "../models/user";
+import { Transaction } from "../models/transaction";
+import mongoose from "mongoose";
 
 // Mock viem to avoid real RPC calls
 vi.mock("viem", async (importOriginal) => {
@@ -117,31 +115,34 @@ describe("hot-wallet", () => {
     });
 
     it("should throw for an invalid destination address", async () => {
+      const userId = new mongoose.Types.ObjectId().toString();
       await expect(
-        withdrawFromHotWallet("00000000-0000-4000-a000-000000000001", 1.0, "not-an-address"),
+        withdrawFromHotWallet(userId, 1.0, "not-an-address"),
       ).rejects.toThrow("Invalid destination address");
     });
 
     it("should throw for zero or negative amount", async () => {
+      const userId = new mongoose.Types.ObjectId().toString();
       const validAddress = "0x" + "1".repeat(40);
       await expect(
-        withdrawFromHotWallet("00000000-0000-4000-a000-000000000001", 0, validAddress),
+        withdrawFromHotWallet(userId, 0, validAddress),
       ).rejects.toThrow("Amount must be greater than 0");
 
       await expect(
-        withdrawFromHotWallet("00000000-0000-4000-a000-000000000001", -5, validAddress),
+        withdrawFromHotWallet(userId, -5, validAddress),
       ).rejects.toThrow("Amount must be greater than 0");
     });
 
     it("should throw if user has no hot wallet", async () => {
       // Create a user without a hot wallet
-      await prisma.user.create({
-        data: { id: "00000000-0000-4000-a000-000000000099", email: "no-wallet@example.com" },
+      const user = await User.create({
+        _id: new mongoose.Types.ObjectId(),
+        email: "no-wallet@example.com",
       });
 
       const validAddress = "0x" + "1".repeat(40);
       await expect(
-        withdrawFromHotWallet("00000000-0000-4000-a000-000000000099", 1.0, validAddress),
+        withdrawFromHotWallet(user.id, 1.0, validAddress),
       ).rejects.toThrow("No hot wallet found for this user");
     });
 
@@ -194,9 +195,10 @@ describe("hot-wallet", () => {
       expect(callArgs.args[0]).toBe(toAddress);
 
       // Verify transaction was logged in the database
-      const tx = await prisma.transaction.findFirst({
-        where: { userId: user.id, type: "withdrawal" },
-      });
+      const tx = await Transaction.findOne({
+        userId: new mongoose.Types.ObjectId(user.id),
+        type: "withdrawal",
+      }).lean();
       expect(tx).not.toBeNull();
       expect(tx!.txHash).toBe(mockTxHash);
       expect(tx!.amount).toBe(1.0);

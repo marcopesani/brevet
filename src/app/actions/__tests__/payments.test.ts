@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { prisma } from "@/lib/db";
+import { resetTestDb } from "@/test/helpers/db";
+import { PendingPayment } from "@/lib/models/pending-payment";
+import { Transaction } from "@/lib/models/transaction";
+import { User } from "@/lib/models/user";
+import mongoose from "mongoose";
 
 // Mock next/cache
 vi.mock("next/cache", () => ({
@@ -20,9 +24,7 @@ vi.mock("@/lib/x402/headers", () => ({
   extractTxHashFromResponse: vi.fn().mockResolvedValue(null),
 }));
 
-type PrismaMock = typeof prisma & { _stores: Record<string, unknown[]> };
-
-const TEST_USER_ID = "00000000-0000-4000-a000-000000000001";
+const TEST_USER_ID = new mongoose.Types.ObjectId().toString();
 
 const MOCK_AUTHORIZATION = {
   from: "0x1234567890abcdef1234567890abcdef12345678",
@@ -44,13 +46,17 @@ const MOCK_PAYMENT_REQUIREMENTS = JSON.stringify([
   },
 ]);
 
+async function createTestUserForId(userId: string) {
+  return User.create({
+    _id: new mongoose.Types.ObjectId(userId),
+    walletAddress: "0x" + "a".repeat(40),
+  });
+}
+
 describe("approvePendingPayment server action", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.restoreAllMocks();
-    const mock = prisma as PrismaMock;
-    for (const store of Object.values(mock._stores)) {
-      (store as unknown[]).length = 0;
-    }
+    await resetTestDb();
   });
 
   it("successfully approves payment and stores response on success", async () => {
@@ -71,26 +77,24 @@ describe("approvePendingPayment server action", () => {
       }),
     );
 
-    const future = new Date(Date.now() + 60_000);
-    await prisma.pendingPayment.create({
-      data: {
-        userId: TEST_USER_ID,
-        url: "https://api.example.com/paid-resource",
-        method: "POST",
-        amount: 0.05,
-        paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
-        status: "pending",
-        expiresAt: future,
-        requestBody: '{"query": "test"}',
-        requestHeaders: JSON.stringify({ "Content-Type": "application/json" }),
-      },
-    });
+    await createTestUserForId(TEST_USER_ID);
 
-    const payment = await prisma.pendingPayment.findFirst({});
+    const future = new Date(Date.now() + 60_000);
+    const payment = await PendingPayment.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      url: "https://api.example.com/paid-resource",
+      method: "POST",
+      amount: 0.05,
+      paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
+      status: "pending",
+      expiresAt: future,
+      requestBody: '{"query": "test"}',
+      requestHeaders: JSON.stringify({ "Content-Type": "application/json" }),
+    });
 
     const { approvePendingPayment } = await import("../payments");
     const result = await approvePendingPayment(
-      payment!.id,
+      payment._id.toString(),
       "0xmocksignature",
       MOCK_AUTHORIZATION,
     );
@@ -112,9 +116,7 @@ describe("approvePendingPayment server action", () => {
     );
 
     // Verify the pending payment was completed
-    const updated = await prisma.pendingPayment.findUnique({
-      where: { id: payment!.id },
-    });
+    const updated = await PendingPayment.findById(payment._id).lean();
     expect(updated!.status).toBe("completed");
     expect(updated!.responsePayload).toBe('{"result": "paid data"}');
     expect(updated!.responseStatus).toBe(200);
@@ -122,12 +124,12 @@ describe("approvePendingPayment server action", () => {
     expect(updated!.completedAt).toBeInstanceOf(Date);
 
     // Verify a transaction was created with responseStatus and no errorMessage
-    const transactions = await prisma.transaction.findMany({});
+    const transactions = await Transaction.find({}).lean();
     expect(transactions).toHaveLength(1);
     expect(transactions[0].status).toBe("completed");
     expect(transactions[0].txHash).toBe("0xtxhash123");
     expect(transactions[0].responseStatus).toBe(200);
-    expect(transactions[0].errorMessage).toBeUndefined();
+    expect(transactions[0].errorMessage).toBeNull();
   });
 
   it("stores failed response when paid fetch returns non-2xx", async () => {
@@ -143,23 +145,21 @@ describe("approvePendingPayment server action", () => {
       }),
     );
 
-    const future = new Date(Date.now() + 60_000);
-    await prisma.pendingPayment.create({
-      data: {
-        userId: TEST_USER_ID,
-        url: "https://api.example.com/paid-resource",
-        amount: 0.05,
-        paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
-        status: "pending",
-        expiresAt: future,
-      },
-    });
+    await createTestUserForId(TEST_USER_ID);
 
-    const payment = await prisma.pendingPayment.findFirst({});
+    const future = new Date(Date.now() + 60_000);
+    const payment = await PendingPayment.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      url: "https://api.example.com/paid-resource",
+      amount: 0.05,
+      paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
+      status: "pending",
+      expiresAt: future,
+    });
 
     const { approvePendingPayment } = await import("../payments");
     const result = await approvePendingPayment(
-      payment!.id,
+      payment._id.toString(),
       "0xmocksignature",
       MOCK_AUTHORIZATION,
     );
@@ -168,15 +168,13 @@ describe("approvePendingPayment server action", () => {
     expect(result.status).toBe(502);
 
     // Verify the pending payment was marked as failed
-    const updated = await prisma.pendingPayment.findUnique({
-      where: { id: payment!.id },
-    });
+    const updated = await PendingPayment.findById(payment._id).lean();
     expect(updated!.status).toBe("failed");
     expect(updated!.responsePayload).toBe("Bad Gateway");
     expect(updated!.responseStatus).toBe(502);
 
     // Verify a failed transaction was created with errorMessage and responseStatus
-    const transactions = await prisma.transaction.findMany({});
+    const transactions = await Transaction.find({}).lean();
     expect(transactions).toHaveLength(1);
     expect(transactions[0].status).toBe("failed");
     expect(transactions[0].errorMessage).toContain("server responded with 502");
@@ -194,27 +192,25 @@ describe("approvePendingPayment server action", () => {
       new Response("OK", { status: 200 }),
     );
 
-    const future = new Date(Date.now() + 60_000);
-    await prisma.pendingPayment.create({
-      data: {
-        userId: TEST_USER_ID,
-        url: "https://api.example.com/paid-resource",
-        amount: 0.05,
-        paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
-        status: "pending",
-        expiresAt: future,
-        requestHeaders: JSON.stringify({
-          Authorization: "Bearer mytoken",
-          "X-Custom": "custom-value",
-        }),
-      },
-    });
+    await createTestUserForId(TEST_USER_ID);
 
-    const payment = await prisma.pendingPayment.findFirst({});
+    const future = new Date(Date.now() + 60_000);
+    const payment = await PendingPayment.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      url: "https://api.example.com/paid-resource",
+      amount: 0.05,
+      paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
+      status: "pending",
+      expiresAt: future,
+      requestHeaders: JSON.stringify({
+        Authorization: "Bearer mytoken",
+        "X-Custom": "custom-value",
+      }),
+    });
 
     const { approvePendingPayment } = await import("../payments");
     await approvePendingPayment(
-      payment!.id,
+      payment._id.toString(),
       "0xmocksignature",
       MOCK_AUTHORIZATION,
     );
@@ -241,24 +237,22 @@ describe("approvePendingPayment server action", () => {
       new Response("OK", { status: 200 }),
     );
 
-    const future = new Date(Date.now() + 60_000);
-    await prisma.pendingPayment.create({
-      data: {
-        userId: TEST_USER_ID,
-        url: "https://api.example.com/paid-resource",
-        method: "GET",
-        amount: 0.05,
-        paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
-        status: "pending",
-        expiresAt: future,
-      },
-    });
+    await createTestUserForId(TEST_USER_ID);
 
-    const payment = await prisma.pendingPayment.findFirst({});
+    const future = new Date(Date.now() + 60_000);
+    const payment = await PendingPayment.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      url: "https://api.example.com/paid-resource",
+      method: "GET",
+      amount: 0.05,
+      paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
+      status: "pending",
+      expiresAt: future,
+    });
 
     const { approvePendingPayment } = await import("../payments");
     const result = await approvePendingPayment(
-      payment!.id,
+      payment._id.toString(),
       "0xmocksignature",
       MOCK_AUTHORIZATION,
     );
@@ -288,8 +282,9 @@ describe("approvePendingPayment server action", () => {
     });
 
     const { approvePendingPayment } = await import("../payments");
+    const fakeId = new mongoose.Types.ObjectId().toString();
     await expect(
-      approvePendingPayment("nonexistent", "0xsig", MOCK_AUTHORIZATION),
+      approvePendingPayment(fakeId, "0xsig", MOCK_AUTHORIZATION),
     ).rejects.toThrow("Pending payment not found");
   });
 
@@ -300,23 +295,20 @@ describe("approvePendingPayment server action", () => {
       walletAddress: "0x1234",
     });
 
+    const differentUserId = new mongoose.Types.ObjectId();
     const future = new Date(Date.now() + 60_000);
-    await prisma.pendingPayment.create({
-      data: {
-        userId: "different-user-id",
-        url: "https://api.example.com/paid-resource",
-        amount: 0.05,
-        paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
-        status: "pending",
-        expiresAt: future,
-      },
+    const payment = await PendingPayment.create({
+      userId: differentUserId,
+      url: "https://api.example.com/paid-resource",
+      amount: 0.05,
+      paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
+      status: "pending",
+      expiresAt: future,
     });
-
-    const payment = await prisma.pendingPayment.findFirst({});
 
     const { approvePendingPayment } = await import("../payments");
     await expect(
-      approvePendingPayment(payment!.id, "0xsig", MOCK_AUTHORIZATION),
+      approvePendingPayment(payment._id.toString(), "0xsig", MOCK_AUTHORIZATION),
     ).rejects.toThrow("Forbidden");
   });
 
@@ -328,23 +320,19 @@ describe("approvePendingPayment server action", () => {
     });
 
     const future = new Date(Date.now() + 60_000);
-    await prisma.pendingPayment.create({
-      data: {
-        userId: TEST_USER_ID,
-        url: "https://api.example.com/paid-resource",
-        amount: 0.05,
-        paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
-        status: "approved",
-        expiresAt: future,
-        signature: "0xoldsig",
-      },
+    const payment = await PendingPayment.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      url: "https://api.example.com/paid-resource",
+      amount: 0.05,
+      paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
+      status: "approved",
+      expiresAt: future,
+      signature: "0xoldsig",
     });
-
-    const payment = await prisma.pendingPayment.findFirst({});
 
     const { approvePendingPayment } = await import("../payments");
     await expect(
-      approvePendingPayment(payment!.id, "0xsig", MOCK_AUTHORIZATION),
+      approvePendingPayment(payment._id.toString(), "0xsig", MOCK_AUTHORIZATION),
     ).rejects.toThrow("Payment is already approved");
   });
 
@@ -356,28 +344,22 @@ describe("approvePendingPayment server action", () => {
     });
 
     const past = new Date(Date.now() - 60_000);
-    await prisma.pendingPayment.create({
-      data: {
-        userId: TEST_USER_ID,
-        url: "https://api.example.com/paid-resource",
-        amount: 0.05,
-        paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
-        status: "pending",
-        expiresAt: past,
-      },
+    const payment = await PendingPayment.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      url: "https://api.example.com/paid-resource",
+      amount: 0.05,
+      paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
+      status: "pending",
+      expiresAt: past,
     });
-
-    const payment = await prisma.pendingPayment.findFirst({});
 
     const { approvePendingPayment } = await import("../payments");
     await expect(
-      approvePendingPayment(payment!.id, "0xsig", MOCK_AUTHORIZATION),
+      approvePendingPayment(payment._id.toString(), "0xsig", MOCK_AUTHORIZATION),
     ).rejects.toThrow("Payment has expired");
 
     // Verify the payment was marked as expired
-    const updated = await prisma.pendingPayment.findUnique({
-      where: { id: payment!.id },
-    });
+    const updated = await PendingPayment.findById(payment._id).lean();
     expect(updated!.status).toBe("expired");
   });
 
@@ -393,23 +375,21 @@ describe("approvePendingPayment server action", () => {
       new Error("fetch failed: DNS resolution failed"),
     );
 
-    const future = new Date(Date.now() + 60_000);
-    await prisma.pendingPayment.create({
-      data: {
-        userId: TEST_USER_ID,
-        url: "https://api.example.com/paid-resource",
-        amount: 0.05,
-        paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
-        status: "pending",
-        expiresAt: future,
-      },
-    });
+    await createTestUserForId(TEST_USER_ID);
 
-    const payment = await prisma.pendingPayment.findFirst({});
+    const future = new Date(Date.now() + 60_000);
+    const payment = await PendingPayment.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      url: "https://api.example.com/paid-resource",
+      amount: 0.05,
+      paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
+      status: "pending",
+      expiresAt: future,
+    });
 
     const { approvePendingPayment } = await import("../payments");
     const result = await approvePendingPayment(
-      payment!.id,
+      payment._id.toString(),
       "0xmocksignature",
       MOCK_AUTHORIZATION,
     );
@@ -419,16 +399,14 @@ describe("approvePendingPayment server action", () => {
     expect(result.status).toBe(0);
 
     // Verify a failed transaction was created with Network error message
-    const transactions = await prisma.transaction.findMany({});
+    const transactions = await Transaction.find({}).lean();
     expect(transactions).toHaveLength(1);
     expect(transactions[0].status).toBe("failed");
     expect(transactions[0].errorMessage).toMatch(/^Network error:/);
     expect(transactions[0].errorMessage).toContain("DNS resolution failed");
 
     // Verify the pending payment was marked as failed
-    const updated = await prisma.pendingPayment.findUnique({
-      where: { id: payment!.id },
-    });
+    const updated = await PendingPayment.findById(payment._id).lean();
     expect(updated!.status).toBe("failed");
   });
 });

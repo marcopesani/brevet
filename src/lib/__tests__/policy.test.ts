@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { prisma } from "../db";
 import { resetTestDb, seedTestUser } from "../../test/helpers/db";
 import { createTestEndpointPolicy } from "../../test/helpers/fixtures";
+import { User } from "../models/user";
+import { EndpointPolicy } from "../models/endpoint-policy";
 import { checkPolicy } from "../policy";
+import mongoose from "mongoose";
 
 describe("checkPolicy", () => {
   let userId: string;
@@ -27,8 +29,9 @@ describe("checkPolicy", () => {
 
   it("rejects when no matching endpoint policy exists", async () => {
     // Create a user with no policy
-    const noPolicy = await prisma.user.create({
-      data: { id: "00000000-0000-4000-a000-000000000098", email: "no-policy@example.com" },
+    const noPolicy = await User.create({
+      _id: new mongoose.Types.ObjectId(),
+      email: "no-policy@example.com",
     });
 
     const result = await checkPolicy(0.01, "https://unknown.example.com/resource", noPolicy.id);
@@ -44,9 +47,10 @@ describe("checkPolicy", () => {
       expect(result.action).toBe("rejected");
       expect(result.reason).toContain("draft policy has been created");
 
-      const draft = await prisma.endpointPolicy.findUnique({
-        where: { userId_endpointPattern: { userId, endpointPattern: "https://unknown.example.com" } },
-      });
+      const draft = await EndpointPolicy.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+        endpointPattern: "https://unknown.example.com",
+      }).lean();
       expect(draft).not.toBeNull();
       expect(draft!.status).toBe("draft");
     });
@@ -55,40 +59,41 @@ describe("checkPolicy", () => {
       await checkPolicy(0.01, "https://unknown.example.com/a", userId);
       await checkPolicy(0.01, "https://unknown.example.com/b", userId);
 
-      const drafts = await prisma.endpointPolicy.findMany({
-        where: { userId, endpointPattern: "https://unknown.example.com" },
-      });
+      const drafts = await EndpointPolicy.find({
+        userId: new mongoose.Types.ObjectId(userId),
+        endpointPattern: "https://unknown.example.com",
+      }).lean();
       expect(drafts).toHaveLength(1);
     });
 
     it("reactivates an archived policy as draft instead of creating a duplicate", async () => {
       // Archive the seeded policy for api.example.com
-      await prisma.endpointPolicy.update({
-        where: { userId_endpointPattern: { userId, endpointPattern: "https://api.example.com" } },
-        data: { status: "archived", archivedAt: new Date() },
-      });
+      await EndpointPolicy.findOneAndUpdate(
+        { userId: new mongoose.Types.ObjectId(userId), endpointPattern: "https://api.example.com" },
+        { $set: { status: "archived", archivedAt: new Date() } },
+      );
 
       const result = await checkPolicy(0.01, "https://api.example.com/resource", userId);
 
       expect(result.action).toBe("rejected");
       expect(result.reason).toContain("draft policy has been created");
 
-      const policy = await prisma.endpointPolicy.findUnique({
-        where: { userId_endpointPattern: { userId, endpointPattern: "https://api.example.com" } },
-      });
+      const policy = await EndpointPolicy.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+        endpointPattern: "https://api.example.com",
+      }).lean();
       expect(policy).not.toBeNull();
       expect(policy!.status).toBe("draft");
       expect(policy!.archivedAt).toBeNull();
     });
 
     it("does not match draft policies", async () => {
-      await prisma.endpointPolicy.create({
-        data: createTestEndpointPolicy(userId, {
-          id: "00000000-0000-4000-a000-000000000099",
+      await EndpointPolicy.create(
+        createTestEndpointPolicy(userId, {
           endpointPattern: "https://draft.example.com",
           status: "draft",
         }),
-      });
+      );
 
       const result = await checkPolicy(0.01, "https://draft.example.com/resource", userId);
 
@@ -108,13 +113,12 @@ describe("checkPolicy", () => {
 
     it("prefers the longest matching prefix", async () => {
       // Create a more specific policy with payFromHotWallet=false
-      await prisma.endpointPolicy.create({
-        data: createTestEndpointPolicy(userId, {
-          id: "00000000-0000-4000-a000-000000000050",
+      await EndpointPolicy.create(
+        createTestEndpointPolicy(userId, {
           endpointPattern: "https://api.example.com/expensive",
           payFromHotWallet: false,
         }),
-      });
+      );
 
       const result = await checkPolicy(0.5, "https://api.example.com/expensive/item", userId);
 
@@ -133,10 +137,10 @@ describe("checkPolicy", () => {
 
   it("ignores archived policies (treats as if no policy exists)", async () => {
     // Archive the seeded policy
-    await prisma.endpointPolicy.update({
-      where: { userId_endpointPattern: { userId, endpointPattern: "https://api.example.com" } },
-      data: { status: "archived", archivedAt: new Date() },
-    });
+    await EndpointPolicy.findOneAndUpdate(
+      { userId: new mongoose.Types.ObjectId(userId), endpointPattern: "https://api.example.com" },
+      { $set: { status: "archived", archivedAt: new Date() } },
+    );
 
     const result = await checkPolicy(0.05, "https://api.example.com/resource", userId);
 
@@ -146,10 +150,10 @@ describe("checkPolicy", () => {
 
   describe("payFromHotWallet flag", () => {
     it("returns walletconnect when payFromHotWallet is false", async () => {
-      await prisma.endpointPolicy.update({
-        where: { userId_endpointPattern: { userId, endpointPattern: "https://api.example.com" } },
-        data: { payFromHotWallet: false },
-      });
+      await EndpointPolicy.findOneAndUpdate(
+        { userId: new mongoose.Types.ObjectId(userId), endpointPattern: "https://api.example.com" },
+        { $set: { payFromHotWallet: false } },
+      );
 
       const result = await checkPolicy(0.01, "https://api.example.com/resource", userId);
 
