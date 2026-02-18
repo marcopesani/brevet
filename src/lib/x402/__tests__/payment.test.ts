@@ -490,6 +490,57 @@ describe("executePayment", () => {
   });
 
   describe("SSRF hardening", () => {
+    describe("H1: IPv6-mapped IPv4 bypass", () => {
+      it("rejects IPv6-mapped IPv4 loopback (::ffff:127.0.0.1)", async () => {
+        const result = await executePayment("http://[::ffff:127.0.0.1]/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects IPv6-mapped IPv4 link-local (::ffff:169.254.169.254)", async () => {
+        const result = await executePayment("http://[::ffff:169.254.169.254]/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects IPv6-mapped IPv4 private 10.x (::ffff:10.0.0.1)", async () => {
+        const result = await executePayment("http://[::ffff:10.0.0.1]/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects IPv6-mapped IPv4 private 192.168.x (::ffff:192.168.1.1)", async () => {
+        const result = await executePayment("http://[::ffff:192.168.1.1]/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects IPv6 link-local (fe80::1)", async () => {
+        const result = await executePayment("http://[fe80::1]/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("link-local");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects IPv6-mapped IPv4 in hex form (::ffff:7f00:1)", async () => {
+        const result = await executePayment("http://[::ffff:7f00:1]/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("allows IPv6-mapped public IPv4 (::ffff:8.8.8.8)", async () => {
+        mockFetch.mockResolvedValueOnce(make200Response({ data: "ok" }));
+        const result = await executePayment("http://[::ffff:8.8.8.8]/", userId);
+        expect(result.success).toBe(true);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      });
+    });
+
     describe("H2: full loopback range", () => {
       it("rejects 127.0.0.2", async () => {
         const result = await executePayment("http://127.0.0.2/", userId);
