@@ -149,6 +149,53 @@ function validateUrl(url: string): string | null {
 }
 
 /**
+ * Maximum number of redirects to follow before aborting.
+ * Prevents infinite redirect loops and limits redirect-chain SSRF attacks.
+ */
+const MAX_REDIRECTS = 5;
+
+/**
+ * Fetch a URL with redirect: "manual" and validate each redirect Location
+ * through validateUrl() before following it. This prevents redirect-based SSRF
+ * where an external URL (e.g., https://evil.com) redirects to an internal IP
+ * (e.g., http://169.254.169.254/). Limits redirect depth to MAX_REDIRECTS.
+ *
+ * NOTE: Production deployments should also use DNS-level rebinding protection
+ * (e.g., Cloudflare Gateway, dnsmasq rebind-protection) to defend against DNS
+ * rebinding attacks where a domain alternates between public and private IPs (M1).
+ */
+async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
+  let currentUrl = url;
+  for (let i = 0; i <= MAX_REDIRECTS; i++) {
+    const response = await fetch(currentUrl, { ...init, redirect: "manual" });
+
+    // If not a redirect, return the response as-is
+    if (response.status < 300 || response.status >= 400) {
+      return response;
+    }
+
+    // Handle redirect
+    const location = response.headers.get("location");
+    if (!location) {
+      return response; // No Location header — return the redirect response
+    }
+
+    // Resolve relative redirect URLs against the current URL
+    const resolvedUrl = new URL(location, currentUrl).toString();
+
+    // Validate the redirect target for SSRF (H3)
+    const redirectError = validateUrl(resolvedUrl);
+    if (redirectError) {
+      throw new Error(`Redirect blocked: ${redirectError} (redirected to ${resolvedUrl})`);
+    }
+
+    currentUrl = resolvedUrl;
+  }
+
+  throw new Error(`Too many redirects (max ${MAX_REDIRECTS})`);
+}
+
+/**
  * Create an x402Client configured with EVM schemes for a given private key.
  *
  * Registers both V1 and V2 EVM exact schemes (EIP-3009 + Permit2)
@@ -294,7 +341,14 @@ export async function executePayment(
   if (options?.headers) {
     requestInit.headers = { ...options.headers };
   }
-  const initialResponse = await fetch(url, requestInit);
+  let initialResponse: Response;
+  try {
+    initialResponse = await safeFetch(url, requestInit);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Fetch failed";
+    logger.warn("Initial request failed", { userId, url, action: "payment_rejected", error: message });
+    return { success: false, status: "rejected", signingStrategy: "rejected", error: `Request failed: ${message}` };
+  }
 
   if (initialResponse.status !== 402) {
     // Not a paid endpoint — return the response as-is
@@ -496,7 +550,14 @@ export async function executePayment(
   if (options?.body) {
     paidRequestInit.body = options.body;
   }
-  const paidResponse = await fetch(url, paidRequestInit);
+  let paidResponse: Response;
+  try {
+    paidResponse = await safeFetch(url, paidRequestInit);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Fetch failed";
+    logger.error("Paid request failed", { userId, url, action: "payment_failed", error: message });
+    return { success: false, status: "rejected", signingStrategy: "hot_wallet", error: `Paid request failed: ${message}` };
+  }
 
   // Read response body for storage (without consuming the original response)
   let responsePayload: string | null = null;
