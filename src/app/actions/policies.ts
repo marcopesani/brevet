@@ -12,10 +12,10 @@ import {
   archivePolicy as _archivePolicy,
 } from "@/lib/data/policies";
 
-export async function getPolicies(status?: string) {
+export async function getPolicies(status?: string, options?: { chainId?: number }) {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
-  return _getPolicies(auth.userId, status);
+  return _getPolicies(auth.userId, status, options);
 }
 
 export async function getPolicy(policyId: string) {
@@ -32,6 +32,7 @@ export async function createPolicy(data: {
   endpointPattern: string;
   payFromHotWallet?: boolean;
   status?: string;
+  chainId?: number;
 }) {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");

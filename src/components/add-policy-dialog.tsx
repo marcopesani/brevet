@@ -20,12 +20,14 @@ interface AddPolicyDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  chainId?: number;
 }
 
 export function AddPolicyDialog({
   open,
   onOpenChange,
   onSuccess,
+  chainId,
 }: AddPolicyDialogProps) {
   const [endpointPattern, setEndpointPattern] = useState("");
   const [payFromHotWallet, setPayFromHotWallet] = useState(false);
@@ -37,7 +39,7 @@ export function AddPolicyDialog({
     setError(null);
     setSubmitting(true);
     try {
-      await createPolicy({ endpointPattern, payFromHotWallet });
+      await createPolicy({ endpointPattern, payFromHotWallet, chainId });
       toast.success("Policy created");
       setEndpointPattern("");
       setPayFromHotWallet(false);
