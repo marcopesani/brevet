@@ -58,11 +58,6 @@ next-env.d.ts
 # workspace tooling
 .firecrawl/
 
-/src/generated/prisma
-dev.db
-dev.db-journal
-prisma/dev.db
-prisma/dev.db-journal
-prisma/test.db
-prisma/test.db-journal
-prisma/data_backup*.sql
+# docker
+docker-compose.override.yml
+
