@@ -1,14 +1,23 @@
-import { prisma } from "@/lib/db";
+import { Transaction } from "@/lib/models/transaction";
+import { Types } from "mongoose";
+import { connectDB } from "@/lib/db";
+
+/** Map a lean Mongoose doc to an object with string `id` and `userId`. */
+function withId<T extends { _id: Types.ObjectId; userId?: Types.ObjectId }>(doc: T): Omit<T, "_id" | "userId"> & { id: string; userId: string } {
+  const { _id, userId, ...rest } = doc;
+  return { ...rest, id: _id.toString(), userId: userId ? userId.toString() : _id.toString() };
+}
 
 /**
  * Get recent transactions for a user, limited to a specified count.
  */
 export async function getRecentTransactions(userId: string, limit: number = 5) {
-  return prisma.transaction.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    take: limit,
-  });
+  await connectDB();
+  const docs = await Transaction.find({ userId: new Types.ObjectId(userId) })
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .lean();
+  return docs.map(withId);
 }
 
 /**
@@ -18,19 +27,20 @@ export async function getTransactions(
   userId: string,
   options?: { since?: Date; until?: Date },
 ) {
-  const where: Record<string, unknown> = { userId };
+  await connectDB();
+  const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
 
   if (options?.since || options?.until) {
     const createdAt: Record<string, Date> = {};
-    if (options.since) createdAt.gte = options.since;
-    if (options.until) createdAt.lte = options.until;
-    where.createdAt = createdAt;
+    if (options.since) createdAt.$gte = options.since;
+    if (options.until) createdAt.$lte = options.until;
+    filter.createdAt = createdAt;
   }
 
-  return prisma.transaction.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-  });
+  const docs = await Transaction.find(filter)
+    .sort({ createdAt: -1 })
+    .lean();
+  return docs.map(withId);
 }
 
 /**
@@ -40,16 +50,17 @@ export async function getSpendingHistory(
   userId: string,
   options?: { since?: Date },
 ) {
-  const where: { userId: string; createdAt?: { gte: Date } } = { userId };
+  await connectDB();
+  const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
   if (options?.since) {
-    where.createdAt = { gte: options.since };
+    filter.createdAt = { $gte: options.since };
   }
 
-  return prisma.transaction.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const docs = await Transaction.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .lean();
+  return docs.map(withId);
 }
 
 /**
@@ -67,18 +78,19 @@ export async function createTransaction(data: {
   errorMessage?: string | null;
   responseStatus?: number | null;
 }) {
-  return prisma.transaction.create({
-    data: {
-      amount: data.amount,
-      endpoint: data.endpoint,
-      txHash: data.txHash,
-      network: data.network,
-      status: data.status,
-      type: data.type ?? "payment",
-      userId: data.userId,
-      responsePayload: data.responsePayload,
-      errorMessage: data.errorMessage,
-      responseStatus: data.responseStatus,
-    },
+  await connectDB();
+  const doc = await Transaction.create({
+    amount: data.amount,
+    endpoint: data.endpoint,
+    txHash: data.txHash,
+    network: data.network,
+    status: data.status,
+    type: data.type ?? "payment",
+    userId: new Types.ObjectId(data.userId),
+    responsePayload: data.responsePayload,
+    errorMessage: data.errorMessage,
+    responseStatus: data.responseStatus,
   });
+  const lean = doc.toObject();
+  return withId(lean);
 }
