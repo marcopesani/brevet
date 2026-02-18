@@ -1,16 +1,24 @@
-import { prisma } from "@/lib/db";
-import { createTestUser, createTestHotWallet, createTestEndpointPolicy } from "./fixtures";
+import mongoose from "mongoose";
+import { User } from "@/lib/models/user";
+import { HotWallet } from "@/lib/models/hot-wallet";
+import { EndpointPolicy } from "@/lib/models/endpoint-policy";
+import { Transaction } from "@/lib/models/transaction";
+import { PendingPayment } from "@/lib/models/pending-payment";
+import {
+  createTestUser,
+  createTestHotWallet,
+  createTestEndpointPolicy,
+} from "./fixtures";
 
 /**
- * Truncate all tables in the test database.
- * Order matters due to foreign key constraints.
+ * Clear all collections in the test database.
+ * Safe to call between tests for isolation.
  */
 export async function resetTestDb(): Promise<void> {
-  await prisma.pendingPayment.deleteMany();
-  await prisma.transaction.deleteMany();
-  await prisma.endpointPolicy.deleteMany();
-  await prisma.hotWallet.deleteMany();
-  await prisma.user.deleteMany();
+  const collections = mongoose.connection.collections;
+  for (const key in collections) {
+    await collections[key].deleteMany({});
+  }
 }
 
 /**
@@ -21,20 +29,20 @@ export async function seedTestUser(
   overrides?: Parameters<typeof createTestUser>[0],
 ) {
   const userData = createTestUser(overrides);
-  const user = await prisma.user.create({ data: userData });
+  const user = await User.create(userData);
 
   const hotWalletData = createTestHotWallet(user.id);
-  const hotWallet = await prisma.hotWallet.create({ data: hotWalletData });
+  const hotWallet = await HotWallet.create(hotWalletData);
 
   const policyData = createTestEndpointPolicy(user.id);
-  const policy = await prisma.endpointPolicy.create({ data: policyData });
+  const policy = await EndpointPolicy.create(policyData);
 
   return { user, hotWallet, policy };
 }
 
 /**
- * Delete the test database file. Call in globalTeardown if needed.
+ * Disconnect from the test database.
  */
 export async function cleanupTestDb(): Promise<void> {
-  await prisma.$disconnect();
+  await mongoose.disconnect();
 }
