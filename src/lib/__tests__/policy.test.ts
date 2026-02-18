@@ -167,6 +167,34 @@ describe("checkPolicy", () => {
 
       expect(result.action).toBe("hot_wallet");
     });
+
+    it("matches when pattern ends with trailing slash (M11)", async () => {
+      // Create a policy with trailing slash
+      await EndpointPolicy.create(
+        createTestEndpointPolicy(userId, {
+          endpointPattern: "https://trailing.example.com/",
+        }),
+      );
+
+      const result = await checkPolicy(0.05, "https://trailing.example.com/resource", userId);
+
+      expect(result.action).toBe("hot_wallet");
+    });
+
+    it("still matches without trailing slash in pattern (M11)", async () => {
+      // The seeded policy has pattern "https://api.example.com" (no trailing slash)
+      const result = await checkPolicy(0.05, "https://api.example.com/resource", userId);
+
+      expect(result.action).toBe("hot_wallet");
+    });
+
+    it("still rejects cross-domain matches with trailing-slash pattern (M11)", async () => {
+      // Pattern "https://api.example.com" should NOT match "https://api.example.com-evil.com"
+      // (existing behavior preserved)
+      const result = await checkPolicy(0.05, "https://api.example.com-evil.com", userId);
+
+      expect(result.action).toBe("rejected");
+    });
   });
 
   it("ignores archived policies (treats as if no policy exists)", async () => {
