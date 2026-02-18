@@ -200,18 +200,31 @@ describe("E2E: MCP Tool Pipeline", () => {
     it("should return wallet balance and active endpoint policies", async () => {
       const balanceTool = findTool(tools, "x402_check_balance");
       expect(balanceTool).toBeDefined();
-      const result = await balanceTool!.handler({});
 
+      // No chain param → multi-chain array format
+      const result = await balanceTool!.handler({});
       expect(result.isError).toBeUndefined();
 
       const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.walletAddress).toBeDefined();
-      expect(parsed.usdcBalance).toBe("12.50");
-      expect(parsed.endpointPolicies).toBeDefined();
-      expect(parsed.endpointPolicies).toHaveLength(1);
-      expect(parsed.endpointPolicies[0].endpointPattern).toBe("https://api.example.com");
-      expect(parsed.endpointPolicies[0].payFromHotWallet).toBe(true);
-      expect(parsed.endpointPolicies[0].status).toBe("active");
+      expect(parsed.balances).toBeDefined();
+      expect(parsed.balances).toHaveLength(1);
+      expect(parsed.balances[0].address).toBeDefined();
+      expect(parsed.balances[0].balance).toBe("12.50");
+      expect(parsed.balances[0].chainId).toBeDefined();
+      expect(parsed.balances[0].chain).toBeDefined();
+
+      // Single-chain query → returns endpointPolicies
+      const singleChainResult = await balanceTool!.handler({ chain: "base-sepolia" });
+      expect(singleChainResult.isError).toBeUndefined();
+
+      const singleParsed = JSON.parse(singleChainResult.content[0].text);
+      expect(singleParsed.walletAddress).toBeDefined();
+      expect(singleParsed.usdcBalance).toBe("12.50");
+      expect(singleParsed.endpointPolicies).toBeDefined();
+      expect(singleParsed.endpointPolicies).toHaveLength(1);
+      expect(singleParsed.endpointPolicies[0].endpointPattern).toBe("https://api.example.com");
+      expect(singleParsed.endpointPolicies[0].payFromHotWallet).toBe(true);
+      expect(singleParsed.endpointPolicies[0].status).toBe("active");
     });
 
     it("should list multiple endpoint policies", async () => {
@@ -223,9 +236,10 @@ describe("E2E: MCP Tool Pipeline", () => {
         userId,
       });
 
+      // Use single-chain query to get endpointPolicies
       const balanceTool = findTool(tools, "x402_check_balance");
       expect(balanceTool).toBeDefined();
-      const result = await balanceTool!.handler({});
+      const result = await balanceTool!.handler({ chain: "base-sepolia" });
       const parsed = JSON.parse(result.content[0].text);
 
       expect(parsed.endpointPolicies).toHaveLength(2);

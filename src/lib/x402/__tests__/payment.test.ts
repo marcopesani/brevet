@@ -4,6 +4,7 @@ import { executePayment } from "../payment";
 import { Transaction } from "../../models/transaction";
 import { HotWallet } from "../../models/hot-wallet";
 import { EndpointPolicy } from "../../models/endpoint-policy";
+import { createTestHotWallet, createTestEndpointPolicy } from "../../../test/helpers/fixtures";
 import mongoose from "mongoose";
 
 // Mock global fetch to avoid real network calls and bypass URL validation on loopback
@@ -152,7 +153,7 @@ describe("executePayment", () => {
     expect(result.error).toContain("no valid payment requirements");
   });
 
-  it("handles 402 with unsupported scheme/network", async () => {
+  it("handles 402 with unsupported network", async () => {
     const requirement = {
       ...DEFAULT_REQUIREMENT,
       scheme: "subscription",
@@ -163,7 +164,7 @@ describe("executePayment", () => {
     const result = await executePayment("https://api.example.com/resource", userId);
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("is not supported");
+    expect(result.error).toContain("accepted networks are supported");
   });
 
   it("completes payment flow: 402 → sign → re-request → 200", async () => {
@@ -196,6 +197,7 @@ describe("executePayment", () => {
     expect(tx!.status).toBe("completed");
     expect(tx!.txHash).toBe(txHash);
     expect(tx!.amount).toBe(0.05);
+    expect(tx!.chainId).toBe(84532);
   });
 
   it("rejects when no hot wallet exists", async () => {
@@ -205,8 +207,11 @@ describe("executePayment", () => {
 
     const result = await executePayment("https://api.example.com/resource", userId);
 
+    // No hot wallet → returns pending_approval for WalletConnect with chainId
     expect(result.success).toBe(false);
-    expect(result.error).toContain("No hot wallet found");
+    expect(result.status).toBe("pending_approval");
+    expect(result.signingStrategy).toBe("walletconnect");
+    expect(result.chainId).toBe(84532);
   });
 
   it("rejects when policy denies the payment (no active policy)", async () => {
@@ -316,8 +321,11 @@ describe("executePayment", () => {
 
   it("falls back to walletconnect when hot wallet balance is insufficient", async () => {
     // Override getUsdcBalance to return a very low balance
+    // Called twice: once during selectBestChain, once during balance verification
     const { getUsdcBalance } = await import("@/lib/hot-wallet");
-    vi.mocked(getUsdcBalance).mockResolvedValueOnce("0.001000");
+    vi.mocked(getUsdcBalance)
+      .mockResolvedValueOnce("0.001000")  // selectBestChain balance check
+      .mockResolvedValueOnce("0.001000"); // signing flow balance check
 
     mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
 
@@ -327,6 +335,7 @@ describe("executePayment", () => {
     expect(result.status).toBe("pending_approval");
     expect(result.signingStrategy).toBe("walletconnect");
     expect(result.paymentRequirements).toBeDefined();
+    expect(result.chainId).toBe(84532);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -345,5 +354,138 @@ describe("executePayment", () => {
     expect(result.signingStrategy).toBe("walletconnect");
     expect(result.paymentRequirements).toBeDefined();
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  describe("multi-chain selection", () => {
+    it("selects chain with highest balance when multiple networks offered", async () => {
+      const { getUsdcBalance } = await import("@/lib/hot-wallet");
+
+      // Create hot wallet + policy on Arbitrum Sepolia (421614)
+      const arbWalletData = createTestHotWallet(userId, { chainId: 421614 });
+      await HotWallet.create(arbWalletData);
+      await EndpointPolicy.create(
+        createTestEndpointPolicy(userId, { chainId: 421614 }),
+      );
+
+      // Mock balance: Base Sepolia has 10 USDC, Arbitrum Sepolia has 50 USDC
+      vi.mocked(getUsdcBalance)
+        .mockResolvedValueOnce("10.000000")   // Base Sepolia balance (checked during chain selection)
+        .mockResolvedValueOnce("50.000000")   // Arbitrum Sepolia balance (checked during chain selection)
+        .mockResolvedValueOnce("50.000000");  // Balance re-check in signing flow
+
+      const multiNetworkRequirement421614 = {
+        ...DEFAULT_REQUIREMENT,
+        network: "eip155:421614",
+        asset: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+      };
+
+      mockFetch.mockResolvedValueOnce(
+        make402Response([DEFAULT_REQUIREMENT, multiNetworkRequirement421614]),
+      );
+      mockFetch.mockResolvedValueOnce(
+        make200Response({ success: true }, { "X-PAYMENT-TX-HASH": "0x" + "e".repeat(64) }),
+      );
+
+      const result = await executePayment("https://api.example.com/resource", userId);
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe("completed");
+
+      // Transaction should be stored with Arbitrum Sepolia chainId (highest balance)
+      const tx = await Transaction.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+        endpoint: "https://api.example.com/resource",
+      }).lean();
+      expect(tx).not.toBeNull();
+      expect(tx!.chainId).toBe(421614);
+    });
+
+    it("falls back to WalletConnect when no hot wallet on any accepted chain", async () => {
+      // Delete default hot wallet
+      await HotWallet.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
+
+      // Endpoint only accepts Arbitrum Sepolia (421614) — user has no wallet there
+      const arbRequirement = {
+        ...DEFAULT_REQUIREMENT,
+        network: "eip155:421614",
+        asset: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+      };
+      mockFetch.mockResolvedValueOnce(make402Response([arbRequirement]));
+
+      const result = await executePayment("https://api.example.com/resource", userId);
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("pending_approval");
+      expect(result.signingStrategy).toBe("walletconnect");
+      expect(result.chainId).toBe(421614);
+    });
+
+    it("uses explicit chainId when provided", async () => {
+      const txHash = "0x" + "f".repeat(64);
+
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+      mockFetch.mockResolvedValueOnce(
+        make200Response({ success: true }, { "X-PAYMENT-TX-HASH": txHash }),
+      );
+
+      const result = await executePayment(
+        "https://api.example.com/resource",
+        userId,
+        undefined,
+        84532, // explicit chain
+      );
+
+      expect(result.success).toBe(true);
+
+      const tx = await Transaction.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+      }).lean();
+      expect(tx!.chainId).toBe(84532);
+    });
+
+    it("rejects when explicit chainId is not accepted by endpoint", async () => {
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+
+      const result = await executePayment(
+        "https://api.example.com/resource",
+        userId,
+        undefined,
+        42161, // Arbitrum mainnet — not in accepts (which has 84532)
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("not accepted by this endpoint");
+    });
+
+    it("rejects when explicit chainId is not supported", async () => {
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+
+      const result = await executePayment(
+        "https://api.example.com/resource",
+        userId,
+        undefined,
+        999999, // unsupported chain
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("is not supported");
+    });
+
+    it("stores chainId on transaction for default chain payment", async () => {
+      const txHash = "0x" + "a".repeat(64);
+
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+      mockFetch.mockResolvedValueOnce(
+        make200Response({ success: true }, { "X-PAYMENT-TX-HASH": txHash }),
+      );
+
+      await executePayment("https://api.example.com/resource", userId);
+
+      const tx = await Transaction.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+      }).lean();
+      expect(tx).not.toBeNull();
+      expect(tx!.chainId).toBe(84532);
+    });
   });
 });

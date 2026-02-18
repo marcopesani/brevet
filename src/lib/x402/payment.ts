@@ -1,4 +1,4 @@
-import { createWalletClient, PrivateKeyAccount, WalletClient, type Hex } from "viem";
+import { type Hex, PrivateKeyAccount } from "viem";
 import { formatUnits } from "viem";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
@@ -8,15 +8,14 @@ import { decryptPrivateKey, getUsdcBalance, USDC_DECIMALS } from "@/lib/hot-wall
 import { checkPolicy } from "@/lib/policy";
 import { createEvmSigner } from "./eip712";
 import { parsePaymentRequired, extractTxHashFromResponse, extractSettleResponse } from "./headers";
-import type { ClientEvmSigner,
+import type {
 PaymentResult, SigningStrategy } from "./types";
-import { chainConfig } from "../chain-config";
+import { getChainConfig, isChainSupported, SUPPORTED_CHAINS } from "../chain-config";
 import { logger } from "../logger";
 import { SIWxExtension } from "@x402/extensions";
 import { createSIWxPayload,
 encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
 import { privateKeyToAccount } from "viem/accounts";
-import { http } from "wagmi";
 
 /**
  * Validate a URL before making an HTTP request.
@@ -91,6 +90,85 @@ function createPaymentClient(privateKey: Hex): { client: x402Client; httpClient:
 }
 
 /**
+ * Resolve a network string to a chain ID.
+ * Supports both EIP-155 format ("eip155:42161") and the networkString values
+ * in the chain registry. Also matches against chain names from the registry
+ * for V1 SDK compatibility (e.g., "base-sepolia").
+ */
+function resolveNetworkToChainId(network: string): number | undefined {
+  // Try EIP-155 format first
+  const match = network.match(/^eip155:(\d+)$/);
+  if (match) {
+    const chainId = parseInt(match[1], 10);
+    return isChainSupported(chainId) ? chainId : undefined;
+  }
+
+  // Fall back to matching against registry networkString or chain name
+  for (const config of SUPPORTED_CHAINS) {
+    if (config.networkString === network) return config.chain.id;
+    // Match by lowercase chain name (e.g., "base-sepolia" → baseSepolia)
+    const normalizedName = config.chain.name.toLowerCase().replace(/\s+/g, "-");
+    if (normalizedName === network.toLowerCase()) return config.chain.id;
+  }
+  return undefined;
+}
+
+/**
+ * Select the best chain from the endpoint's accepted networks.
+ *
+ * Strategy for hot wallet:
+ * 1. Filter to chains we support
+ * 2. For each supported chain, check if user has a hot wallet
+ * 3. Pick the chain with the highest USDC balance
+ *
+ * Returns the selected chainId and the matching accept entry index,
+ * or null if no supported chain is found.
+ */
+async function selectBestChain(
+  accepts: Array<{ network: string; [key: string]: unknown }>,
+  userId: string,
+): Promise<{ chainId: number; acceptIndex: number } | null> {
+  // Build list of supported chains from the accepts array
+  const candidates: Array<{ chainId: number; acceptIndex: number }> = [];
+  for (let i = 0; i < accepts.length; i++) {
+    const resolvedChainId = resolveNetworkToChainId(accepts[i].network);
+    if (resolvedChainId !== undefined) {
+      candidates.push({ chainId: resolvedChainId, acceptIndex: i });
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  // Try to find the best chain where user has a hot wallet with highest balance
+  let bestCandidate: { chainId: number; acceptIndex: number } | null = null;
+  let bestBalance = -1;
+
+  for (const candidate of candidates) {
+    const wallet = await getHotWallet(userId, candidate.chainId);
+    if (!wallet) continue;
+
+    try {
+      const balanceStr = await getUsdcBalance(wallet.address, candidate.chainId);
+      const balance = parseFloat(balanceStr);
+      if (balance > bestBalance) {
+        bestBalance = balance;
+        bestCandidate = candidate;
+      }
+    } catch {
+      // RPC error for this chain — skip it
+      continue;
+    }
+  }
+
+  // If we found a chain with a wallet, use it
+  if (bestCandidate) return bestCandidate;
+
+  // No hot wallet on any supported chain — return first supported chain
+  // (will trigger WalletConnect flow downstream)
+  return candidates[0];
+}
+
+/**
  * Options for the HTTP request sent during the x402 payment flow.
  */
 export interface PaymentRequestOptions {
@@ -107,19 +185,22 @@ export interface PaymentRequestOptions {
  *
  * 1. Fetch the URL (using the specified method, body, and headers)
  * 2. If 402 → parse payment requirements (V1 or V2 via SDK)
- * 3. Check spending policy
- * 4. Create payment payload via SDK (handles EIP-3009 + Permit2)
- * 5. Re-request with payment headers (preserving original method/body/headers)
- * 6. Log transaction to database
+ * 3. Select best chain from accepted networks
+ * 4. Check spending policy
+ * 5. Create payment payload via SDK (handles EIP-3009 + Permit2)
+ * 6. Re-request with payment headers (preserving original method/body/headers)
+ * 7. Log transaction to database
  *
  * @param url     The x402-protected endpoint
  * @param userId  The user whose hot wallet and policy to use
  * @param options Optional HTTP method, body, and headers for the request
+ * @param chainId Optional explicit chain ID — skips auto-selection if provided
  */
 export async function executePayment(
   url: string,
   userId: string,
   options?: PaymentRequestOptions,
+  chainId?: number,
 ): Promise<PaymentResult> {
   // Step 0: Validate URL
   const urlError = validateUrl(url);
@@ -156,7 +237,6 @@ export async function executePayment(
     // Not valid JSON — that's fine, V2 uses headers only
   }
 
-
   const paymentRequired = parsePaymentRequired(initialResponse, responseBody);
   if (!paymentRequired || !paymentRequired.accepts || paymentRequired.accepts.length === 0) {
     logger.warn("No payment requirements in 402 response", { userId, url, action: "payment_rejected" });
@@ -168,37 +248,87 @@ export async function executePayment(
     };
   }
 
-  if (!paymentRequired.accepts.some(accept => accept.network === chainConfig.networkString)) {
-    return {
-      success: false,
-      status: "rejected",
-      signingStrategy: "rejected",
-      error: `Network ${chainConfig.networkString} is not supported`,
-    };
+  // Step 3: Select chain from accepted networks
+  let selectedChainId: number;
+  let acceptIndex: number;
+
+  if (chainId !== undefined) {
+    // Explicit chain requested — validate it's in the accepts list
+    const config = getChainConfig(chainId);
+    if (!config) {
+      return {
+        success: false,
+        status: "rejected",
+        signingStrategy: "rejected",
+        error: `Chain ${chainId} is not supported`,
+      };
+    }
+    const idx = paymentRequired.accepts.findIndex(a => a.network === config.networkString);
+    if (idx === -1) {
+      return {
+        success: false,
+        status: "rejected",
+        signingStrategy: "rejected",
+        error: `Chain ${chainId} (${config.networkString}) is not accepted by this endpoint`,
+      };
+    }
+    selectedChainId = chainId;
+    acceptIndex = idx;
+  } else {
+    // Auto-select best chain
+    const selection = await selectBestChain(paymentRequired.accepts, userId);
+    if (!selection) {
+      return {
+        success: false,
+        status: "rejected",
+        signingStrategy: "rejected",
+        error: `None of the endpoint's accepted networks are supported`,
+      };
+    }
+    selectedChainId = selection.chainId;
+    acceptIndex = selection.acceptIndex;
   }
 
-  // Step 3: Look up the user's hot wallet
-  const hotWallet = await getHotWallet(userId);
+  const selectedChainConfig = getChainConfig(selectedChainId)!;
+
+  // Step 4: Look up the user's hot wallet for the selected chain
+  const hotWallet = await getHotWallet(userId, selectedChainId);
 
   if (!hotWallet) {
-    return { success: false, status: "rejected", signingStrategy: "rejected", error: "No hot wallet found for user" };
+    // No hot wallet on this chain — return pending_approval for WalletConnect
+    const selectedRequirement = paymentRequired.accepts[acceptIndex];
+    const amountStr = selectedRequirement.amount
+      ?? (selectedRequirement as unknown as { maxAmountRequired?: string }).maxAmountRequired
+      ?? "0";
+    const amountWei = BigInt(amountStr);
+    const amountUsd = parseFloat(formatUnits(amountWei, USDC_DECIMALS));
+
+    logger.info("No hot wallet on selected chain, requires wallet approval", { userId, url, action: "pending_approval", chainId: selectedChainId, amount: amountUsd });
+    return {
+      success: false,
+      status: "pending_approval",
+      signingStrategy: "walletconnect",
+      paymentRequirements: JSON.stringify(paymentRequired),
+      amount: amountUsd,
+      chainId: selectedChainId,
+    };
   }
 
   const privateKey = decryptPrivateKey(hotWallet.encryptedPrivateKey) as Hex;
 
-  // Step 4: Determine the amount from the first accepted requirement
+  // Step 5: Determine the amount from the selected requirement
   // SDK V2 uses `amount`, V1 uses `maxAmountRequired` — check both
-  const selectedRequirement = paymentRequired.accepts[0];
+  const selectedRequirement = paymentRequired.accepts[acceptIndex];
   const amountStr = selectedRequirement.amount
     ?? (selectedRequirement as unknown as { maxAmountRequired?: string }).maxAmountRequired
     ?? "0";
   const amountWei = BigInt(amountStr);
   const amountUsd = parseFloat(formatUnits(amountWei, USDC_DECIMALS));
 
-  // Step 5: Check spending policy (returns action: hot_wallet | walletconnect | rejected)
-  const policyResult = await checkPolicy(amountUsd, url, userId);
+  // Step 6: Check spending policy (returns action: hot_wallet | walletconnect | rejected)
+  const policyResult = await checkPolicy(amountUsd, url, userId, selectedChainId);
   if (policyResult.action === "rejected") {
-    logger.warn("Policy denied payment", { userId, url, action: "policy_denied", reason: policyResult.reason, amount: amountUsd });
+    logger.warn("Policy denied payment", { userId, url, action: "policy_denied", reason: policyResult.reason, amount: amountUsd, chainId: selectedChainId });
     return {
       success: false,
       status: "rejected",
@@ -207,33 +337,34 @@ export async function executePayment(
     };
   }
 
-  // Step 6: Determine signing strategy
+  // Step 7: Determine signing strategy
   let signingStrategy: SigningStrategy = policyResult.action;
 
   // If the policy says hot_wallet, verify the on-chain USDC balance is sufficient.
   // If balance is too low, fall through to the WalletConnect path instead of failing.
   if (signingStrategy === "hot_wallet") {
-    const balanceStr = await getUsdcBalance(hotWallet.address);
+    const balanceStr = await getUsdcBalance(hotWallet.address, selectedChainId);
     const balance = parseFloat(balanceStr);
     if (balance < amountUsd) {
-      logger.info("Insufficient hot wallet balance, falling back to WalletConnect", { userId, url, action: "walletconnect_fallback", amount: amountUsd });
+      logger.info("Insufficient hot wallet balance, falling back to WalletConnect", { userId, url, action: "walletconnect_fallback", amount: amountUsd, chainId: selectedChainId });
       signingStrategy = "walletconnect";
     }
   }
 
-  // WalletConnect path: return pending_approval for client-side signing
+  // WalletConnect path: return pending_approval for caller to create PendingPayment
   if (signingStrategy === "walletconnect") {
-    logger.info("Payment requires wallet approval", { userId, url, action: "pending_approval", amount: amountUsd });
+    logger.info("Payment requires wallet approval", { userId, url, action: "pending_approval", amount: amountUsd, chainId: selectedChainId });
     return {
       success: false,
       status: "pending_approval",
       signingStrategy: "walletconnect",
       paymentRequirements: JSON.stringify(paymentRequired),
       amount: amountUsd,
+      chainId: selectedChainId,
     };
   }
 
-  // Step 7: Create payment payload via SDK (handles EIP-3009 + Permit2)
+  // Step 8: Create payment payload via SDK (handles EIP-3009 + Permit2)
   const { client, httpClient, account } = createPaymentClient(privateKey);
   let paymentPayload;
   try {
@@ -247,37 +378,36 @@ export async function executePayment(
     };
   }
 
-
   // opt in SIVX support
   const siwxExtension = paymentRequired.extensions?.['sign-in-with-x'] as SIWxExtension | undefined;
   let signInWithXHeader: string | undefined;
   if (siwxExtension) {
     const matchingChain = siwxExtension?.supportedChains?.find(
-      (chain: { chainId: string }) => chain.chainId === chainConfig.networkString
+      (chain: { chainId: string }) => chain.chainId === selectedChainConfig.networkString
     );
-  
+
     if (!matchingChain) {
       return {
         success: false,
         status: "rejected",
         signingStrategy: "rejected",
-        error: `SIVX failed: chain ${chainConfig.networkString} not supported by server`,
+        error: `SIVX failed: chain ${selectedChainConfig.networkString} not supported by server`,
       };
     }
-  
+
     // Build complete info with selected chain
     const completeInfo = {
       ...siwxExtension.info,
       chainId: matchingChain.chainId,
       type: matchingChain.type,
     };
-  
+
     // Create signed payload
     const payload = await createSIWxPayload(completeInfo, account);
     signInWithXHeader = encodeSIWxHeader(payload);
   }
 
-  // Step 8: Encode payment into HTTP headers and re-request (preserving original method/body/headers)
+  // Step 9: Encode payment into HTTP headers and re-request (preserving original method/body/headers)
   const paymentHeaders = httpClient.encodePaymentSignatureHeader(paymentPayload);
   const paidRequestInit: RequestInit = {
     method,
@@ -300,17 +430,18 @@ export async function executePayment(
     // If reading fails, leave as null — don't break the payment flow
   }
 
-  // Step 9: Extract settlement response and transaction hash from facilitator response
+  // Step 10: Extract settlement response and transaction hash from facilitator response
   const settlement = extractSettleResponse(paidResponse) ?? undefined;
   const txHash = settlement?.transaction ?? await extractTxHashFromResponse(paidResponse);
 
-  // Step 10: Log transaction
+  // Step 11: Log transaction with chainId
   const txStatus = paidResponse.ok ? "completed" : "failed";
   await createTransaction({
     amount: amountUsd,
     endpoint: url,
     txHash,
     network: selectedRequirement.network,
+    chainId: selectedChainId,
     status: txStatus,
     type: "payment",
     userId,
@@ -320,7 +451,7 @@ export async function executePayment(
   });
 
   if (!paidResponse.ok) {
-    logger.error("Payment failed", { userId, url, action: "payment_failed", status: paidResponse.status, amount: amountUsd, responseBody: responsePayload?.slice(0, 500) });
+    logger.error("Payment failed", { userId, url, action: "payment_failed", status: paidResponse.status, amount: amountUsd, chainId: selectedChainId, responseBody: responsePayload?.slice(0, 500) });
     return {
       success: false,
       status: "rejected",
@@ -330,6 +461,6 @@ export async function executePayment(
     };
   }
 
-  logger.info("Payment completed successfully", { userId, url, action: "payment_completed", txHash, amount: amountUsd, status: paidResponse.status });
+  logger.info("Payment completed successfully", { userId, url, action: "payment_completed", txHash, amount: amountUsd, chainId: selectedChainId, status: paidResponse.status });
   return { success: true, status: "completed", signingStrategy: "hot_wallet", response: paidResponse, settlement };
 }
