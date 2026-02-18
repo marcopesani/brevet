@@ -1,7 +1,7 @@
 # Brevet
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
-![Tests: 174](https://img.shields.io/badge/tests-174%20passing-brightgreen)
+![Tests: ~434](https://img.shields.io/badge/tests-~434%20passing-brightgreen)
 ![Next.js 16](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6)
 
@@ -18,20 +18,23 @@ operates within them.
 
 ## What is this?
 
-When an AI agent hits a paid service, Brevet handles the entire payment flow: detecting the [x402](https://www.x402.org/) payment request, signing the transaction with EIP-712 (EIP-3009 `TransferWithAuthorization`), and completing the payment with cryptographic proof. The payment comes from your connected wallet. Small amounts can be auto-signed for speed; larger amounts route to your wallet for explicit approval. You set per-request, hourly, and daily spending limits.
+When an AI agent hits a paid service, Brevet handles the entire payment flow: detecting the [x402](https://www.x402.org/) payment request, signing the transaction with EIP-712 (EIP-3009 `TransferWithAuthorization`), and completing the payment with cryptographic proof. The payment comes from your connected wallet. Small amounts can be auto-signed for speed; larger amounts route to your wallet for explicit approval. You set per-request, hourly, and daily spending limits. Supports multiple L2 chains: Base, Arbitrum, Optimism, and Polygon (mainnets + testnets).
 
 ## Features
 
-- **x402 Payment Engine** -- Automatic HTTP 402 payment negotiation with EIP-712 signed USDC transfers on Base
+- **x402 Payment Engine** -- Automatic HTTP 402 payment negotiation with EIP-712 signed USDC transfers across multiple L2 chains
+- **Multi-Chain L2 Support** -- Base, Arbitrum, Optimism, Polygon (mainnets + testnets) with automatic chain selection based on endpoint requirements and wallet balances
 - **Tiered Signing** -- Small payments auto-signed by hot wallet; larger payments require WalletConnect approval
-- **MCP Server** -- 4 tools for AI agents: `x402_pay`, `x402_check_balance`, `x402_spending_history`, `x402_check_pending`
-- **Hot Wallet Management** -- Create, fund, and withdraw USDC with AES-256 encrypted key storage
+- **MCP Server** -- 6 tools for AI agents: `x402_pay`, `x402_check_balance`, `x402_spending_history`, `x402_check_pending`, `x402_get_result`, `x402_discover`
+- **Endpoint Discovery** -- Search for x402-protected APIs via CDP Bazaar integration
+- **Hot Wallet Management** -- Create, fund, and withdraw USDC with AES-256-GCM encrypted key storage
 - **Spending Policies** -- Configurable per-request, per-hour, and per-day limits with endpoint whitelist/blacklist
 - **Pending Payment Approval** -- Dashboard UI for reviewing and approving WalletConnect-tier payments
 - **Session Health Monitoring** -- Real-time WalletConnect connection status
-- **Spending Analytics** -- Daily spending chart (pure SVG) with summary cards
-- **Transaction History** -- Filterable list with on-chain verification via BaseScan
-- **Environment-Driven Chain Config** -- Switch between Base mainnet and Base Sepolia via a single env var
+- **Spending Analytics** -- Daily spending chart with summary cards
+- **Transaction History** -- Filterable list with on-chain verification via block explorers
+- **Docker Compose** -- One-command local development with MongoDB and Next.js dev server
+- **Environment-Driven Chain Config** -- Switch default chain via a single env var
 
 ## Architecture
 
@@ -41,14 +44,14 @@ flowchart LR
     MCP --> Engine[x402 Engine]
     Engine -->|amount ≤ policy limit| HW[Hot Wallet]
     Engine -->|amount > policy limit| WC[WalletConnect]
-    HW -->|EIP-712 signature| USDC[Base USDC]
+    HW -->|EIP-712 signature| USDC[L2 USDC]
     WC -->|user approval| USDC
     USDC -->|payment proof| API[Paid API]
     API -->|response| Agent
 
-    Dashboard[Web Dashboard] --> PolicyAPI[Policy API]
-    Dashboard --> WalletAPI[Wallet API]
-    Dashboard --> TxAPI[Transaction API]
+    Dashboard[Web Dashboard] -->|Server Components| Data[Data Layer]
+    Dashboard -->|Server Actions| Data
+    Data --> DB[(MongoDB)]
 ```
 
 ## Quick Start
@@ -57,6 +60,7 @@ flowchart LR
 
 - Node.js 18+
 - npm
+- MongoDB (via Docker or external)
 
 ### Setup
 
@@ -75,10 +79,14 @@ cp .env.example .env.local
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 # Add the output to HOT_WALLET_ENCRYPTION_KEY in .env.local
 
-# Set up the database
-npx prisma migrate deploy
+# Start MongoDB and the dev server with Docker
+docker compose up -d
+```
 
-# Start the development server
+Or, if you have MongoDB running separately:
+
+```bash
+# Set MONGODB_URI in .env.local, then:
 npm run dev
 ```
 
@@ -92,42 +100,66 @@ Brevet exposes an MCP endpoint at `/api/mcp/{userId}` using [Streamable HTTP tra
 
 #### `x402_pay`
 
-Make an HTTP request to an x402-protected URL. Automatically handles 402 payment negotiation.
+Make an HTTP request to an x402-protected URL. Automatically handles 402 payment negotiation. Supports multiple chains (Base, Arbitrum, Optimism, Polygon + testnets). If no chain is specified, the gateway auto-selects the best chain based on the endpoint's accepted networks and the user's balances.
 
 ```json
 {
   "url": "https://api.example.com/premium-data",
-  "method": "GET"
+  "method": "GET",
+  "chain": "base"
 }
 ```
 
 #### `x402_check_balance`
 
-Check the hot wallet USDC balance and remaining spending budget.
-
-```json
-{}
-```
-
-Returns wallet address, USDC balance, and remaining per-request/hourly/daily budget.
-
-#### `x402_spending_history`
-
-Query transaction history with optional date filter.
+Check the hot wallet USDC balance. If no chain is specified, returns balances across all chains where the user has a wallet. Also lists per-endpoint policies.
 
 ```json
 {
-  "since": "2025-01-01T00:00:00Z"
+  "chain": "arbitrum"
+}
+```
+
+#### `x402_spending_history`
+
+Query transaction history with optional date and chain filters.
+
+```json
+{
+  "since": "2025-01-01T00:00:00Z",
+  "chain": "base"
 }
 ```
 
 #### `x402_check_pending`
 
-Poll the status of a pending payment awaiting WalletConnect approval.
+Poll the status of a pending payment awaiting WalletConnect approval. Returns chain information for each payment.
 
 ```json
 {
   "paymentId": "clx..."
+}
+```
+
+#### `x402_get_result`
+
+Retrieve the result of a previously initiated x402 payment. Call this after the user confirms they have signed the payment in the dashboard. Returns the protected resource data if payment is complete, or the current status if still pending.
+
+```json
+{
+  "paymentId": "clx..."
+}
+```
+
+#### `x402_discover`
+
+Search the CDP Bazaar discovery API for available x402-protected endpoints. Returns a list of endpoints with their URL, description, price, network, and payment scheme.
+
+```json
+{
+  "query": "weather",
+  "network": "base-sepolia",
+  "limit": 10
 }
 ```
 
@@ -145,42 +177,43 @@ Poll the status of a pending payment awaiting WalletConnect approval.
 
 ## API Reference
 
+Dashboard data flows through Server Components and Server Actions (not REST APIs). Only these API routes exist:
+
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/wallet/create` | Create a new hot wallet |
-| `GET` | `/api/wallet/balance` | Check hot wallet USDC balance |
-| `POST` | `/api/wallet/withdraw` | Withdraw USDC to connected wallet |
-| `GET` | `/api/wallet/session` | Check WalletConnect session status |
-| `GET` | `/api/policy` | Get current spending policy |
-| `PUT` | `/api/policy` | Update spending policy |
-| `GET` | `/api/transactions` | List transaction history |
-| `POST` | `/api/transactions/{id}/verify` | Verify transaction on-chain via BaseScan |
-| `GET` | `/api/payments/pending` | List pending payments awaiting approval |
-| `POST` | `/api/payments/{id}/approve` | Approve a pending payment |
-| `POST` | `/api/payments/{id}/reject` | Reject a pending payment |
-| `GET` | `/api/analytics` | Get spending analytics data |
-| `POST` | `/api/mcp/{userId}` | MCP server endpoint (Streamable HTTP) |
+| `POST` | `/api/auth/[...nextauth]` | NextAuth authentication (SIWE) |
+| `POST` | `/api/auth/dev-login` | Development login (dev only) |
+| `POST` | `/api/mcp/[userId]` | MCP server endpoint (Streamable HTTP) |
+| `GET` | `/api/payments/pending` | Pending payments polling (React Query) |
 
 ## Testing
 
-The project includes 174 tests across three layers.
+The project includes ~434 tests across two Vitest projects (`unit` and `e2e`).
 
 ```bash
-# Run all unit and integration tests
+# Run all unit and integration tests (watch mode)
 npm test
+
+# Run all tests once (CI mode)
+npm run test:run
 
 # Run only E2E tests (requires Base Sepolia RPC access)
 npm run test:e2e
 
-# Run all tests once (no watch)
-npm run test:run
+# Run a single test file
+npx vitest run src/lib/__tests__/policy.test.ts
+
+# Run a single test by name
+npx vitest run -t "test name pattern"
 ```
 
-| Layer | Tests | What is covered |
-|-------|------:|-----------------|
-| Unit | 77 | EIP-712 signing, x402 header parsing, payment flow logic, policy enforcement, hot wallet crypto, rate limiter |
-| Integration | 57 | All 12 API routes with request/response validation |
-| E2E | 40 | Full payment flow against Base Sepolia testnet with real RPC calls |
+Tests require MongoDB — start it with `docker compose up -d mongodb` or point `MONGODB_URI` to an existing instance. The test setup uses `mongodb-memory-server` for in-memory MongoDB.
+
+| Layer | What is covered |
+|-------|-----------------|
+| Unit | EIP-712 signing, x402 header parsing, payment flow logic, policy enforcement, hot wallet crypto, rate limiter, chain config |
+| Integration | API routes, MCP tools, server actions, data layer |
+| E2E | Full payment flow against Base Sepolia testnet with real RPC calls, multi-chain support |
 
 ## Project Structure
 
@@ -188,30 +221,34 @@ npm run test:run
 brevet/
 ├── src/
 │   ├── app/
-│   │   ├── api/
-│   │   │   ├── analytics/          # Spending analytics endpoint
-│   │   │   ├── mcp/[userId]/       # MCP server endpoint
-│   │   │   ├── payments/           # Pending payment approval/rejection
-│   │   │   ├── policy/             # Spending policy CRUD
-│   │   │   ├── transactions/       # Transaction history + verification
-│   │   │   └── wallet/             # Hot wallet create/balance/withdraw/session
-│   │   └── dashboard/              # Web dashboard pages
-│   ├── components/                 # React components (wallet, charts, policies)
+│   │   ├── (auth)/              # Login page (simple layout)
+│   │   ├── (dashboard)/         # Protected pages (wallet, policies, transactions, etc.)
+│   │   ├── (marketing)/         # Public landing page
+│   │   ├── actions/             # Server Actions (auth + data layer + revalidation)
+│   │   └── api/
+│   │       ├── auth/            # NextAuth + dev-login
+│   │       ├── mcp/[userId]/    # MCP server endpoint
+│   │       └── payments/        # Pending payment polling
+│   ├── components/
+│   │   ├── landing/             # Marketing page components
+│   │   └── ui/                  # shadcn/ui components
+│   ├── contexts/                # React contexts
+│   ├── hooks/                   # React Query hooks (pending payments, wallet balance)
 │   ├── lib/
-│   │   ├── mcp/                    # MCP server and tool definitions
-│   │   ├── x402/                   # x402 payment engine (EIP-712, headers, types)
-│   │   ├── chain-config.ts         # Environment-driven chain configuration
-│   │   ├── db.ts                   # Prisma client
-│   │   ├── hot-wallet.ts           # Hot wallet management + encryption
-│   │   ├── policy.ts               # Spending policy enforcement
-│   │   ├── rate-limit.ts           # Request rate limiting
-│   │   └── walletconnect*.ts       # WalletConnect integration
+│   │   ├── data/                # Shared data layer (single source of truth for DB queries)
+│   │   ├── mcp/                 # MCP server and tool definitions
+│   │   ├── models/              # Mongoose models (5 collections)
+│   │   ├── x402/                # x402 payment engine (EIP-712, headers, types)
+│   │   ├── chain-config.ts      # Multi-chain configuration (8 chains)
+│   │   ├── db.ts                # MongoDB/Mongoose connection
+│   │   ├── hot-wallet.ts        # Hot wallet management + AES-256-GCM encryption
+│   │   ├── policy.ts            # Endpoint policy enforcement
+│   │   └── rate-limit.ts        # Request rate limiting
 │   └── test/
-│       ├── e2e/                    # E2E tests (Base Sepolia)
-│       └── helpers/                # Test utilities, fixtures, mock 402 server
-├── prisma/
-│   └── schema.prisma               # Database schema
-├── vitest.config.ts                 # Test configuration
+│       ├── e2e/                 # E2E tests (Base Sepolia + multi-chain)
+│       └── helpers/             # Test utilities, fixtures, mock 402 server
+├── docker-compose.yml           # MongoDB + dev server
+├── vitest.config.ts             # Test configuration (unit + e2e projects)
 └── package.json
 ```
 
@@ -219,12 +256,14 @@ brevet/
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NEXT_PUBLIC_CHAIN_ID` | No | Chain ID: `8453` (Base mainnet, default) or `84532` (Base Sepolia) |
+| `MONGODB_URI` | Yes | MongoDB connection string (default: `mongodb://localhost:27017/brevet`) |
+| `HOT_WALLET_ENCRYPTION_KEY` | Yes | 64-character hex string for AES-256-GCM key encryption |
+| `NEXTAUTH_SECRET` | Yes | Secret key for NextAuth session encryption |
+| `NEXTAUTH_URL` | Production | The canonical URL of your site (default: `http://localhost:3000`) |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | Yes | WalletConnect project ID from [dashboard.reown.com](https://dashboard.reown.com) |
+| `NEXT_PUBLIC_CHAIN_ID` | No | Default chain ID: `8453` (Base mainnet, default) or `84532` (Base Sepolia) |
 | `NEXT_PUBLIC_ALCHEMY_ID` | No | Alchemy API key for enhanced RPC access |
 | `RPC_URL` | No | Custom RPC URL (defaults to public Base RPC) |
-| `HOT_WALLET_ENCRYPTION_KEY` | Yes | 64-character hex string for AES-256 key encryption |
-| `DATABASE_URL` | No | SQLite database path (defaults to `file:./prisma/dev.db`) |
 
 ## How x402 Works
 
@@ -236,7 +275,7 @@ brevet/
 4. The client retries the request with the signed payment proof in a request header
 5. The server verifies the signature, submits the USDC transfer on-chain, and returns the requested resource
 
-Brevet automates steps 2-4 for AI agents, with configurable spending limits and tiered signing authority.
+Brevet automates steps 2-4 for AI agents across multiple L2 chains (Base, Arbitrum, Optimism, Polygon), with configurable spending limits, tiered signing authority, and automatic chain selection.
 
 ## Contributing
 
