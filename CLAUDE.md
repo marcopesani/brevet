@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-x402 Gateway MCP is an MCP (Model Context Protocol) server and web dashboard that enables AI agents to make x402 HTTP payments on Base using USDC. When an AI agent accesses a paid API that returns HTTP 402, the gateway automatically handles the payment flow: parsing payment requirements, signing an EIP-712 message, retrying with payment proof, and logging the transaction.
+Brevet is an MCP (Model Context Protocol) server and web dashboard that enables AI agents to make x402 HTTP payments on Base using USDC. When an AI agent accesses a paid API that returns HTTP 402, the gateway automatically handles the payment flow: parsing payment requirements, signing an EIP-712 message, retrying with payment proof, and logging the transaction.
 
 **Tech stack**: Next.js 16 (App Router), React 19, TypeScript 5, Mongoose 8 (MongoDB Atlas), Tailwind CSS 4, shadcn/ui, viem/wagmi, Reown AppKit (WalletConnect), Vitest 4.
 
@@ -115,7 +115,7 @@ MongoDB with Mongoose. Five collections: `users`, `hotwallets`, `endpointpolicie
 ## Environment Setup
 
 Copy `.env.example` to `.env.local`. Required variables:
-- `MONGODB_URI` — MongoDB connection string (default: `mongodb://localhost:27017/x402_gateway`)
+- `MONGODB_URI` — MongoDB connection string (default: `mongodb://localhost:27017/brevet`)
 - `HOT_WALLET_ENCRYPTION_KEY` — 64-char hex (generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
 - `NEXTAUTH_SECRET` — session encryption key
 - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` — from https://dashboard.reown.com

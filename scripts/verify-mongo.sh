@@ -10,7 +10,7 @@ pass() { echo -e "  ${GREEN}✓ $1${NC}"; }
 fail() { echo -e "  ${RED}✗ $1${NC}"; exit 1; }
 info() { echo -e "  ${YELLOW}ℹ $1${NC}"; }
 
-MONGO_URI="${MONGODB_URI:-mongodb://localhost:27017/x402_gateway}"
+MONGO_URI="${MONGODB_URI:-mongodb://localhost:27017/brevet}"
 
 echo "  Checking indexes and document structure..."
 

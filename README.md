@@ -1,17 +1,24 @@
-# PayMCP
-
-An MCP server and web dashboard that enables AI agents to make [x402](https://www.x402.org/) HTTP payments on Base using USDC.
+# Brevet
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Tests: 174](https://img.shields.io/badge/tests-174%20passing-brightgreen)
 ![Next.js 16](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6)
 
+Brevet gives AI agents spending authority, backed by your wallet.
+
+When an agent needs to access a paid service, Brevet handles the
+entire flow: detecting payment requests, signing transactions, and
+retrying with cryptographic proof. All within a single tool call.
+
+Connect your wallet to approve payments directly. Or configure
+auto-signing for small amounts. Spending policies enforce per-request,
+hourly, and daily limits. You define the boundaries. Your agent
+operates within them.
+
 ## What is this?
 
-PayMCP is a payment gateway for AI agents. When an AI agent needs to access a paid API that uses the [x402 payment protocol](https://www.x402.org/), PayMCP handles the entire payment flow automatically: it detects HTTP 402 responses, constructs EIP-712 signatures (EIP-3009 `TransferWithAuthorization`), and retries the request with cryptographic payment proof -- all within a single MCP tool call.
-
-Small payments are auto-signed by a server-side hot wallet. Larger payments are routed to the user's own wallet via WalletConnect for explicit approval. Spending policies enforce per-request, hourly, and daily limits, with endpoint whitelisting and blacklisting.
+When an AI agent hits a paid service, Brevet handles the entire payment flow: detecting the [x402](https://www.x402.org/) payment request, signing the transaction with EIP-712 (EIP-3009 `TransferWithAuthorization`), and completing the payment with cryptographic proof. The payment comes from your connected wallet. Small amounts can be auto-signed for speed; larger amounts route to your wallet for explicit approval. You set per-request, hourly, and daily spending limits.
 
 ## Features
 
@@ -55,8 +62,8 @@ flowchart LR
 
 ```bash
 # Clone the repository
-git clone https://github.com/marcopesani/x402-mcp-gateway.git
-cd x402-mcp-gateway
+git clone https://github.com/marcopesani/brevet.git
+cd brevet
 
 # Install dependencies
 npm install
@@ -79,7 +86,7 @@ Open [http://localhost:3000](http://localhost:3000) to access the dashboard.
 
 ## MCP Integration
 
-PayMCP exposes an MCP endpoint at `/api/mcp/{userId}` using [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http). Connect any MCP-compatible AI agent by pointing it to this URL.
+Brevet exposes an MCP endpoint at `/api/mcp/{userId}` using [Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http). Connect any MCP-compatible AI agent by pointing it to this URL.
 
 ### Tools
 
@@ -129,7 +136,7 @@ Poll the status of a pending payment awaiting WalletConnect approval.
 ```json
 {
   "mcpServers": {
-    "paymcp": {
+    "brevet": {
       "url": "http://localhost:3000/api/mcp/your-user-id"
     }
   }
@@ -178,7 +185,7 @@ npm run test:run
 ## Project Structure
 
 ```
-pay-mcp/
+brevet/
 ├── src/
 │   ├── app/
 │   │   ├── api/
@@ -229,7 +236,7 @@ pay-mcp/
 4. The client retries the request with the signed payment proof in a request header
 5. The server verifies the signature, submits the USDC transfer on-chain, and returns the requested resource
 
-PayMCP automates steps 2-4 for AI agents, with configurable spending limits and tiered signing authority.
+Brevet automates steps 2-4 for AI agents, with configurable spending limits and tiered signing authority.
 
 ## Contributing
 

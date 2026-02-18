@@ -44,9 +44,9 @@ export function LoginForm({
             <div className="flex size-8 items-center justify-center rounded-md">
               <Wallet className="size-6" />
             </div>
-            <CardTitle className="text-xl">Welcome to PayMCP</CardTitle>
+            <CardTitle className="text-xl">Welcome to Brevet</CardTitle>
             <CardDescription>
-              Connect your wallet to manage AI agent payments
+              Connect your wallet to manage your agent&apos;s spending authority
             </CardDescription>
           </div>
         </CardHeader>

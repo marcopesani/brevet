@@ -13,9 +13,9 @@ import { siweConfig } from "@/lib/siwe-config";
 const queryClient = new QueryClient();
 
 const metadata = {
-  name: "PayMCP",
-  description: "AI payment proxy with WalletConnect",
-  url: typeof window !== "undefined" ? window.location.origin : "https://paymcp.com",
+  name: "Brevet",
+  description: "Payment gateway for AI agents. Connect your wallet. Set spending policies.",
+  url: typeof window !== "undefined" ? window.location.origin : "https://brevet.dev",
   icons: [],
 };
 

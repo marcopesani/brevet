@@ -11,7 +11,7 @@ export default function MarketingLayout({
       <header className="sticky top-0 z-50 border-b bg-background/80 backdrop-blur-sm">
         <nav className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
           <Link href="/" className="font-semibold">
-            PayMCP
+            Brevet
           </Link>
           <div className="flex items-center gap-4">
             <Button asChild variant="ghost" size="sm">
