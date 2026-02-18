@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { chainConfig } from "@/lib/chain-config";
+import { getDefaultChainConfig } from "@/lib/chain-config";
 import { withdrawFromWallet } from "@/app/actions/wallet";
 import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
 
@@ -111,7 +111,7 @@ export default function WithdrawWalletForm({
               Withdrawn successfully!
             </p>
             <a
-              href={`${chainConfig.explorerUrl}/tx/${txHash}`}
+              href={`${getDefaultChainConfig().explorerUrl}/tx/${txHash}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-xs text-green-700 underline dark:text-green-300"

@@ -1,8 +1,8 @@
-import type { Hex } from "viem";
+import type { Hex, TypedDataDomain } from "viem";
 import type { PaymentRequirements } from "@x402/core/types";
 import { authorizationTypes } from "@x402/evm";
 import crypto from "crypto";
-import { chainConfig } from "@/lib/chain-config";
+import { getDefaultChainConfig } from "@/lib/chain-config";
 
 /**
  * A signing request to be fulfilled client-side via Wagmi's `useSignTypedData`.
@@ -12,7 +12,7 @@ import { chainConfig } from "@/lib/chain-config";
  */
 export interface WalletConnectSigningRequest {
   /** EIP-712 domain for USDC on the configured chain. */
-  domain: typeof chainConfig.usdcDomain;
+  domain: TypedDataDomain;
   /** EIP-712 type definitions for TransferWithAuthorization. */
   types: typeof authorizationTypes;
   /** The primary type being signed. */
@@ -46,7 +46,7 @@ export function createSigningRequest(
   const now = BigInt(Math.floor(Date.now() / 1_000));
 
   return {
-    domain: chainConfig.usdcDomain,
+    domain: getDefaultChainConfig().usdcDomain,
     types: authorizationTypes,
     primaryType: "TransferWithAuthorization",
     message: {

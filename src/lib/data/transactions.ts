@@ -11,9 +11,13 @@ function withId<T extends { _id: Types.ObjectId; userId?: Types.ObjectId }>(doc:
 /**
  * Get recent transactions for a user, limited to a specified count.
  */
-export async function getRecentTransactions(userId: string, limit: number = 5) {
+export async function getRecentTransactions(userId: string, limit: number = 5, options?: { chainId?: number }) {
   await connectDB();
-  const docs = await Transaction.find({ userId: new Types.ObjectId(userId) })
+  const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
+  if (options?.chainId !== undefined) {
+    filter.chainId = options.chainId;
+  }
+  const docs = await Transaction.find(filter)
     .sort({ createdAt: -1 })
     .limit(limit)
     .lean();
@@ -25,7 +29,7 @@ export async function getRecentTransactions(userId: string, limit: number = 5) {
  */
 export async function getTransactions(
   userId: string,
-  options?: { since?: Date; until?: Date },
+  options?: { since?: Date; until?: Date; chainId?: number },
 ) {
   await connectDB();
   const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
@@ -35,6 +39,10 @@ export async function getTransactions(
     if (options.since) createdAt.$gte = options.since;
     if (options.until) createdAt.$lte = options.until;
     filter.createdAt = createdAt;
+  }
+
+  if (options?.chainId !== undefined) {
+    filter.chainId = options.chainId;
   }
 
   const docs = await Transaction.find(filter)
@@ -48,12 +56,15 @@ export async function getTransactions(
  */
 export async function getSpendingHistory(
   userId: string,
-  options?: { since?: Date },
+  options?: { since?: Date; chainId?: number },
 ) {
   await connectDB();
   const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
   if (options?.since) {
     filter.createdAt = { $gte: options.since };
+  }
+  if (options?.chainId !== undefined) {
+    filter.chainId = options.chainId;
   }
 
   const docs = await Transaction.find(filter)
@@ -71,6 +82,7 @@ export async function createTransaction(data: {
   endpoint: string;
   txHash?: string | null;
   network: string;
+  chainId?: number;
   status: string;
   type?: string;
   userId: string;
@@ -84,6 +96,7 @@ export async function createTransaction(data: {
     endpoint: data.endpoint,
     txHash: data.txHash,
     network: data.network,
+    ...(data.chainId !== undefined && { chainId: data.chainId }),
     status: data.status,
     type: data.type ?? "payment",
     userId: new Types.ObjectId(data.userId),

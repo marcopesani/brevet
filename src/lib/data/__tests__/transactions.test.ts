@@ -183,3 +183,71 @@ describe("getTransactions returns error fields", () => {
     expect(result[0].responseStatus).toBe(503);
   });
 });
+
+describe("chainId filtering", () => {
+  it("getTransactions filters by chainId", async () => {
+    const userId = uid();
+    await Transaction.create({ userId: new Types.ObjectId(userId), amount: 1, endpoint: "https://a.com", network: "base", status: "completed", chainId: 8453 });
+    await Transaction.create({ userId: new Types.ObjectId(userId), amount: 2, endpoint: "https://b.com", network: "arbitrum", status: "completed", chainId: 42161 });
+
+    const baseOnly = await getTransactions(userId, { chainId: 8453 });
+    expect(baseOnly).toHaveLength(1);
+    expect(baseOnly[0].amount).toBe(1);
+
+    const arbOnly = await getTransactions(userId, { chainId: 42161 });
+    expect(arbOnly).toHaveLength(1);
+    expect(arbOnly[0].amount).toBe(2);
+
+    const all = await getTransactions(userId);
+    expect(all).toHaveLength(2);
+  });
+
+  it("getRecentTransactions filters by chainId", async () => {
+    const userId = uid();
+    await Transaction.create({ userId: new Types.ObjectId(userId), amount: 1, endpoint: "https://a.com", network: "base", status: "completed", chainId: 8453 });
+    await Transaction.create({ userId: new Types.ObjectId(userId), amount: 2, endpoint: "https://b.com", network: "arbitrum", status: "completed", chainId: 42161 });
+
+    const baseOnly = await getRecentTransactions(userId, 10, { chainId: 8453 });
+    expect(baseOnly).toHaveLength(1);
+    expect(baseOnly[0].amount).toBe(1);
+  });
+
+  it("getSpendingHistory filters by chainId", async () => {
+    const userId = uid();
+    await Transaction.create({ userId: new Types.ObjectId(userId), amount: 1, endpoint: "https://a.com", network: "base", status: "completed", chainId: 8453 });
+    await Transaction.create({ userId: new Types.ObjectId(userId), amount: 2, endpoint: "https://b.com", network: "arbitrum", status: "completed", chainId: 42161 });
+
+    const baseOnly = await getSpendingHistory(userId, { chainId: 8453 });
+    expect(baseOnly).toHaveLength(1);
+    expect(baseOnly[0].amount).toBe(1);
+  });
+
+  it("createTransaction stores chainId when provided", async () => {
+    const userId = uid();
+    const tx = await createTransaction({
+      amount: 0.5,
+      endpoint: "https://api.example.com",
+      network: "arbitrum",
+      chainId: 42161,
+      status: "completed",
+      userId,
+    });
+
+    expect(tx.chainId).toBe(42161);
+  });
+
+  it("createTransaction defaults chainId from env when not provided", async () => {
+    const userId = uid();
+    const tx = await createTransaction({
+      amount: 0.5,
+      endpoint: "https://api.example.com",
+      network: "base",
+      status: "completed",
+      userId,
+    });
+
+    // Default chainId from NEXT_PUBLIC_CHAIN_ID env var (8453 in test)
+    expect(tx.chainId).toBeDefined();
+    expect(typeof tx.chainId).toBe("number");
+  });
+});

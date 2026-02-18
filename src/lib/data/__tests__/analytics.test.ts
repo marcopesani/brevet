@@ -88,4 +88,42 @@ describe("getAnalytics", () => {
     const result = await getAnalytics(user1._id.toString());
     expect(result.summary.totalTransactions).toBe(0);
   });
+
+  it("filters analytics by chainId", async () => {
+    const user = await User.create({ walletAddress: "0xUser1" });
+    const now = new Date();
+
+    await Transaction.create({
+      userId: user._id,
+      amount: 1.0,
+      endpoint: "https://api.example.com",
+      network: "base",
+      chainId: 8453,
+      status: "completed",
+      type: "payment",
+      createdAt: now,
+    });
+
+    await Transaction.create({
+      userId: user._id,
+      amount: 2.0,
+      endpoint: "https://api.example.com",
+      network: "arbitrum",
+      chainId: 42161,
+      status: "completed",
+      type: "payment",
+      createdAt: now,
+    });
+
+    const baseAnalytics = await getAnalytics(user._id.toString(), { chainId: 8453 });
+    expect(baseAnalytics.summary.totalTransactions).toBe(1);
+    expect(baseAnalytics.summary.today).toBe(1.0);
+
+    const arbAnalytics = await getAnalytics(user._id.toString(), { chainId: 42161 });
+    expect(arbAnalytics.summary.totalTransactions).toBe(1);
+    expect(arbAnalytics.summary.today).toBe(2.0);
+
+    const allAnalytics = await getAnalytics(user._id.toString());
+    expect(allAnalytics.summary.totalTransactions).toBe(2);
+  });
 });

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { Hex } from "viem";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import { TEST_WALLET_ADDRESS } from "@/test/helpers/crypto";
-import { chainConfig } from "@/lib/chain-config";
+import { getDefaultChainConfig } from "@/lib/chain-config";
 import { Transaction } from "@/lib/models/transaction";
 import {
   parsePaymentRequired,
@@ -276,7 +276,7 @@ describe("E2E: Crypto Operations", () => {
       const requirement = {
         scheme: "exact",
         network: "eip155:84532",
-        asset: chainConfig.usdcAddress,
+        asset: getDefaultChainConfig().usdcAddress,
         amount: "100000", // 0.1 USDC
         payTo: ("0x" + "c".repeat(40)) as Hex,
         maxTimeoutSeconds: 3600,
@@ -289,7 +289,7 @@ describe("E2E: Crypto Operations", () => {
       );
 
       // Verify domain
-      expect(result.domain).toEqual(chainConfig.usdcDomain);
+      expect(result.domain).toEqual(getDefaultChainConfig().usdcDomain);
 
       // Verify primary type
       expect(result.primaryType).toBe("TransferWithAuthorization");
@@ -322,7 +322,7 @@ describe("E2E: Crypto Operations", () => {
       const requirement = {
         scheme: "exact",
         network: "eip155:84532",
-        asset: chainConfig.usdcAddress,
+        asset: getDefaultChainConfig().usdcAddress,
         amount: "50000",
         payTo: ("0x" + "c".repeat(40)) as Hex,
         maxTimeoutSeconds: 3600,
@@ -382,7 +382,7 @@ describe("E2E: Crypto Operations", () => {
       // Verify writeContract was called with correct params
       expect(mockWriteContract).toHaveBeenCalledOnce();
       const callArgs = mockWriteContract.mock.calls[0][0];
-      expect(callArgs.address).toBe(chainConfig.usdcAddress);
+      expect(callArgs.address).toBe(getDefaultChainConfig().usdcAddress);
       expect(callArgs.functionName).toBe("transfer");
       expect(callArgs.args[0]).toBe(recipientAddress);
       expect(callArgs.args[1]).toBe(BigInt(1_000_000)); // 1.0 USDC in 6-decimal wei
@@ -430,10 +430,10 @@ describe("E2E: Crypto Operations", () => {
       // Hot wallet has insufficient balance
       mockGetUsdcBalance.mockResolvedValue("0.01");
 
-      // Requirement must use chainConfig.networkString so it passes the network check
+      // Requirement must use getDefaultChainConfig().networkString so it passes the network check
       const requirement = {
         ...V1_REQUIREMENT,
-        network: chainConfig.networkString,
+        network: getDefaultChainConfig().networkString,
       };
 
       mockFetch.mockResolvedValueOnce(makeV1_402Response([requirement]));
@@ -454,10 +454,10 @@ describe("E2E: Crypto Operations", () => {
 
   // ─── 6. Network Mismatch Rejection ─────────────────────────────────────────
   describe("Network Mismatch Rejection", () => {
-    it("should reject when 402 requires a different chain than configured", async () => {
+    it("should reject when 402 requires a chain not in the supported registry", async () => {
       const { user } = await seedTestUser();
 
-      // Payment requires Ethereum mainnet (eip155:1) but app is configured for Base Sepolia (eip155:84532)
+      // Payment requires Ethereum mainnet (eip155:1) which is not in the supported chain registry
       const ethereumRequirement = {
         ...V1_REQUIREMENT,
         network: "eip155:1",
@@ -474,8 +474,7 @@ describe("E2E: Crypto Operations", () => {
 
       expect(result.success).toBe(false);
       expect(result.status).toBe("rejected");
-      expect(result.error).toContain(chainConfig.networkString);
-      expect(result.error).toContain("not supported");
+      expect(result.error).toContain("accepted networks are supported");
     });
 
     it("should accept when 402 requires the configured chain", async () => {
@@ -485,7 +484,7 @@ describe("E2E: Crypto Operations", () => {
       // Payment requires the configured chain (eip155:84532)
       const matchingRequirement = {
         ...V2_REQUIREMENT,
-        network: chainConfig.networkString,
+        network: getDefaultChainConfig().networkString,
       };
       const paymentRequired = {
         ...V2_PAYMENT_REQUIRED,
@@ -514,12 +513,12 @@ describe("E2E: Crypto Operations", () => {
     it("should handle 402 with multiple scheme entries in accepts array", async () => {
       const { user } = await seedTestUser();
 
-      // The app checks `accepts.some(accept => accept.network === chainConfig.networkString)`
+      // The app checks `accepts.some(accept => accept.network === getDefaultChainConfig().networkString)`
       // Use V2 format so both the network check and SDK scheme matching work
       const requirements = [
         {
           ...V2_REQUIREMENT,
-          network: chainConfig.networkString, // eip155:84532 — matches
+          network: getDefaultChainConfig().networkString, // eip155:84532 — matches
         },
         {
           scheme: "exact",
@@ -555,9 +554,10 @@ describe("E2E: Crypto Operations", () => {
       expect(result.status).toBe("completed");
     });
 
-    it("should reject when no requirement matches the configured chain", async () => {
+    it("should create pending payment when no requirement matches a chain with hot wallet", async () => {
       const { user } = await seedTestUser();
 
+      // Offer Ethereum (unsupported) + Polygon (supported but user has no hot wallet there)
       const requirements = [
         {
           ...V1_REQUIREMENT,
@@ -565,7 +565,36 @@ describe("E2E: Crypto Operations", () => {
         },
         {
           ...V1_REQUIREMENT,
-          network: "eip155:137", // Polygon
+          network: "eip155:137", // Polygon — supported but no hot wallet
+        },
+      ];
+
+      mockFetch.mockResolvedValueOnce(makeV1_402Response(requirements));
+
+      const { executePayment } = await import("@/lib/x402/payment");
+      const result = await executePayment(
+        "https://api.example.com/resource",
+        user.id,
+      );
+
+      // With multi-chain support, Polygon is supported so we create a pending payment
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("pending_approval");
+      expect(result.signingStrategy).toBe("walletconnect");
+    });
+
+    it("should reject when no requirement matches any supported chain", async () => {
+      const { user } = await seedTestUser();
+
+      // Only offer unsupported chains
+      const requirements = [
+        {
+          ...V1_REQUIREMENT,
+          network: "eip155:1", // Ethereum mainnet — not in registry
+        },
+        {
+          ...V1_REQUIREMENT,
+          network: "eip155:56", // BSC — not in registry
         },
       ];
 
@@ -579,7 +608,7 @@ describe("E2E: Crypto Operations", () => {
 
       expect(result.success).toBe(false);
       expect(result.status).toBe("rejected");
-      expect(result.error).toContain("not supported");
+      expect(result.error).toContain("accepted networks are supported");
     });
   });
 

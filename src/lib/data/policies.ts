@@ -9,13 +9,16 @@ function withId<T extends { _id: Types.ObjectId }>(doc: T): Omit<T, "_id"> & { i
 }
 
 /**
- * Get endpoint policies for a user, optionally filtered by status.
+ * Get endpoint policies for a user, optionally filtered by status and/or chainId.
  */
-export async function getPolicies(userId: string, status?: string) {
+export async function getPolicies(userId: string, status?: string, options?: { chainId?: number }) {
   await connectDB();
   const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
   if (status) {
     filter.status = status;
+  }
+  if (options?.chainId !== undefined) {
+    filter.chainId = options.chainId;
   }
   const docs = await EndpointPolicy.find(filter)
     .sort({ createdAt: -1 })
@@ -41,15 +44,21 @@ export async function createPolicy(
     endpointPattern: string;
     payFromHotWallet?: boolean;
     status?: string;
+    chainId?: number;
   },
 ) {
   await connectDB();
   const userObjectId = new Types.ObjectId(userId);
 
-  const existing = await EndpointPolicy.findOne({
+  const existingFilter: Record<string, unknown> = {
     userId: userObjectId,
     endpointPattern: data.endpointPattern,
-  }).lean();
+  };
+  if (data.chainId !== undefined) {
+    existingFilter.chainId = data.chainId;
+  }
+
+  const existing = await EndpointPolicy.findOne(existingFilter).lean();
 
   if (existing) {
     return null;
@@ -60,6 +69,7 @@ export async function createPolicy(
     endpointPattern: data.endpointPattern,
     ...(data.payFromHotWallet !== undefined && { payFromHotWallet: data.payFromHotWallet }),
     ...(data.status !== undefined && { status: data.status }),
+    ...(data.chainId !== undefined && { chainId: data.chainId }),
   });
   const lean = doc.toObject();
   return withId(lean);
@@ -86,6 +96,7 @@ export async function updatePolicy(
       const conflict = await EndpointPolicy.findOne({
         userId: new Types.ObjectId(userId),
         endpointPattern: data.endpointPattern,
+        chainId: existing.chainId,
       }).lean();
       if (conflict) {
         return null;

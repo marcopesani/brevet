@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { chainConfig } from "@/lib/chain-config";
+import { getDefaultChainConfig } from "@/lib/chain-config";
 import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
 
 const USDC_DECIMALS = 6;
@@ -53,7 +53,7 @@ export default function FundWalletForm({
     if (!hotWalletAddress || !amount || parseFloat(amount) <= 0) return;
 
     writeContract({
-      address: chainConfig.usdcAddress,
+      address: getDefaultChainConfig().usdcAddress,
       abi: ERC20_ABI,
       functionName: "transfer",
       args: [
@@ -113,7 +113,7 @@ export default function FundWalletForm({
               Funded successfully!
             </p>
             <a
-              href={`${chainConfig.explorerUrl}/tx/${txHash}`}
+              href={`${getDefaultChainConfig().explorerUrl}/tx/${txHash}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-xs text-green-700 underline dark:text-green-300"

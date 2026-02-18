@@ -124,3 +124,65 @@ describe("archivePolicy", () => {
     expect(updated!.archivedAt).toBeInstanceOf(Date);
   });
 });
+
+describe("chainId support", () => {
+  it("getPolicies filters by chainId", async () => {
+    const userId = uid();
+    await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", status: "active", chainId: 8453 });
+    await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", status: "active", chainId: 42161 });
+
+    const baseOnly = await getPolicies(userId, undefined, { chainId: 8453 });
+    expect(baseOnly).toHaveLength(1);
+    expect(baseOnly[0].chainId).toBe(8453);
+
+    const arbOnly = await getPolicies(userId, undefined, { chainId: 42161 });
+    expect(arbOnly).toHaveLength(1);
+    expect(arbOnly[0].chainId).toBe(42161);
+
+    const all = await getPolicies(userId);
+    expect(all).toHaveLength(2);
+  });
+
+  it("createPolicy stores chainId when provided", async () => {
+    const userId = uid();
+    const policy = await createPolicy(userId, {
+      endpointPattern: "https://arb-api.example.com",
+      status: "active",
+      chainId: 42161,
+    });
+
+    expect(policy).not.toBeNull();
+    expect(policy!.chainId).toBe(42161);
+  });
+
+  it("createPolicy allows same endpoint on different chains", async () => {
+    const userId = uid();
+    const p1 = await createPolicy(userId, {
+      endpointPattern: "https://api.example.com",
+      chainId: 8453,
+    });
+    const p2 = await createPolicy(userId, {
+      endpointPattern: "https://api.example.com",
+      chainId: 42161,
+    });
+
+    expect(p1).not.toBeNull();
+    expect(p2).not.toBeNull();
+    expect(p1!.chainId).toBe(8453);
+    expect(p2!.chainId).toBe(42161);
+  });
+
+  it("createPolicy rejects duplicate endpoint+chainId for same user", async () => {
+    const userId = uid();
+    await createPolicy(userId, {
+      endpointPattern: "https://api.example.com",
+      chainId: 42161,
+    });
+    const dup = await createPolicy(userId, {
+      endpointPattern: "https://api.example.com",
+      chainId: 42161,
+    });
+
+    expect(dup).toBeNull();
+  });
+});

@@ -5,7 +5,7 @@ import { useSignTypedData } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { authorizationTypes } from "@x402/evm";
 import type { PaymentRequirements } from "@x402/core/types";
-import { chainConfig } from "@/lib/chain-config";
+import { getDefaultChainConfig } from "@/lib/chain-config";
 import type { Hex } from "viem";
 import { toast } from "sonner";
 import {
@@ -113,7 +113,7 @@ export default function PendingPaymentCard({
       const parsed = JSON.parse(payment.paymentRequirements);
       const requirements: PaymentRequirements[] = Array.isArray(parsed) ? parsed : parsed.accepts;
       const requirement = requirements.find(
-        (r) => r.scheme === "exact" && r.network === chainConfig.networkString
+        (r) => r.scheme === "exact" && r.network === getDefaultChainConfig().networkString
       );
 
       if (!requirement) {
@@ -135,7 +135,7 @@ export default function PendingPaymentCard({
       };
 
       const signature = await signTypedDataAsync({
-        domain: chainConfig.usdcDomain,
+        domain: getDefaultChainConfig().usdcDomain,
         types: authorizationTypes,
         primaryType: "TransferWithAuthorization",
         message: {

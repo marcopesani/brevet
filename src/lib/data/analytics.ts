@@ -23,7 +23,7 @@ export interface AnalyticsData {
 /**
  * Get aggregated spending analytics for a user (last 30 days).
  */
-export async function getAnalytics(userId: string): Promise<AnalyticsData> {
+export async function getAnalytics(userId: string, options?: { chainId?: number }): Promise<AnalyticsData> {
   await connectDB();
   const now = new Date();
   const thirtyDaysAgo = new Date(now);
@@ -39,11 +39,16 @@ export async function getAnalytics(userId: string): Promise<AnalyticsData> {
 
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const transactions = await Transaction.find({
+  const txFilter: Record<string, unknown> = {
     userId: new Types.ObjectId(userId),
     type: "payment",
     createdAt: { $gte: thirtyDaysAgo },
-  })
+  };
+  if (options?.chainId !== undefined) {
+    txFilter.chainId = options.chainId;
+  }
+
+  const transactions = await Transaction.find(txFilter)
     .sort({ createdAt: 1 })
     .lean();
 

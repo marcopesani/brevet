@@ -1,7 +1,7 @@
 import { cookieStorage, createStorage } from "@wagmi/core";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { base, baseSepolia } from "@reown/appkit/networks";
-import { chainConfig } from "@/lib/chain-config";
+import { getDefaultChainConfig } from "@/lib/chain-config";
 
 export const projectId =
   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
@@ -12,7 +12,7 @@ const APPKIT_NETWORKS = {
 } as const;
 
 export const networks = [
-  APPKIT_NETWORKS[chainConfig.chain.id as keyof typeof APPKIT_NETWORKS] ?? base,
+  APPKIT_NETWORKS[getDefaultChainConfig().chain.id as keyof typeof APPKIT_NETWORKS] ?? base,
 ];
 
 /**

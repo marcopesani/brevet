@@ -1,11 +1,14 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 
+const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
+
 export interface ITransaction {
   _id: Types.ObjectId;
   amount: number;
   endpoint: string;
   txHash: string | null;
   network: string;
+  chainId: number;
   status: string;
   type: string;
   userId: Types.ObjectId;
@@ -25,6 +28,7 @@ const transactionSchema = new Schema<ITransactionDocument>(
     endpoint: { type: String, required: true },
     txHash: { type: String, default: null },
     network: { type: String, default: "base" },
+    chainId: { type: Number, default: defaultChainId, index: true },
     status: { type: String, default: "pending" },
     type: { type: String, default: "payment" },
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
