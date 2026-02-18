@@ -44,9 +44,8 @@ export async function approvePendingPayment(
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
 
-  const payment = await _getPendingPayment(paymentId);
+  const payment = await _getPendingPayment(paymentId, auth.userId);
   if (!payment) throw new Error("Pending payment not found");
-  if (payment.userId.toString() !== auth.userId) throw new Error("Forbidden");
   if (payment.status !== "pending") throw new Error(`Payment is already ${payment.status}`);
 
   logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: payment.amount });
@@ -107,7 +106,10 @@ export async function approvePendingPayment(
     });
 
     // Mark as approved with signature first (transitional state)
-    await _approvePendingPayment(paymentId, signature);
+    const approved = await _approvePendingPayment(paymentId, signature);
+    if (!approved) {
+      throw new Error("Payment has already been processed");
+    }
 
     // Read response body for storage
     let responsePayload: string | null = null;
@@ -214,12 +216,14 @@ export async function rejectPendingPayment(paymentId: string) {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
 
-  const payment = await _getPendingPayment(paymentId);
+  const payment = await _getPendingPayment(paymentId, auth.userId);
   if (!payment) throw new Error("Pending payment not found");
-  if (payment.userId.toString() !== auth.userId) throw new Error("Forbidden");
   if (payment.status !== "pending") throw new Error(`Payment is already ${payment.status}`);
 
-  await _rejectPendingPayment(paymentId);
+  const rejected = await _rejectPendingPayment(paymentId);
+  if (!rejected) {
+    throw new Error("Payment has already been processed");
+  }
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/pending");

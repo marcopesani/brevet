@@ -393,7 +393,7 @@ export function registerTools(server: McpServer, userId: string) {
     },
     async ({ paymentId }) => {
       try {
-        const payment = await getPendingPayment(paymentId);
+        const payment = await getPendingPayment(paymentId, userId);
 
         if (!payment) {
           return {
@@ -564,7 +564,7 @@ export function registerTools(server: McpServer, userId: string) {
     },
     async ({ paymentId }) => {
       try {
-        const payment = await getPendingPayment(paymentId);
+        const payment = await getPendingPayment(paymentId, userId);
 
         if (!payment) {
           return {
