@@ -260,3 +260,62 @@ describe("expirePendingPayment", () => {
     expect(updated!.status).toBe("expired");
   });
 });
+
+describe("chainId filtering", () => {
+  it("getPendingPayments filters by chainId", async () => {
+    const userId = uid();
+    const future = new Date(Date.now() + 60_000);
+    await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://a.com", amount: 1, paymentRequirements: "{}", status: "pending", expiresAt: future, chainId: 8453 });
+    await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://b.com", amount: 2, paymentRequirements: "{}", status: "pending", expiresAt: future, chainId: 42161 });
+
+    const baseOnly = await getPendingPayments(userId, { chainId: 8453 });
+    expect(baseOnly).toHaveLength(1);
+    expect(baseOnly[0].amount).toBe(1);
+
+    const arbOnly = await getPendingPayments(userId, { chainId: 42161 });
+    expect(arbOnly).toHaveLength(1);
+    expect(arbOnly[0].amount).toBe(2);
+
+    const all = await getPendingPayments(userId);
+    expect(all).toHaveLength(2);
+  });
+
+  it("getPendingCount filters by chainId", async () => {
+    const userId = uid();
+    const future = new Date(Date.now() + 60_000);
+    await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://a.com", amount: 1, paymentRequirements: "{}", status: "pending", expiresAt: future, chainId: 8453 });
+    await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://b.com", amount: 2, paymentRequirements: "{}", status: "pending", expiresAt: future, chainId: 42161 });
+
+    const baseCount = await getPendingCount(userId, { chainId: 8453 });
+    expect(baseCount).toBe(1);
+
+    const allCount = await getPendingCount(userId);
+    expect(allCount).toBe(2);
+  });
+
+  it("createPendingPayment stores chainId when provided", async () => {
+    const userId = uid();
+    const payment = await createPendingPayment({
+      userId,
+      url: "https://api.example.com",
+      amount: 0.5,
+      chainId: 42161,
+      paymentRequirements: "{}",
+    });
+
+    expect(payment.chainId).toBe(42161);
+  });
+
+  it("createPendingPayment defaults chainId from env when not provided", async () => {
+    const userId = uid();
+    const payment = await createPendingPayment({
+      userId,
+      url: "https://api.example.com",
+      amount: 0.5,
+      paymentRequirements: "{}",
+    });
+
+    expect(payment.chainId).toBeDefined();
+    expect(typeof payment.chainId).toBe("number");
+  });
+});

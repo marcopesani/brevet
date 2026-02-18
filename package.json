@@ -11,7 +11,8 @@
     "test:run": "vitest run",
     "test:e2e": "vitest run --project e2e",
     "test:integration": "bash scripts/integration-test.sh",
-    "migrate:data": "npx tsx scripts/migrate-pg-to-mongo.ts"
+    "migrate:data": "npx tsx scripts/migrate-pg-to-mongo.ts",
+    "migrate:chainid": "npx tsx scripts/migrate-add-chainid.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

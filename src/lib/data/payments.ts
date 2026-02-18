@@ -11,13 +11,17 @@ function withId<T extends { _id: Types.ObjectId; userId?: Types.ObjectId }>(doc:
 /**
  * Get all pending (non-expired) payments for a user.
  */
-export async function getPendingPayments(userId: string) {
+export async function getPendingPayments(userId: string, options?: { chainId?: number }) {
   await connectDB();
-  const docs = await PendingPayment.find({
+  const filter: Record<string, unknown> = {
     userId: new Types.ObjectId(userId),
     status: "pending",
     expiresAt: { $gt: new Date() },
-  })
+  };
+  if (options?.chainId !== undefined) {
+    filter.chainId = options.chainId;
+  }
+  const docs = await PendingPayment.find(filter)
     .sort({ createdAt: -1 })
     .lean();
   return docs.map(withId);
@@ -26,13 +30,17 @@ export async function getPendingPayments(userId: string) {
 /**
  * Get the count of pending (non-expired) payments for a user.
  */
-export async function getPendingCount(userId: string) {
+export async function getPendingCount(userId: string, options?: { chainId?: number }) {
   await connectDB();
-  return PendingPayment.countDocuments({
+  const filter: Record<string, unknown> = {
     userId: new Types.ObjectId(userId),
     status: "pending",
     expiresAt: { $gt: new Date() },
-  });
+  };
+  if (options?.chainId !== undefined) {
+    filter.chainId = options.chainId;
+  }
+  return PendingPayment.countDocuments(filter);
 }
 
 /**
@@ -52,6 +60,7 @@ export async function createPendingPayment(data: {
   url: string;
   method?: string;
   amount: number;
+  chainId?: number;
   paymentRequirements: string;
   expiresAt?: Date;
   body?: string;
@@ -63,6 +72,7 @@ export async function createPendingPayment(data: {
     url: data.url,
     method: data.method ?? "GET",
     amount: data.amount,
+    ...(data.chainId !== undefined && { chainId: data.chainId }),
     paymentRequirements: data.paymentRequirements,
     expiresAt: data.expiresAt ?? new Date(Date.now() + 30 * 60 * 1000),
     requestBody: data.body ?? null,
