@@ -10,6 +10,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:e2e": "vitest run --project e2e",
+    "test:integration": "bash scripts/integration-test.sh",
     "migrate:data": "npx tsx scripts/migrate-pg-to-mongo.ts"
   },
   "dependencies": {
