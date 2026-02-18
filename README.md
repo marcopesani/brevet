@@ -18,12 +18,12 @@ operates within them.
 
 ## What is this?
 
-When an AI agent hits a paid service, Brevet handles the entire payment flow: detecting the [x402](https://www.x402.org/) payment request, signing the transaction with EIP-712 (EIP-3009 `TransferWithAuthorization`), and completing the payment with cryptographic proof. The payment comes from your connected wallet. Small amounts can be auto-signed for speed; larger amounts route to your wallet for explicit approval. You set per-request, hourly, and daily spending limits. Supports multiple L2 chains: Base, Arbitrum, Optimism, and Polygon (mainnets + testnets).
+When an AI agent hits a paid service, Brevet handles the entire payment flow: detecting the [x402](https://www.x402.org/) payment request, signing the transaction with EIP-712 (EIP-3009 `TransferWithAuthorization`), and completing the payment with cryptographic proof. The payment comes from your connected wallet. Small amounts can be auto-signed for speed; larger amounts route to your wallet for explicit approval. You set per-request, hourly, and daily spending limits. Supports Ethereum L1 and multiple L2 chains: Base, Arbitrum, Optimism, and Polygon (mainnets + testnets).
 
 ## Features
 
-- **x402 Payment Engine** -- Automatic HTTP 402 payment negotiation with EIP-712 signed USDC transfers across multiple L2 chains
-- **Multi-Chain L2 Support** -- Base, Arbitrum, Optimism, Polygon (mainnets + testnets) with automatic chain selection based on endpoint requirements and wallet balances
+- **x402 Payment Engine** -- Automatic HTTP 402 payment negotiation with EIP-712 signed USDC transfers across Ethereum L1 and multiple L2 chains
+- **Multi-Chain Support** -- Ethereum L1, Base, Arbitrum, Optimism, Polygon (mainnets + testnets) with automatic chain selection based on endpoint requirements and wallet balances
 - **Tiered Signing** -- Small payments auto-signed by hot wallet; larger payments require WalletConnect approval
 - **MCP Server** -- 6 tools for AI agents: `x402_pay`, `x402_check_balance`, `x402_spending_history`, `x402_check_pending`, `x402_get_result`, `x402_discover`
 - **Endpoint Discovery** -- Search for x402-protected APIs via CDP Bazaar integration
@@ -44,7 +44,7 @@ flowchart LR
     MCP --> Engine[x402 Engine]
     Engine -->|amount ≤ policy limit| HW[Hot Wallet]
     Engine -->|amount > policy limit| WC[WalletConnect]
-    HW -->|EIP-712 signature| USDC[L2 USDC]
+    HW -->|EIP-712 signature| USDC[USDC]
     WC -->|user approval| USDC
     USDC -->|payment proof| API[Paid API]
     API -->|response| Agent
@@ -100,7 +100,7 @@ Brevet exposes an MCP endpoint at `/api/mcp/{userId}` using [Streamable HTTP tra
 
 #### `x402_pay`
 
-Make an HTTP request to an x402-protected URL. Automatically handles 402 payment negotiation. Supports multiple chains (Base, Arbitrum, Optimism, Polygon + testnets). If no chain is specified, the gateway auto-selects the best chain based on the endpoint's accepted networks and the user's balances.
+Make an HTTP request to an x402-protected URL. Automatically handles 402 payment negotiation. Supports multiple chains (Ethereum, Base, Arbitrum, Optimism, Polygon + testnets). If no chain is specified, the gateway auto-selects the best chain based on the endpoint's accepted networks and the user's balances.
 
 ```json
 {
@@ -213,7 +213,7 @@ Tests require MongoDB — start it with `docker compose up -d mongodb` or point 
 |-------|-----------------|
 | Unit | EIP-712 signing, x402 header parsing, payment flow logic, policy enforcement, hot wallet crypto, rate limiter, chain config |
 | Integration | API routes, MCP tools, server actions, data layer |
-| E2E | Full payment flow against Base Sepolia testnet with real RPC calls, multi-chain support |
+| E2E | Full payment flow against Base Sepolia and Ethereum Sepolia testnets with real RPC calls, multi-chain support |
 
 ## Project Structure
 
@@ -239,7 +239,7 @@ brevet/
 │   │   ├── mcp/                 # MCP server and tool definitions
 │   │   ├── models/              # Mongoose models (5 collections)
 │   │   ├── x402/                # x402 payment engine (EIP-712, headers, types)
-│   │   ├── chain-config.ts      # Multi-chain configuration (8 chains)
+│   │   ├── chain-config.ts      # Multi-chain configuration (10 chains)
 │   │   ├── db.ts                # MongoDB/Mongoose connection
 │   │   ├── hot-wallet.ts        # Hot wallet management + AES-256-GCM encryption
 │   │   ├── policy.ts            # Endpoint policy enforcement
@@ -261,7 +261,7 @@ brevet/
 | `NEXTAUTH_SECRET` | Yes | Secret key for NextAuth session encryption |
 | `NEXTAUTH_URL` | Production | The canonical URL of your site (default: `http://localhost:3000`) |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | Yes | WalletConnect project ID from [dashboard.reown.com](https://dashboard.reown.com) |
-| `NEXT_PUBLIC_CHAIN_ID` | No | Default chain ID: `8453` (Base mainnet, default) or `84532` (Base Sepolia) |
+| `NEXT_PUBLIC_CHAIN_ID` | No | Default chain ID: `8453` (Base mainnet, default), `84532` (Base Sepolia), `1` (Ethereum mainnet), or `11155111` (Ethereum Sepolia) |
 | `NEXT_PUBLIC_ALCHEMY_ID` | No | Alchemy API key for enhanced RPC access |
 | `RPC_URL` | No | Custom RPC URL (defaults to public Base RPC) |
 
@@ -275,7 +275,7 @@ brevet/
 4. The client retries the request with the signed payment proof in a request header
 5. The server verifies the signature, submits the USDC transfer on-chain, and returns the requested resource
 
-Brevet automates steps 2-4 for AI agents across multiple L2 chains (Base, Arbitrum, Optimism, Polygon), with configurable spending limits, tiered signing authority, and automatic chain selection.
+Brevet automates steps 2-4 for AI agents across Ethereum L1 and multiple L2 chains (Base, Arbitrum, Optimism, Polygon), with configurable spending limits, tiered signing authority, and automatic chain selection.
 
 ## Contributing
 

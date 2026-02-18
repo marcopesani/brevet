@@ -2,6 +2,8 @@ import { cookieStorage, createStorage } from "@wagmi/core";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import type { AppKitNetwork } from "@reown/appkit-common";
 import {
+  mainnet,
+  sepolia,
   base,
   baseSepolia,
   arbitrum,
@@ -17,6 +19,8 @@ export const projectId =
   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 
 const APPKIT_NETWORKS = {
+  [mainnet.id]: mainnet,
+  [sepolia.id]: sepolia,
   [base.id]: base,
   [baseSepolia.id]: baseSepolia,
   [arbitrum.id]: arbitrum,

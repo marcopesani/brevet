@@ -457,10 +457,10 @@ describe("E2E: Crypto Operations", () => {
     it("should reject when 402 requires a chain not in the supported registry", async () => {
       const { user } = await seedTestUser();
 
-      // Payment requires Ethereum mainnet (eip155:1) which is not in the supported chain registry
+      // Payment requires BSC (eip155:56) which is not in the supported chain registry
       const ethereumRequirement = {
         ...V1_REQUIREMENT,
-        network: "eip155:1",
+        network: "eip155:56",
       };
       mockFetch.mockResolvedValueOnce(
         makeV1_402Response([ethereumRequirement]),
@@ -590,11 +590,11 @@ describe("E2E: Crypto Operations", () => {
       const requirements = [
         {
           ...V1_REQUIREMENT,
-          network: "eip155:1", // Ethereum mainnet — not in registry
+          network: "eip155:56", // BSC — not in registry
         },
         {
           ...V1_REQUIREMENT,
-          network: "eip155:56", // BSC — not in registry
+          network: "eip155:43114", // Avalanche — not in registry
         },
       ];
 
