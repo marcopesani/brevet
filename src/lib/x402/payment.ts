@@ -38,7 +38,6 @@ function validateUrl(url: string): string | null {
   // Reject localhost and loopback
   if (
     hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
     hostname === "::1" ||
     hostname === "[::1]" ||
     hostname === "0.0.0.0"
@@ -46,15 +45,17 @@ function validateUrl(url: string): string | null {
     return "Requests to localhost/loopback addresses are not allowed";
   }
 
-  // Reject private IPv4 ranges
+  // Reject private/internal IPv4 ranges (includes full 127.0.0.0/8 loopback)
   const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (ipv4Match) {
     const [, a, b] = ipv4Match.map(Number);
     if (
+      a === 127 ||                         // 127.0.0.0/8 (loopback)
       a === 10 ||                          // 10.0.0.0/8
       (a === 172 && b >= 16 && b <= 31) || // 172.16.0.0/12
-      (a === 192 && b === 168) ||           // 192.168.0.0/16
-      a === 169 && b === 254               // 169.254.0.0/16 (link-local)
+      (a === 192 && b === 168) ||          // 192.168.0.0/16
+      (a === 169 && b === 254) ||          // 169.254.0.0/16 (link-local)
+      (a === 0)                            // 0.0.0.0/8
     ) {
       return "Requests to private/internal IP addresses are not allowed";
     }

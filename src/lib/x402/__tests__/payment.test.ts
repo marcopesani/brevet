@@ -488,4 +488,36 @@ describe("executePayment", () => {
       expect(tx!.chainId).toBe(84532);
     });
   });
+
+  describe("SSRF hardening", () => {
+    describe("H2: full loopback range", () => {
+      it("rejects 127.0.0.2", async () => {
+        const result = await executePayment("http://127.0.0.2/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects 127.1.1.1", async () => {
+        const result = await executePayment("http://127.1.1.1/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects 127.255.255.255", async () => {
+        const result = await executePayment("http://127.255.255.255/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("still blocks 127.0.0.1", async () => {
+        const result = await executePayment("http://127.0.0.1/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+    });
+  });
 });
