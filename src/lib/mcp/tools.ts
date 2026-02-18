@@ -418,7 +418,7 @@ export function registerTools(server: McpServer, userId: string) {
           payment.status === "pending" &&
           new Date() > payment.expiresAt
         ) {
-          await expirePendingPayment(paymentId);
+          await expirePendingPayment(paymentId, userId);
           return {
             content: [
               {
@@ -616,7 +616,7 @@ export function registerTools(server: McpServer, userId: string) {
 
         if (payment.status === "pending") {
           if (new Date() > payment.expiresAt) {
-            await expirePendingPayment(paymentId);
+            await expirePendingPayment(paymentId, userId);
             return {
               content: [
                 {

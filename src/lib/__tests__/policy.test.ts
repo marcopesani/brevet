@@ -133,6 +133,40 @@ describe("checkPolicy", () => {
       expect(result.action).toBe("rejected");
       expect(result.reason).toContain("No active policy");
     });
+
+    it("does not match across domain boundaries (M11)", async () => {
+      // Pattern "https://api.example.com" should NOT match "https://api.example.com.evil.com"
+      const result = await checkPolicy(0.05, "https://api.example.com.evil.com/resource", userId);
+
+      expect(result.action).toBe("rejected");
+      expect(result.reason).toContain("No active policy");
+    });
+
+    it("does not match when next char is not a URL boundary (M11)", async () => {
+      // Pattern "https://api.example.com" should NOT match "https://api.example.com-evil.com"
+      const result = await checkPolicy(0.05, "https://api.example.com-evil.com/resource", userId);
+
+      expect(result.action).toBe("rejected");
+      expect(result.reason).toContain("No active policy");
+    });
+
+    it("matches when next char is a query parameter boundary (M11)", async () => {
+      const result = await checkPolicy(0.05, "https://api.example.com?query=1", userId);
+
+      expect(result.action).toBe("hot_wallet");
+    });
+
+    it("matches when next char is a fragment boundary (M11)", async () => {
+      const result = await checkPolicy(0.05, "https://api.example.com#section", userId);
+
+      expect(result.action).toBe("hot_wallet");
+    });
+
+    it("matches exact endpoint pattern with no trailing path (M11)", async () => {
+      const result = await checkPolicy(0.05, "https://api.example.com", userId);
+
+      expect(result.action).toBe("hot_wallet");
+    });
   });
 
   it("ignores archived policies (treats as if no policy exists)", async () => {

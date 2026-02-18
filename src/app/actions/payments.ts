@@ -52,7 +52,7 @@ export async function approvePendingPayment(
 
   if (new Date() > payment.expiresAt) {
     logger.warn("Payment expired during approval", { userId: auth.userId, paymentId, action: "payment_expired" });
-    await _expirePendingPayment(paymentId);
+    await _expirePendingPayment(paymentId, auth.userId);
     throw new Error("Payment has expired");
   }
 
@@ -103,10 +103,11 @@ export async function approvePendingPayment(
         ...paymentHeaders,
       },
       ...(payment.requestBody ? { body: payment.requestBody } : {}),
+      signal: AbortSignal.timeout(30_000),
     });
 
     // Mark as approved with signature first (transitional state)
-    const approved = await _approvePendingPayment(paymentId, signature);
+    const approved = await _approvePendingPayment(paymentId, auth.userId, signature);
     if (!approved) {
       throw new Error("Payment has already been processed");
     }
@@ -140,14 +141,14 @@ export async function approvePendingPayment(
     // Store response on the PendingPayment record
     if (paidResponse.ok) {
       logger.info("Payment approval completed", { userId: auth.userId, paymentId, url: payment.url, action: "approve_completed", status: paidResponse.status, txHash });
-      await completePendingPayment(paymentId, {
+      await completePendingPayment(paymentId, auth.userId, {
         responsePayload: responsePayload ?? "",
         responseStatus: paidResponse.status,
         txHash: txHash ?? undefined,
       });
     } else {
       logger.error("Payment approval failed - server returned error", { userId: auth.userId, paymentId, url: payment.url, action: "approve_failed", status: paidResponse.status, responseBody: responsePayload?.slice(0, 500) });
-      await failPendingPayment(paymentId, {
+      await failPendingPayment(paymentId, auth.userId, {
         responsePayload: responsePayload ?? undefined,
         responseStatus: paidResponse.status,
       });
@@ -196,7 +197,7 @@ export async function approvePendingPayment(
       errorMessage: `Network error: ${errorMsg}`,
     });
 
-    await failPendingPayment(paymentId, {
+    await failPendingPayment(paymentId, auth.userId, {
       error: `Network error: ${errorMsg}`,
     });
 
@@ -220,7 +221,7 @@ export async function rejectPendingPayment(paymentId: string) {
   if (!payment) throw new Error("Pending payment not found");
   if (payment.status !== "pending") throw new Error(`Payment is already ${payment.status}`);
 
-  const rejected = await _rejectPendingPayment(paymentId);
+  const rejected = await _rejectPendingPayment(paymentId, auth.userId);
   if (!rejected) {
     throw new Error("Payment has already been processed");
   }

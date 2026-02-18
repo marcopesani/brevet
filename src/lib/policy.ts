@@ -32,6 +32,12 @@ async function findMatchingPolicy(userId: string, endpoint: string, chainId?: nu
   let bestMatch: IEndpointPolicyDocument | null = null;
   for (const policy of policies) {
     if (endpoint.startsWith(policy.endpointPattern)) {
+      // Verify the character after the pattern is a URL boundary (/, ?, #, or end-of-string)
+      // to prevent cross-domain matches (e.g., pattern "https://api" matching "https://api-evil.com")
+      const nextChar = endpoint[policy.endpointPattern.length];
+      if (nextChar !== undefined && nextChar !== "/" && nextChar !== "?" && nextChar !== "#") {
+        continue;
+      }
       if (!bestMatch || policy.endpointPattern.length > bestMatch.endpointPattern.length) {
         bestMatch = policy;
       }

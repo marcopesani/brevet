@@ -100,10 +100,12 @@ export async function getPendingPaymentById(paymentId: string, userId: string) {
 /**
  * Mark a pending payment as completed and store response data.
  * Only succeeds if the payment is currently "approved" (atomic precondition).
+ * Requires userId for defense-in-depth ownership verification.
  * Returns null if the payment was already transitioned by another caller.
  */
 export async function completePendingPayment(
   paymentId: string,
+  userId: string,
   data: {
     responsePayload: string;
     responseStatus: number;
@@ -112,7 +114,7 @@ export async function completePendingPayment(
 ) {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
-    { _id: paymentId, status: "approved" },
+    { _id: paymentId, status: "approved", userId: new Types.ObjectId(userId) },
     {
       $set: {
         status: "completed",
@@ -130,10 +132,12 @@ export async function completePendingPayment(
 /**
  * Mark a pending payment as failed and store error details.
  * Only succeeds if the payment is currently "approved" (atomic precondition).
+ * Requires userId for defense-in-depth ownership verification.
  * Returns null if the payment was already transitioned by another caller.
  */
 export async function failPendingPayment(
   paymentId: string,
+  userId: string,
   data: {
     responsePayload?: string;
     responseStatus?: number;
@@ -142,7 +146,7 @@ export async function failPendingPayment(
 ) {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
-    { _id: paymentId, status: "approved" },
+    { _id: paymentId, status: "approved", userId: new Types.ObjectId(userId) },
     {
       $set: {
         status: "failed",
@@ -159,12 +163,13 @@ export async function failPendingPayment(
 /**
  * Mark a pending payment as approved and store the signature.
  * Only succeeds if the payment is currently "pending" (atomic precondition).
+ * Requires userId for defense-in-depth ownership verification.
  * Returns null if the payment was already transitioned by another caller.
  */
-export async function approvePendingPayment(paymentId: string, signature: string) {
+export async function approvePendingPayment(paymentId: string, userId: string, signature: string) {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
-    { _id: paymentId, status: "pending" },
+    { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
     { $set: { status: "approved", signature } },
     { returnDocument: "after" },
   ).lean();
@@ -174,12 +179,13 @@ export async function approvePendingPayment(paymentId: string, signature: string
 /**
  * Mark a pending payment as rejected.
  * Only succeeds if the payment is currently "pending" (atomic precondition).
+ * Requires userId for defense-in-depth ownership verification.
  * Returns null if the payment was already transitioned by another caller.
  */
-export async function rejectPendingPayment(paymentId: string) {
+export async function rejectPendingPayment(paymentId: string, userId: string) {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
-    { _id: paymentId, status: "pending" },
+    { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
     { $set: { status: "rejected" } },
     { returnDocument: "after" },
   ).lean();
@@ -189,12 +195,13 @@ export async function rejectPendingPayment(paymentId: string) {
 /**
  * Mark a pending payment as expired.
  * Only succeeds if the payment is currently "pending" (atomic precondition).
+ * Requires userId for defense-in-depth ownership verification.
  * Returns null if the payment was already transitioned by another caller.
  */
-export async function expirePendingPayment(paymentId: string) {
+export async function expirePendingPayment(paymentId: string, userId: string) {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
-    { _id: paymentId, status: "pending" },
+    { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
     { $set: { status: "expired" } },
     { returnDocument: "after" },
   ).lean();

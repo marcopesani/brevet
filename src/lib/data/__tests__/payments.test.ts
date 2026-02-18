@@ -175,7 +175,7 @@ describe("completePendingPayment", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future });
 
-    const updated = await completePendingPayment(created._id.toString(), {
+    const updated = await completePendingPayment(created._id.toString(), userId, {
       responsePayload: '{"result": "success"}',
       responseStatus: 200,
       txHash: "0xabc123",
@@ -193,7 +193,7 @@ describe("completePendingPayment", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future });
 
-    const updated = await completePendingPayment(created._id.toString(), {
+    const updated = await completePendingPayment(created._id.toString(), userId, {
       responsePayload: "OK",
       responseStatus: 200,
     });
@@ -201,6 +201,23 @@ describe("completePendingPayment", () => {
     expect(updated!.status).toBe("completed");
     expect(updated!.txHash).toBeNull();
     expect(updated!.completedAt).toBeInstanceOf(Date);
+  });
+
+  it("returns null when userId does not match (IDOR protection)", async () => {
+    const userId = uid();
+    const attackerId = uid();
+    const future = new Date(Date.now() + 60_000);
+    const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future });
+
+    const result = await completePendingPayment(created._id.toString(), attackerId, {
+      responsePayload: "OK",
+      responseStatus: 200,
+    });
+    expect(result).toBeNull();
+
+    // Verify original was not modified
+    const original = await PendingPayment.findById(created._id).lean();
+    expect(original!.status).toBe("approved");
   });
 });
 
@@ -210,7 +227,7 @@ describe("failPendingPayment", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future });
 
-    const updated = await failPendingPayment(created._id.toString(), {
+    const updated = await failPendingPayment(created._id.toString(), userId, {
       responsePayload: "Internal Server Error",
       responseStatus: 500,
     });
@@ -226,7 +243,7 @@ describe("failPendingPayment", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future });
 
-    const updated = await failPendingPayment(created._id.toString(), {
+    const updated = await failPendingPayment(created._id.toString(), userId, {
       error: "Network timeout",
     });
 
@@ -241,11 +258,25 @@ describe("failPendingPayment", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future });
 
-    const updated = await failPendingPayment(created._id.toString(), {});
+    const updated = await failPendingPayment(created._id.toString(), userId, {});
 
     expect(updated!.status).toBe("failed");
     expect(updated!.responsePayload).toBeNull();
     expect(updated!.responseStatus).toBeNull();
+  });
+
+  it("returns null when userId does not match (IDOR protection)", async () => {
+    const userId = uid();
+    const attackerId = uid();
+    const future = new Date(Date.now() + 60_000);
+    const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future });
+
+    const result = await failPendingPayment(created._id.toString(), attackerId, { error: "fail" });
+    expect(result).toBeNull();
+
+    // Verify original was not modified
+    const original = await PendingPayment.findById(created._id).lean();
+    expect(original!.status).toBe("approved");
   });
 });
 
@@ -255,9 +286,23 @@ describe("approvePendingPayment", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", expiresAt: future });
 
-    const updated = await approvePendingPayment(created._id.toString(), "0xsig123");
+    const updated = await approvePendingPayment(created._id.toString(), userId, "0xsig123");
     expect(updated!.status).toBe("approved");
     expect(updated!.signature).toBe("0xsig123");
+  });
+
+  it("returns null when userId does not match (IDOR protection)", async () => {
+    const userId = uid();
+    const attackerId = uid();
+    const future = new Date(Date.now() + 60_000);
+    const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", expiresAt: future });
+
+    const result = await approvePendingPayment(created._id.toString(), attackerId, "0xsig123");
+    expect(result).toBeNull();
+
+    // Verify original was not modified
+    const original = await PendingPayment.findById(created._id).lean();
+    expect(original!.status).toBe("pending");
   });
 });
 
@@ -267,8 +312,22 @@ describe("rejectPendingPayment", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", expiresAt: future });
 
-    const updated = await rejectPendingPayment(created._id.toString());
+    const updated = await rejectPendingPayment(created._id.toString(), userId);
     expect(updated!.status).toBe("rejected");
+  });
+
+  it("returns null when userId does not match (IDOR protection)", async () => {
+    const userId = uid();
+    const attackerId = uid();
+    const future = new Date(Date.now() + 60_000);
+    const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", expiresAt: future });
+
+    const result = await rejectPendingPayment(created._id.toString(), attackerId);
+    expect(result).toBeNull();
+
+    // Verify original was not modified
+    const original = await PendingPayment.findById(created._id).lean();
+    expect(original!.status).toBe("pending");
   });
 });
 
@@ -278,8 +337,22 @@ describe("expirePendingPayment", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", expiresAt: future });
 
-    const updated = await expirePendingPayment(created._id.toString());
+    const updated = await expirePendingPayment(created._id.toString(), userId);
     expect(updated!.status).toBe("expired");
+  });
+
+  it("returns null when userId does not match (IDOR protection)", async () => {
+    const userId = uid();
+    const attackerId = uid();
+    const future = new Date(Date.now() + 60_000);
+    const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", expiresAt: future });
+
+    const result = await expirePendingPayment(created._id.toString(), attackerId);
+    expect(result).toBeNull();
+
+    // Verify original was not modified
+    const original = await PendingPayment.findById(created._id).lean();
+    expect(original!.status).toBe("pending");
   });
 });
 
@@ -289,7 +362,7 @@ describe("state machine preconditions", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "pending", expiresAt: future });
 
-    const result = await approvePendingPayment(created._id.toString(), "0xsig");
+    const result = await approvePendingPayment(created._id.toString(), userId, "0xsig");
     expect(result).not.toBeNull();
     expect(result!.status).toBe("approved");
   });
@@ -299,7 +372,7 @@ describe("state machine preconditions", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future });
 
-    const result = await approvePendingPayment(created._id.toString(), "0xsig");
+    const result = await approvePendingPayment(created._id.toString(), userId, "0xsig");
     expect(result).toBeNull();
   });
 
@@ -308,7 +381,7 @@ describe("state machine preconditions", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "completed", expiresAt: future });
 
-    const result = await approvePendingPayment(created._id.toString(), "0xsig");
+    const result = await approvePendingPayment(created._id.toString(), userId, "0xsig");
     expect(result).toBeNull();
   });
 
@@ -317,7 +390,7 @@ describe("state machine preconditions", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "rejected", expiresAt: future });
 
-    const result = await rejectPendingPayment(created._id.toString());
+    const result = await rejectPendingPayment(created._id.toString(), userId);
     expect(result).toBeNull();
   });
 
@@ -326,7 +399,7 @@ describe("state machine preconditions", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future });
 
-    const result = await rejectPendingPayment(created._id.toString());
+    const result = await rejectPendingPayment(created._id.toString(), userId);
     expect(result).toBeNull();
   });
 
@@ -335,7 +408,7 @@ describe("state machine preconditions", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "approved", expiresAt: future });
 
-    const result = await expirePendingPayment(created._id.toString());
+    const result = await expirePendingPayment(created._id.toString(), userId);
     expect(result).toBeNull();
   });
 
@@ -344,7 +417,7 @@ describe("state machine preconditions", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "pending", expiresAt: future });
 
-    const result = await completePendingPayment(created._id.toString(), { responsePayload: "OK", responseStatus: 200 });
+    const result = await completePendingPayment(created._id.toString(), userId, { responsePayload: "OK", responseStatus: 200 });
     expect(result).toBeNull();
   });
 
@@ -353,7 +426,7 @@ describe("state machine preconditions", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "completed", expiresAt: future });
 
-    const result = await completePendingPayment(created._id.toString(), { responsePayload: "OK", responseStatus: 200 });
+    const result = await completePendingPayment(created._id.toString(), userId, { responsePayload: "OK", responseStatus: 200 });
     expect(result).toBeNull();
   });
 
@@ -362,7 +435,7 @@ describe("state machine preconditions", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "pending", expiresAt: future });
 
-    const result = await failPendingPayment(created._id.toString(), { error: "fail" });
+    const result = await failPendingPayment(created._id.toString(), userId, { error: "fail" });
     expect(result).toBeNull();
   });
 
@@ -371,7 +444,7 @@ describe("state machine preconditions", () => {
     const future = new Date(Date.now() + 60_000);
     const created = await PendingPayment.create({ userId: new Types.ObjectId(userId), url: "https://api.example.com", amount: 1, paymentRequirements: "{}", status: "failed", expiresAt: future });
 
-    const result = await failPendingPayment(created._id.toString(), { error: "fail again" });
+    const result = await failPendingPayment(created._id.toString(), userId, { error: "fail again" });
     expect(result).toBeNull();
   });
 
@@ -382,8 +455,8 @@ describe("state machine preconditions", () => {
 
     const id = created._id.toString();
     const [result1, result2] = await Promise.all([
-      approvePendingPayment(id, "0xsig1"),
-      approvePendingPayment(id, "0xsig2"),
+      approvePendingPayment(id, userId, "0xsig1"),
+      approvePendingPayment(id, userId, "0xsig2"),
     ]);
 
     const successes = [result1, result2].filter(r => r !== null);
@@ -398,8 +471,8 @@ describe("state machine preconditions", () => {
 
     const id = created._id.toString();
     const [approveResult, rejectResult] = await Promise.all([
-      approvePendingPayment(id, "0xsig"),
-      rejectPendingPayment(id),
+      approvePendingPayment(id, userId, "0xsig"),
+      rejectPendingPayment(id, userId),
     ]);
 
     const successes = [approveResult, rejectResult].filter(r => r !== null);
