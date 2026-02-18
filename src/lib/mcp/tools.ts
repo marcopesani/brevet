@@ -74,7 +74,7 @@ export function registerTools(server: McpServer, userId: string) {
       description:
         "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's hot wallet and per-endpoint policy, then retry the request with payment proof. Each endpoint has its own policy controlling whether hot wallet or WalletConnect signing is used. Non-402 responses are returned directly. Supports multiple chains (Base, Arbitrum, Optimism, Polygon + testnets). If no chain is specified, the gateway auto-selects the best chain based on the endpoint's accepted networks and the user's balances.",
       inputSchema: {
-        url: z.string().url().describe("The URL to request"),
+        url: z.string().max(2048).url().describe("The URL to request"),
         method: z
           .enum(["GET", "POST", "PUT", "DELETE", "PATCH"])
           .optional()
@@ -83,14 +83,16 @@ export function registerTools(server: McpServer, userId: string) {
           ),
         body: z
           .string()
+          .max(1_048_576)
           .optional()
           .describe("Request body (for POST, PUT, PATCH). Sent on both the initial and paid retry requests."),
         headers: z
-          .record(z.string(), z.string())
+          .record(z.string().max(256), z.string().max(8192))
           .optional()
           .describe("Additional HTTP headers to include in the request."),
         chain: z
           .string()
+          .max(64)
           .optional()
           .describe(
             'Chain to pay on. Use a name ("base", "arbitrum", "optimism", "polygon", "base-sepolia", "arbitrum-sepolia", "op-sepolia", "polygon-amoy") or a numeric chain ID ("42161"). If omitted, the gateway auto-selects the best chain.',
@@ -213,6 +215,7 @@ export function registerTools(server: McpServer, userId: string) {
       inputSchema: {
         chain: z
           .string()
+          .max(64)
           .optional()
           .describe(
             'Chain to check balance on. Use a name ("base", "arbitrum", "optimism", "polygon") or a numeric chain ID. If omitted, returns balances for all chains.',
@@ -314,12 +317,14 @@ export function registerTools(server: McpServer, userId: string) {
       inputSchema: {
         since: z
           .string()
+          .max(30)
           .optional()
           .describe(
             "ISO 8601 date string to filter transactions from (e.g. '2024-01-01T00:00:00Z')",
           ),
         chain: z
           .string()
+          .max(64)
           .optional()
           .describe(
             'Chain to filter transactions by. Use a name ("base", "arbitrum", "optimism", "polygon") or a numeric chain ID. If omitted, returns transactions across all chains.',
@@ -388,6 +393,7 @@ export function registerTools(server: McpServer, userId: string) {
       inputSchema: {
         paymentId: z
           .string()
+          .max(64)
           .describe("The pending payment ID returned by x402_pay"),
       },
     },
@@ -559,6 +565,7 @@ export function registerTools(server: McpServer, userId: string) {
       inputSchema: {
         paymentId: z
           .string()
+          .max(64)
           .describe("The payment ID returned by x402_pay"),
       },
     },
@@ -764,12 +771,14 @@ export function registerTools(server: McpServer, userId: string) {
       inputSchema: {
         query: z
           .string()
+          .max(256)
           .optional()
           .describe(
             "Keyword to filter endpoints by description or URL",
           ),
         network: z
           .string()
+          .max(64)
           .optional()
           .describe(
             'Network to filter by (e.g., "base", "base-sepolia", "eip155:8453")',
