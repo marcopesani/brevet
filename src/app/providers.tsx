@@ -3,12 +3,12 @@
 import { wagmiAdapter, projectId, networks } from "@/lib/walletconnect";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createAppKit } from "@reown/appkit/react";
-import { base } from "@reown/appkit/networks";
 import { OptionsController } from "@reown/appkit-controllers";
 import React, { type ReactNode } from "react";
 import { cookieToInitialState, WagmiProvider, type Config } from "wagmi";
 import { SessionProvider } from "next-auth/react";
 import { siweConfig } from "@/lib/siwe-config";
+import { ChainProvider } from "@/contexts/chain-context";
 
 const queryClient = new QueryClient();
 
@@ -22,8 +22,8 @@ const metadata = {
 createAppKit({
   adapters: [wagmiAdapter],
   projectId,
-  networks: [base],
-  defaultNetwork: base,
+  networks,
+  defaultNetwork: networks[0],
   metadata,
   siweConfig,
   features: {
@@ -67,7 +67,7 @@ export default function Providers({
         initialState={initialState}
       >
         <QueryClientProvider client={queryClient}>
-          {children}
+          <ChainProvider>{children}</ChainProvider>
         </QueryClientProvider>
       </WagmiProvider>
     </SessionProvider>
