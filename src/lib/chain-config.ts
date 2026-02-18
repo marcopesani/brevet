@@ -1,4 +1,6 @@
 import {
+  mainnet,
+  sepolia,
   base,
   baseSepolia,
   arbitrum,
@@ -20,6 +22,32 @@ export interface ChainConfig {
 }
 
 export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
+  // Ethereum Mainnet
+  1: {
+    chain: mainnet,
+    usdcAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    usdcDomain: {
+      name: "USD Coin",
+      version: "2",
+      chainId: 1,
+      verifyingContract: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    },
+    networkString: "eip155:1",
+    explorerUrl: "https://etherscan.io",
+  },
+  // Ethereum Sepolia
+  11155111: {
+    chain: sepolia,
+    usdcAddress: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    usdcDomain: {
+      name: "USD Coin",
+      version: "2",
+      chainId: 11155111,
+      verifyingContract: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    },
+    networkString: "eip155:11155111",
+    explorerUrl: "https://sepolia.etherscan.io",
+  },
   // Base Mainnet
   8453: {
     chain: base,

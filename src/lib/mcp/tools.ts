@@ -12,6 +12,12 @@ import { CHAIN_CONFIGS, isChainSupported } from "@/lib/chain-config";
  * Also accepts numeric chain IDs as strings (e.g. "42161" → 42161).
  */
 const CHAIN_NAME_TO_ID: Record<string, number> = {
+  ethereum: 1,
+  eth: 1,
+  mainnet: 1,
+  "eth-mainnet": 1,
+  sepolia: 11155111,
+  "eth-sepolia": 11155111,
   base: 8453,
   "base-sepolia": 84532,
   arbitrum: 42161,
@@ -72,7 +78,7 @@ export function registerTools(server: McpServer, userId: string) {
     "x402_pay",
     {
       description:
-        "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's hot wallet and per-endpoint policy, then retry the request with payment proof. Each endpoint has its own policy controlling whether hot wallet or WalletConnect signing is used. Non-402 responses are returned directly. Supports multiple chains (Base, Arbitrum, Optimism, Polygon + testnets). If no chain is specified, the gateway auto-selects the best chain based on the endpoint's accepted networks and the user's balances.",
+        "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's hot wallet and per-endpoint policy, then retry the request with payment proof. Each endpoint has its own policy controlling whether hot wallet or WalletConnect signing is used. Non-402 responses are returned directly. Supports multiple chains (Ethereum, Base, Arbitrum, Optimism, Polygon + testnets). If no chain is specified, the gateway auto-selects the best chain based on the endpoint's accepted networks and the user's balances.",
       inputSchema: {
         url: z.string().max(2048).url().describe("The URL to request"),
         method: z
@@ -95,7 +101,7 @@ export function registerTools(server: McpServer, userId: string) {
           .max(64)
           .optional()
           .describe(
-            'Chain to pay on. Use a name ("base", "arbitrum", "optimism", "polygon", "base-sepolia", "arbitrum-sepolia", "op-sepolia", "polygon-amoy") or a numeric chain ID ("42161"). If omitted, the gateway auto-selects the best chain.',
+            'Chain to pay on. Use a name ("ethereum", "base", "arbitrum", "optimism", "polygon", "sepolia", "base-sepolia", "arbitrum-sepolia", "op-sepolia", "polygon-amoy") or a numeric chain ID ("42161"). If omitted, the gateway auto-selects the best chain.',
           ),
       },
     },
@@ -218,7 +224,7 @@ export function registerTools(server: McpServer, userId: string) {
           .max(64)
           .optional()
           .describe(
-            'Chain to check balance on. Use a name ("base", "arbitrum", "optimism", "polygon") or a numeric chain ID. If omitted, returns balances for all chains.',
+            'Chain to check balance on. Use a name ("ethereum", "base", "arbitrum", "optimism", "polygon") or a numeric chain ID. If omitted, returns balances for all chains.',
           ),
       },
     },
@@ -327,7 +333,7 @@ export function registerTools(server: McpServer, userId: string) {
           .max(64)
           .optional()
           .describe(
-            'Chain to filter transactions by. Use a name ("base", "arbitrum", "optimism", "polygon") or a numeric chain ID. If omitted, returns transactions across all chains.',
+            'Chain to filter transactions by. Use a name ("ethereum", "base", "arbitrum", "optimism", "polygon") or a numeric chain ID. If omitted, returns transactions across all chains.',
           ),
       },
     },
@@ -767,7 +773,7 @@ export function registerTools(server: McpServer, userId: string) {
     "x402_discover",
     {
       description:
-        "Search the CDP Bazaar discovery API for available x402-protected endpoints. Returns a list of endpoints with their URL, description, price, network, and payment scheme. Endpoints may support multiple chains (Base, Arbitrum, Optimism, Polygon + testnets). Use the 'network' filter to find endpoints on a specific chain.",
+        "Search the CDP Bazaar discovery API for available x402-protected endpoints. Returns a list of endpoints with their URL, description, price, network, and payment scheme. Endpoints may support multiple chains (Ethereum, Base, Arbitrum, Optimism, Polygon + testnets). Use the 'network' filter to find endpoints on a specific chain.",
       inputSchema: {
         query: z
           .string()

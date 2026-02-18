@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createPublicClient, http } from "viem";
-import { baseSepolia, arbitrumSepolia } from "viem/chains";
+import { baseSepolia, arbitrumSepolia, sepolia } from "viem/chains";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import {
   TEST_WALLET_ADDRESS,
@@ -50,6 +50,7 @@ const USDC_ABI = [
 
 const BASE_SEPOLIA_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e" as const;
 const ARB_SEPOLIA_USDC = "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d" as const;
+const ETH_SEPOLIA_USDC = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
 
 describe("E2E: Multi-Chain", () => {
   let userId: string;
@@ -138,6 +139,21 @@ describe("E2E: Multi-Chain", () => {
 
       expect(symbol).toBe("USDC");
     }, 15000);
+
+    it("should read USDC symbol on ETH Sepolia", async () => {
+      const client = createPublicClient({
+        chain: sepolia,
+        transport: http(),
+      });
+
+      const symbol = await client.readContract({
+        address: ETH_SEPOLIA_USDC,
+        abi: USDC_ABI,
+        functionName: "symbol",
+      });
+
+      expect(symbol).toBe("USDC");
+    }, 15000);
   });
 
   // ─────────────────────────────────────────────
@@ -177,6 +193,23 @@ describe("E2E: Multi-Chain", () => {
 
       const balance = await client.readContract({
         address: ARB_SEPOLIA_USDC,
+        abi: USDC_ABI,
+        functionName: "balanceOf",
+        args: [TEST_WALLET_ADDRESS],
+      });
+
+      expect(typeof balance).toBe("bigint");
+      expect(balance).toBeGreaterThanOrEqual(BigInt(0));
+    }, 15000);
+
+    it("should read balanceOf on ETH Sepolia", async () => {
+      const client = createPublicClient({
+        chain: sepolia,
+        transport: http(),
+      });
+
+      const balance = await client.readContract({
+        address: ETH_SEPOLIA_USDC,
         abi: USDC_ABI,
         functionName: "balanceOf",
         args: [TEST_WALLET_ADDRESS],
