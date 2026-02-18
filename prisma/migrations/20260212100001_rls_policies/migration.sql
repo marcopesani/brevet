@@ -1,2 +1,0 @@
--- RLS policies use Supabase auth.uid() and cannot run in Prisma's shadow database.
--- Apply RLS manually: run prisma/migrations/manual_rls_policies.sql in Supabase SQL Editor.
