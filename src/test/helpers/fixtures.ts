@@ -25,6 +25,11 @@ export function createTestUser(overrides?: {
   };
 }
 
+const DEFAULT_CHAIN_ID = parseInt(
+  process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
+  10,
+);
+
 /**
  * Create test hot wallet data for a given user.
  */
@@ -34,6 +39,7 @@ export function createTestHotWallet(
     id?: string;
     address?: string;
     encryptedPrivateKey?: string;
+    chainId?: number;
   },
 ) {
   return {
@@ -44,6 +50,7 @@ export function createTestHotWallet(
     encryptedPrivateKey:
       overrides?.encryptedPrivateKey ?? TEST_ENCRYPTED_PRIVATE_KEY,
     userId: new mongoose.Types.ObjectId(userId),
+    chainId: overrides?.chainId ?? DEFAULT_CHAIN_ID,
   };
 }
 
@@ -57,6 +64,7 @@ export function createTestEndpointPolicy(
     endpointPattern?: string;
     payFromHotWallet?: boolean;
     status?: string;
+    chainId?: number;
   },
 ) {
   return {
@@ -67,6 +75,7 @@ export function createTestEndpointPolicy(
     payFromHotWallet: overrides?.payFromHotWallet ?? true,
     status: overrides?.status ?? "active",
     userId: new mongoose.Types.ObjectId(userId),
+    ...(overrides?.chainId !== undefined && { chainId: overrides.chainId }),
   };
 }
 
@@ -84,6 +93,7 @@ export function createTestTransaction(
     endpoint?: string;
     txHash?: string | null;
     network?: string;
+    chainId?: number;
     status?: string;
     type?: string;
   },
@@ -99,6 +109,7 @@ export function createTestTransaction(
     status: overrides?.status ?? "completed",
     type: overrides?.type ?? "payment",
     userId: new mongoose.Types.ObjectId(userId),
+    ...(overrides?.chainId !== undefined && { chainId: overrides.chainId }),
   };
 }
 

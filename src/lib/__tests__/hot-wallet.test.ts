@@ -11,8 +11,10 @@ import {
 } from "../../test/helpers/crypto";
 import { resetTestDb, seedTestUser } from "../../test/helpers/db";
 import { User } from "../models/user";
+import { HotWallet as HotWalletModel } from "../models/hot-wallet";
 import { Transaction } from "../models/transaction";
 import mongoose from "mongoose";
+import { createTestHotWallet } from "../../test/helpers/fixtures";
 
 // Mock viem to avoid real RPC calls
 vi.mock("viem", async (importOriginal) => {
@@ -71,6 +73,32 @@ describe("hot-wallet", () => {
       expect(() => encryptPrivateKey("some-key")).toThrow(
         "HOT_WALLET_ENCRYPTION_KEY is not set",
       );
+      process.env.HOT_WALLET_ENCRYPTION_KEY = originalKey;
+    });
+
+    it("should throw if HOT_WALLET_ENCRYPTION_KEY is not exactly 64 hex chars", () => {
+      const originalKey = process.env.HOT_WALLET_ENCRYPTION_KEY;
+
+      // Too short
+      process.env.HOT_WALLET_ENCRYPTION_KEY = "abcdef";
+      expect(() => encryptPrivateKey("some-key")).toThrow(
+        "HOT_WALLET_ENCRYPTION_KEY must be exactly 64 hex characters",
+      );
+
+      // Non-hex characters
+      process.env.HOT_WALLET_ENCRYPTION_KEY =
+        "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
+      expect(() => encryptPrivateKey("some-key")).toThrow(
+        "HOT_WALLET_ENCRYPTION_KEY must be exactly 64 hex characters",
+      );
+
+      // Too long
+      process.env.HOT_WALLET_ENCRYPTION_KEY =
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef00";
+      expect(() => encryptPrivateKey("some-key")).toThrow(
+        "HOT_WALLET_ENCRYPTION_KEY must be exactly 64 hex characters",
+      );
+
       process.env.HOT_WALLET_ENCRYPTION_KEY = originalKey;
     });
   });
@@ -204,6 +232,72 @@ describe("hot-wallet", () => {
       expect(tx!.amount).toBe(1.0);
       expect(tx!.endpoint).toBe(`withdrawal:${toAddress}`);
       expect(tx!.status).toBe("completed");
+    });
+
+    it("should withdraw from specific chain wallet", async () => {
+      const { user } = await seedTestUser();
+      // Create an additional wallet on Arbitrum (42161)
+      const arbWalletData = createTestHotWallet(user.id, { chainId: 42161 });
+      await HotWalletModel.create(arbWalletData);
+
+      const mockTxHash = "0x" + "a".repeat(64);
+
+      const { createPublicClient, createWalletClient } = await import("viem");
+      vi.mocked(createPublicClient).mockReturnValue({
+        readContract: vi.fn().mockResolvedValue(BigInt(10_000_000)),
+      } as unknown as ReturnType<typeof createPublicClient>);
+      vi.mocked(createWalletClient).mockReturnValue({
+        writeContract: vi.fn().mockResolvedValue(mockTxHash),
+      } as unknown as ReturnType<typeof createWalletClient>);
+
+      const toAddress = "0x" + "2".repeat(40);
+      const result = await withdrawFromHotWallet(user.id, 1.0, toAddress, 42161);
+
+      expect(result.txHash).toBe(mockTxHash);
+
+      // Verify transaction was logged with correct network string and chainId
+      const tx = await Transaction.findOne({
+        userId: new mongoose.Types.ObjectId(user.id),
+        type: "withdrawal",
+        network: "eip155:42161",
+      }).lean();
+      expect(tx).not.toBeNull();
+      expect(tx!.chainId).toBe(42161);
+    });
+  });
+
+  describe("multi-chain wallets", () => {
+    beforeEach(async () => {
+      await resetTestDb();
+    });
+
+    it("should allow creating wallets on two different chains for same user", async () => {
+      const { user } = await seedTestUser(); // creates wallet with default chainId
+
+      // Create wallet on Arbitrum
+      const arbWalletData = createTestHotWallet(user.id, { chainId: 42161 });
+      await HotWalletModel.create(arbWalletData);
+
+      // Verify both wallets exist
+      const wallets = await HotWalletModel.find({ userId: user._id }).lean();
+      expect(wallets).toHaveLength(2);
+
+      const chainIds = wallets.map((w) => w.chainId).sort();
+      const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
+      expect(chainIds).toEqual([defaultChainId, 42161].sort());
+    });
+
+    it("should enforce unique constraint on userId + chainId", async () => {
+      const { user } = await seedTestUser();
+      const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
+
+      // Try to create another wallet on the same chain
+      const duplicateData = createTestHotWallet(user.id, {
+        address: "0x" + "9".repeat(40),
+        chainId: defaultChainId,
+      });
+
+      await expect(HotWalletModel.create(duplicateData)).rejects.toThrow();
     });
   });
 });

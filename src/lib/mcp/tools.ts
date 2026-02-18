@@ -3,8 +3,40 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executePayment } from "@/lib/x402/payment";
 import { createPendingPayment, getPendingPayment, expirePendingPayment } from "@/lib/data/payments";
 import { getSpendingHistory } from "@/lib/data/transactions";
-import { getUserWithWalletAndPolicies } from "@/lib/data/wallet";
+import { getUserWithWalletAndPolicies, getAllHotWallets } from "@/lib/data/wallet";
 import { getUsdcBalance } from "@/lib/hot-wallet";
+import { CHAIN_CONFIGS, isChainSupported } from "@/lib/chain-config";
+
+/**
+ * Map friendly chain names to chain IDs.
+ * Also accepts numeric chain IDs as strings (e.g. "42161" → 42161).
+ */
+const CHAIN_NAME_TO_ID: Record<string, number> = {
+  base: 8453,
+  "base-sepolia": 84532,
+  arbitrum: 42161,
+  "arbitrum-sepolia": 421614,
+  optimism: 10,
+  "op-sepolia": 11155420,
+  polygon: 137,
+  "polygon-amoy": 80002,
+};
+
+function resolveChainParam(chain: string): number {
+  const lower = chain.toLowerCase().trim();
+
+  // Try name lookup first
+  const byName = CHAIN_NAME_TO_ID[lower];
+  if (byName !== undefined) return byName;
+
+  // Try parsing as numeric chain ID
+  const asNumber = parseInt(lower, 10);
+  if (!isNaN(asNumber) && isChainSupported(asNumber)) return asNumber;
+
+  throw new Error(
+    `Unsupported chain "${chain}". Supported: ${Object.keys(CHAIN_NAME_TO_ID).join(", ")} or numeric chain IDs.`,
+  );
+}
 
 
 const DISCOVERY_API_URL =
@@ -40,9 +72,9 @@ export function registerTools(server: McpServer, userId: string) {
     "x402_pay",
     {
       description:
-        "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's hot wallet and per-endpoint policy, then retry the request with payment proof. Each endpoint has its own policy controlling whether hot wallet or WalletConnect signing is used. Non-402 responses are returned directly.",
+        "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's hot wallet and per-endpoint policy, then retry the request with payment proof. Each endpoint has its own policy controlling whether hot wallet or WalletConnect signing is used. Non-402 responses are returned directly. Supports multiple chains (Base, Arbitrum, Optimism, Polygon + testnets). If no chain is specified, the gateway auto-selects the best chain based on the endpoint's accepted networks and the user's balances.",
       inputSchema: {
-        url: z.string().url().describe("The URL to request"),
+        url: z.string().max(2048).url().describe("The URL to request"),
         method: z
           .enum(["GET", "POST", "PUT", "DELETE", "PATCH"])
           .optional()
@@ -51,17 +83,37 @@ export function registerTools(server: McpServer, userId: string) {
           ),
         body: z
           .string()
+          .max(1_048_576)
           .optional()
           .describe("Request body (for POST, PUT, PATCH). Sent on both the initial and paid retry requests."),
         headers: z
-          .record(z.string(), z.string())
+          .record(z.string().max(256), z.string().max(8192))
           .optional()
           .describe("Additional HTTP headers to include in the request."),
+        chain: z
+          .string()
+          .max(64)
+          .optional()
+          .describe(
+            'Chain to pay on. Use a name ("base", "arbitrum", "optimism", "polygon", "base-sepolia", "arbitrum-sepolia", "op-sepolia", "polygon-amoy") or a numeric chain ID ("42161"). If omitted, the gateway auto-selects the best chain.',
+          ),
       },
     },
-    async ({ url, method, body, headers }) => {
+    async ({ url, method, body, headers, chain }) => {
       try {
-        const result = await executePayment(url, userId, { method: method ?? "GET", body, headers });
+        let chainId: number | undefined;
+        if (chain) {
+          try {
+            chainId = resolveChainParam(chain);
+          } catch (e) {
+            return {
+              content: [{ type: "text" as const, text: `Error: ${(e as Error).message}` }],
+              isError: true,
+            };
+          }
+        }
+
+        const result = await executePayment(url, userId, { method: method ?? "GET", body, headers }, chainId);
 
         // Handle pending_approval status (WalletConnect tier)
         const resultAny = result as unknown as Record<string, unknown>;
@@ -70,6 +122,7 @@ export function registerTools(server: McpServer, userId: string) {
             status: string;
             paymentRequirements: string;
             amount: number;
+            chainId?: number;
           };
 
           // Create a pending payment record
@@ -78,6 +131,7 @@ export function registerTools(server: McpServer, userId: string) {
             url,
             method: method ?? "GET",
             amount: pendingResult.amount,
+            chainId: pendingResult.chainId,
             paymentRequirements: pendingResult.paymentRequirements,
             body,
             headers,
@@ -157,55 +211,91 @@ export function registerTools(server: McpServer, userId: string) {
     "x402_check_balance",
     {
       description:
-        "Check the user's hot wallet USDC balance on Base and list their per-endpoint policies.",
+        "Check the user's hot wallet USDC balance. If no chain is specified, returns balances across ALL chains where the user has a wallet. If a chain is specified, returns only that chain's balance. Also lists per-endpoint policies.",
+      inputSchema: {
+        chain: z
+          .string()
+          .max(64)
+          .optional()
+          .describe(
+            'Chain to check balance on. Use a name ("base", "arbitrum", "optimism", "polygon") or a numeric chain ID. If omitted, returns balances for all chains.',
+          ),
+      },
     },
-    async () => {
+    async ({ chain }) => {
       try {
-        const user = await getUserWithWalletAndPolicies(userId);
+        if (chain) {
+          // Single-chain balance query
+          let chainId: number;
+          try {
+            chainId = resolveChainParam(chain);
+          } catch (e) {
+            return {
+              content: [{ type: "text" as const, text: `Error: ${(e as Error).message}` }],
+              isError: true,
+            };
+          }
 
-        if (!user) {
+          const user = await getUserWithWalletAndPolicies(userId, chainId);
+
+          if (!user) {
+            return {
+              content: [{ type: "text" as const, text: "Error: User not found" }],
+              isError: true,
+            };
+          }
+
+          if (!user.hotWallet) {
+            return {
+              content: [{ type: "text" as const, text: `No hot wallet found on chain ${chainId}` }],
+            };
+          }
+
+          const balance = await getUsdcBalance(user.hotWallet.address, chainId);
+          const chainConfig = CHAIN_CONFIGS[chainId];
+
+          const result = {
+            chain: chainConfig?.chain.name ?? `Chain ${chainId}`,
+            chainId,
+            walletAddress: user.hotWallet.address,
+            usdcBalance: balance,
+            endpointPolicies: user.endpointPolicies.map((policy) => ({
+              id: policy.id,
+              endpointPattern: policy.endpointPattern,
+              payFromHotWallet: policy.payFromHotWallet,
+              status: policy.status,
+            })),
+          };
+
           return {
-            content: [
-              { type: "text" as const, text: "Error: User not found" },
-            ],
-            isError: true,
+            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
           };
         }
 
-        if (!user.hotWallet) {
+        // Multi-chain: query all wallets
+        const wallets = await getAllHotWallets(userId);
+
+        if (!wallets || wallets.length === 0) {
           return {
-            content: [
-              {
-                type: "text" as const,
-                text: "Error: No hot wallet configured for this user",
-              },
-            ],
-            isError: true,
+            content: [{ type: "text" as const, text: "No hot wallets found for this user on any chain." }],
           };
         }
 
-        const balance = await getUsdcBalance(user.hotWallet.address);
-
-        const endpointPolicies = user.endpointPolicies.map((policy) => ({
-          id: policy.id,
-          endpointPattern: policy.endpointPattern,
-          payFromHotWallet: policy.payFromHotWallet,
-          status: policy.status,
-        }));
-
-        const result = {
-          walletAddress: user.hotWallet.address,
-          usdcBalance: balance,
-          endpointPolicies,
-        };
+        const balances = await Promise.all(
+          wallets.map(async (wallet) => {
+            const balance = await getUsdcBalance(wallet.address, wallet.chainId);
+            const chainConfig = CHAIN_CONFIGS[wallet.chainId];
+            return {
+              chain: chainConfig?.chain.name ?? `Chain ${wallet.chainId}`,
+              chainId: wallet.chainId,
+              balance,
+              address: wallet.address,
+            };
+          }),
+        );
 
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
+          content: [{ type: "text" as const, text: JSON.stringify({ balances }, null, 2) }],
         };
       } catch (error) {
         const message =
@@ -223,20 +313,41 @@ export function registerTools(server: McpServer, userId: string) {
     "x402_spending_history",
     {
       description:
-        "Query the user's x402 payment transaction history, optionally filtered by a start date.",
+        "Query the user's x402 payment transaction history, optionally filtered by a start date and/or chain.",
       inputSchema: {
         since: z
           .string()
+          .max(30)
           .optional()
           .describe(
             "ISO 8601 date string to filter transactions from (e.g. '2024-01-01T00:00:00Z')",
           ),
+        chain: z
+          .string()
+          .max(64)
+          .optional()
+          .describe(
+            'Chain to filter transactions by. Use a name ("base", "arbitrum", "optimism", "polygon") or a numeric chain ID. If omitted, returns transactions across all chains.',
+          ),
       },
     },
-    async ({ since }) => {
+    async ({ since, chain }) => {
       try {
+        let chainId: number | undefined;
+        if (chain) {
+          try {
+            chainId = resolveChainParam(chain);
+          } catch (e) {
+            return {
+              content: [{ type: "text" as const, text: `Error: ${(e as Error).message}` }],
+              isError: true,
+            };
+          }
+        }
+
         const transactions = await getSpendingHistory(userId, {
           ...(since && { since: new Date(since) }),
+          ...(chainId !== undefined && { chainId }),
         });
 
         const result = {
@@ -278,16 +389,17 @@ export function registerTools(server: McpServer, userId: string) {
     "x402_check_pending",
     {
       description:
-        "Check the status of a pending payment that requires user approval via WalletConnect. Use this to poll for approval after x402_pay returns a pending_approval status. Once the payment is completed or failed, use x402_get_result to retrieve the full response data.",
+        "Check the status of a pending payment that requires user approval via WalletConnect. Use this to poll for approval after x402_pay returns a pending_approval status. Once the payment is completed or failed, use x402_get_result to retrieve the full response data. Returns chain information (chainId) for each payment.",
       inputSchema: {
         paymentId: z
           .string()
+          .max(64)
           .describe("The pending payment ID returned by x402_pay"),
       },
     },
     async ({ paymentId }) => {
       try {
-        const payment = await getPendingPayment(paymentId);
+        const payment = await getPendingPayment(paymentId, userId);
 
         if (!payment) {
           return {
@@ -306,7 +418,7 @@ export function registerTools(server: McpServer, userId: string) {
           payment.status === "pending" &&
           new Date() > payment.expiresAt
         ) {
-          await expirePendingPayment(paymentId);
+          await expirePendingPayment(paymentId, userId);
           return {
             content: [
               {
@@ -406,6 +518,9 @@ export function registerTools(server: McpServer, userId: string) {
           ),
         );
 
+        const paymentChainId = (payment as unknown as Record<string, unknown>).chainId as number | undefined;
+        const paymentChainConfig = paymentChainId ? CHAIN_CONFIGS[paymentChainId] : undefined;
+
         return {
           content: [
             {
@@ -416,6 +531,10 @@ export function registerTools(server: McpServer, userId: string) {
                   status: payment.status,
                   amount: payment.amount,
                   url: payment.url,
+                  ...(paymentChainId !== undefined && {
+                    chainId: paymentChainId,
+                    chain: paymentChainConfig?.chain.name ?? `Chain ${paymentChainId}`,
+                  }),
                   timeRemainingSeconds: timeRemaining,
                 },
                 null,
@@ -446,12 +565,13 @@ export function registerTools(server: McpServer, userId: string) {
       inputSchema: {
         paymentId: z
           .string()
+          .max(64)
           .describe("The payment ID returned by x402_pay"),
       },
     },
     async ({ paymentId }) => {
       try {
-        const payment = await getPendingPayment(paymentId);
+        const payment = await getPendingPayment(paymentId, userId);
 
         if (!payment) {
           return {
@@ -496,7 +616,7 @@ export function registerTools(server: McpServer, userId: string) {
 
         if (payment.status === "pending") {
           if (new Date() > payment.expiresAt) {
-            await expirePendingPayment(paymentId);
+            await expirePendingPayment(paymentId, userId);
             return {
               content: [
                 {
@@ -647,16 +767,18 @@ export function registerTools(server: McpServer, userId: string) {
     "x402_discover",
     {
       description:
-        "Search the CDP Bazaar discovery API for available x402-protected endpoints. Returns a list of endpoints with their URL, description, price, network, and payment scheme.",
+        "Search the CDP Bazaar discovery API for available x402-protected endpoints. Returns a list of endpoints with their URL, description, price, network, and payment scheme. Endpoints may support multiple chains (Base, Arbitrum, Optimism, Polygon + testnets). Use the 'network' filter to find endpoints on a specific chain.",
       inputSchema: {
         query: z
           .string()
+          .max(256)
           .optional()
           .describe(
             "Keyword to filter endpoints by description or URL",
           ),
         network: z
           .string()
+          .max(64)
           .optional()
           .describe(
             'Network to filter by (e.g., "base", "base-sepolia", "eip155:8453")',

@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { resetTestDb } from "@/test/helpers/db";
 import { PendingPayment } from "@/lib/models/pending-payment";
+import { HotWallet } from "@/lib/models/hot-wallet";
+import { Transaction } from "@/lib/models/transaction";
+import { User } from "@/lib/models/user";
 import mongoose from "mongoose";
 
 // Mock dependencies used by registerTools
@@ -403,5 +406,333 @@ describe("x402_check_pending tool", () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("not found");
+  });
+});
+
+// --- Multi-chain MCP tool tests ---
+
+describe("x402_pay tool — multi-chain", () => {
+  let server: McpServer;
+
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    await resetTestDb();
+    server = new McpServer({ name: "test", version: "0.0.1" });
+    const { registerTools } = await import("../tools");
+    registerTools(server, TEST_USER_ID);
+  });
+
+  it("passes chainId to executePayment when chain name is provided", async () => {
+    const { executePayment } = await import("@/lib/x402/payment");
+    (executePayment as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      response: new Response(JSON.stringify({ data: "ok" }), {
+        headers: { "content-type": "application/json" },
+      }),
+    });
+
+    await callTool(server, "x402_pay", {
+      url: "https://api.example.com/resource",
+      chain: "arbitrum",
+    });
+
+    expect(executePayment).toHaveBeenCalledWith(
+      "https://api.example.com/resource",
+      TEST_USER_ID,
+      { method: "GET", body: undefined, headers: undefined },
+      42161,
+    );
+  });
+
+  it("passes chainId when numeric chain ID string is provided", async () => {
+    const { executePayment } = await import("@/lib/x402/payment");
+    (executePayment as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      response: new Response(JSON.stringify({ data: "ok" }), {
+        headers: { "content-type": "application/json" },
+      }),
+    });
+
+    await callTool(server, "x402_pay", {
+      url: "https://api.example.com/resource",
+      chain: "42161",
+    });
+
+    expect(executePayment).toHaveBeenCalledWith(
+      "https://api.example.com/resource",
+      TEST_USER_ID,
+      { method: "GET", body: undefined, headers: undefined },
+      42161,
+    );
+  });
+
+  it("does not pass chainId when chain is omitted", async () => {
+    const { executePayment } = await import("@/lib/x402/payment");
+    const mockFn = executePayment as ReturnType<typeof vi.fn>;
+    mockFn.mockReset();
+    mockFn.mockResolvedValue({
+      success: true,
+      response: new Response(JSON.stringify({ data: "ok" }), {
+        headers: { "content-type": "application/json" },
+      }),
+    });
+
+    await callTool(server, "x402_pay", {
+      url: "https://api.example.com/resource",
+    });
+
+    const callArgs = mockFn.mock.calls[0];
+    expect(callArgs[2]).not.toHaveProperty("chainId");
+    expect(callArgs[3]).toBeUndefined();
+  });
+
+  it("returns error for unsupported chain name", async () => {
+    const result = (await callTool(server, "x402_pay", {
+      url: "https://api.example.com/resource",
+      chain: "solana",
+    })) as ToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Unsupported chain");
+  });
+});
+
+describe("x402_check_balance tool — multi-chain", () => {
+  let server: McpServer;
+  const userId = new mongoose.Types.ObjectId();
+
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    await resetTestDb();
+
+    // Create a user
+    await User.create({
+      _id: userId,
+      email: "test@example.com",
+      walletAddress: "0x" + "a".repeat(40),
+    });
+
+    server = new McpServer({ name: "test", version: "0.0.1" });
+    const { registerTools } = await import("../tools");
+    registerTools(server, userId.toString());
+  });
+
+  it("returns balances across all chains when no chain specified", async () => {
+    const { getUsdcBalance } = await import("@/lib/hot-wallet");
+
+    // Create wallets on two chains
+    await HotWallet.create({
+      address: "0x" + "a".repeat(40),
+      encryptedPrivateKey: "enc1",
+      userId,
+      chainId: 8453,
+    });
+    await HotWallet.create({
+      address: "0x" + "a".repeat(40),
+      encryptedPrivateKey: "enc2",
+      userId,
+      chainId: 42161,
+    });
+
+    (getUsdcBalance as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce("10.0")
+      .mockResolvedValueOnce("20.0");
+
+    const result = (await callTool(server, "x402_check_balance", {})) as ToolResult;
+    const parsed = parseToolResult(result);
+
+    expect(parsed.balances).toHaveLength(2);
+    expect(parsed.balances).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ chainId: 8453, balance: "10.0" }),
+        expect.objectContaining({ chainId: 42161, balance: "20.0" }),
+      ]),
+    );
+    expect(result.isError).toBeUndefined();
+  });
+
+  it("returns single chain balance when chain name specified", async () => {
+    const { getUsdcBalance } = await import("@/lib/hot-wallet");
+
+    await HotWallet.create({
+      address: "0x" + "b".repeat(40),
+      encryptedPrivateKey: "enc1",
+      userId,
+      chainId: 42161,
+    });
+
+    (getUsdcBalance as ReturnType<typeof vi.fn>).mockResolvedValue("25.5");
+
+    const result = (await callTool(server, "x402_check_balance", {
+      chain: "arbitrum",
+    })) as ToolResult;
+    const parsed = parseToolResult(result);
+
+    expect(parsed.chainId).toBe(42161);
+    expect(parsed.chain).toBe("Arbitrum One");
+    expect(parsed.usdcBalance).toBe("25.5");
+    expect(result.isError).toBeUndefined();
+  });
+
+  it("returns message when no wallets exist on any chain", async () => {
+    const result = (await callTool(server, "x402_check_balance", {})) as ToolResult;
+
+    expect(result.content[0].text).toContain("No hot wallets found");
+    expect(result.isError).toBeUndefined();
+  });
+
+  it("returns message when no wallet on specified chain", async () => {
+    const result = (await callTool(server, "x402_check_balance", {
+      chain: "optimism",
+    })) as ToolResult;
+
+    expect(result.content[0].text).toContain("No hot wallet found");
+    expect(result.isError).toBeUndefined();
+  });
+
+  it("returns error for unsupported chain", async () => {
+    const result = (await callTool(server, "x402_check_balance", {
+      chain: "invalid-chain",
+    })) as ToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Unsupported chain");
+  });
+});
+
+describe("x402_spending_history tool — multi-chain", () => {
+  let server: McpServer;
+
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    await resetTestDb();
+    server = new McpServer({ name: "test", version: "0.0.1" });
+    const { registerTools } = await import("../tools");
+    registerTools(server, TEST_USER_ID);
+  });
+
+  it("filters transactions by chain when chain param provided", async () => {
+    const userOid = new mongoose.Types.ObjectId(TEST_USER_ID);
+
+    await Transaction.create([
+      {
+        amount: 0.01,
+        endpoint: "https://api.example.com/a",
+        network: "base",
+        status: "completed",
+        userId: userOid,
+        chainId: 8453,
+      },
+      {
+        amount: 0.02,
+        endpoint: "https://api.example.com/b",
+        network: "arbitrum",
+        status: "completed",
+        userId: userOid,
+        chainId: 42161,
+      },
+    ]);
+
+    const result = (await callTool(server, "x402_spending_history", {
+      chain: "arbitrum",
+    })) as ToolResult;
+    const parsed = parseToolResult(result);
+
+    expect(parsed.count).toBe(1);
+    expect(parsed.transactions[0].endpoint).toBe("https://api.example.com/b");
+  });
+
+  it("returns all transactions when no chain param", async () => {
+    const userOid = new mongoose.Types.ObjectId(TEST_USER_ID);
+
+    await Transaction.create([
+      {
+        amount: 0.01,
+        endpoint: "https://api.example.com/a",
+        network: "base",
+        status: "completed",
+        userId: userOid,
+        chainId: 8453,
+      },
+      {
+        amount: 0.02,
+        endpoint: "https://api.example.com/b",
+        network: "arbitrum",
+        status: "completed",
+        userId: userOid,
+        chainId: 42161,
+      },
+    ]);
+
+    const result = (await callTool(server, "x402_spending_history", {})) as ToolResult;
+    const parsed = parseToolResult(result);
+
+    expect(parsed.count).toBe(2);
+  });
+
+  it("returns error for unsupported chain", async () => {
+    const result = (await callTool(server, "x402_spending_history", {
+      chain: "solana",
+    })) as ToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Unsupported chain");
+  });
+});
+
+describe("x402_check_pending tool — chain info in response", () => {
+  let server: McpServer;
+
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    await resetTestDb();
+    server = new McpServer({ name: "test", version: "0.0.1" });
+    const { registerTools } = await import("../tools");
+    registerTools(server, TEST_USER_ID);
+  });
+
+  it("includes chainId and chain name in pending payment response", async () => {
+    const future = new Date(Date.now() + 600_000);
+    const payment = await PendingPayment.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      url: "https://api.example.com/resource",
+      amount: 0.05,
+      paymentRequirements: "{}",
+      status: "pending",
+      expiresAt: future,
+      chainId: 42161,
+    });
+
+    const result = (await callTool(server, "x402_check_pending", {
+      paymentId: payment._id.toString(),
+    })) as ToolResult;
+
+    const parsed = parseToolResult(result);
+    expect(parsed.status).toBe("pending");
+    expect(parsed.chainId).toBe(42161);
+    expect(parsed.chain).toBe("Arbitrum One");
+  });
+
+  it("includes default chain info when payment uses default chainId", async () => {
+    const future = new Date(Date.now() + 600_000);
+    // Create a payment without explicit chainId (gets default from model)
+    const payment = await PendingPayment.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      url: "https://api.example.com/resource",
+      amount: 0.05,
+      paymentRequirements: "{}",
+      status: "pending",
+      expiresAt: future,
+    });
+
+    const result = (await callTool(server, "x402_check_pending", {
+      paymentId: payment._id.toString(),
+    })) as ToolResult;
+
+    const parsed = parseToolResult(result);
+    expect(parsed.status).toBe("pending");
+    // Default chain in test env is 84532 (Base Sepolia)
+    expect(parsed.chainId).toBe(84532);
+    expect(parsed.chain).toBe("Base Sepolia");
   });
 });

@@ -10,11 +10,16 @@ import {
 import crypto from "crypto";
 import { connectDB } from "@/lib/db";
 import { HotWallet as HotWalletModel } from "@/lib/models/hot-wallet";
-import { Transaction } from "@/lib/models/transaction";
+import { createTransaction } from "@/lib/data/transactions";
 import { Types } from "mongoose";
-import { chainConfig } from "@/lib/chain-config";
+import { getChainConfig, getDefaultChainConfig } from "@/lib/chain-config";
 
-const USDC_ADDRESS = chainConfig.usdcAddress;
+const DEFAULT_CHAIN_ID = parseInt(
+  process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
+  10,
+);
+
+const USDC_ADDRESS = getDefaultChainConfig().usdcAddress;
 const USDC_DECIMALS = 6;
 
 const USDC_ABI = [
@@ -42,7 +47,11 @@ function getEncryptionKey(): Buffer {
   if (!key) {
     throw new Error("HOT_WALLET_ENCRYPTION_KEY is not set");
   }
-  // Expect a 64-char hex string (32 bytes)
+  if (!/^[0-9a-fA-F]{64}$/.test(key)) {
+    throw new Error(
+      "HOT_WALLET_ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes)",
+    );
+  }
   return Buffer.from(key, "hex");
 }
 
@@ -87,11 +96,20 @@ export function createHotWallet(): {
   };
 }
 
-function getPublicClient() {
-  const rpcUrl = process.env.RPC_URL;
+function resolveChainConfig(chainId?: number) {
+  const id = chainId ?? DEFAULT_CHAIN_ID;
+  const config = getChainConfig(id);
+  if (!config) {
+    throw new Error(`Unsupported chain: ${id}`);
+  }
+  return config;
+}
+
+function getPublicClient(chainId?: number) {
+  const config = resolveChainConfig(chainId);
   return createPublicClient({
-    chain: chainConfig.chain,
-    transport: http(rpcUrl),
+    chain: config.chain,
+    transport: http(),
   });
 }
 
@@ -110,10 +128,14 @@ export function isRpcRateLimitError(error: unknown): boolean {
   return false;
 }
 
-export async function getUsdcBalance(address: string): Promise<string> {
-  const client = getPublicClient();
+export async function getUsdcBalance(
+  address: string,
+  chainId?: number,
+): Promise<string> {
+  const config = resolveChainConfig(chainId);
+  const client = getPublicClient(chainId);
   const balance = await client.readContract({
-    address: USDC_ADDRESS,
+    address: config.usdcAddress,
     abi: USDC_ABI,
     functionName: "balanceOf",
     args: [address as `0x${string}`],
@@ -125,6 +147,7 @@ export async function withdrawFromHotWallet(
   userId: string,
   amount: number,
   toAddress: string,
+  chainId?: number,
 ): Promise<{ txHash: string }> {
   if (!isAddress(toAddress)) {
     throw new Error("Invalid destination address");
@@ -133,18 +156,22 @@ export async function withdrawFromHotWallet(
     throw new Error("Amount must be greater than 0");
   }
 
+  const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
+  const config = resolveChainConfig(resolvedChainId);
+
   await connectDB();
 
-  // Look up the user's hot wallet
+  // Look up the user's hot wallet for this chain
   const hotWallet = await HotWalletModel.findOne({
     userId: new Types.ObjectId(userId),
+    chainId: resolvedChainId,
   });
   if (!hotWallet) {
     throw new Error("No hot wallet found for this user");
   }
 
-  // Check balance
-  const balance = await getUsdcBalance(hotWallet.address);
+  // Check balance on the specific chain
+  const balance = await getUsdcBalance(hotWallet.address, resolvedChainId);
   if (parseFloat(balance) < amount) {
     throw new Error(
       `Insufficient balance: ${balance} USDC available, ${amount} requested`,
@@ -154,30 +181,30 @@ export async function withdrawFromHotWallet(
   // Decrypt private key and create wallet client
   const privateKey = decryptPrivateKey(hotWallet.encryptedPrivateKey);
   const account = privateKeyToAccount(privateKey as `0x${string}`);
-  const rpcUrl = process.env.RPC_URL;
   const walletClient = createWalletClient({
     account,
-    chain: chainConfig.chain,
-    transport: http(rpcUrl),
+    chain: config.chain,
+    transport: http(),
   });
 
   // Submit ERC-20 transfer
   const txHash = await walletClient.writeContract({
-    address: USDC_ADDRESS,
+    address: config.usdcAddress,
     abi: USDC_ABI,
     functionName: "transfer",
     args: [toAddress as `0x${string}`, parseUnits(String(amount), USDC_DECIMALS)],
   });
 
-  // Log withdrawal transaction
-  await Transaction.create({
+  // Log withdrawal transaction via data layer
+  await createTransaction({
     amount,
     endpoint: `withdrawal:${toAddress}`,
     txHash,
-    network: chainConfig.chain.name.toLowerCase(),
+    network: config.networkString,
+    chainId: resolvedChainId,
     status: "completed",
     type: "withdrawal",
-    userId: new Types.ObjectId(userId),
+    userId,
   });
 
   return { txHash };

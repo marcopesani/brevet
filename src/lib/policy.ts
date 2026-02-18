@@ -13,21 +13,35 @@ export interface PolicyCheckResult {
   payFromHotWallet?: boolean;
 }
 
+const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
+
 /**
  * Find the best-matching EndpointPolicy for a given endpoint URL.
  * Matches by longest prefix: an EndpointPolicy with endpointPattern "https://api.example.com"
  * matches URLs like "https://api.example.com/foo/bar".
- * Only returns active policies.
+ * Only returns active policies for the specified chain.
  */
-async function findMatchingPolicy(userId: string, endpoint: string) {
-  const policies = await EndpointPolicy.find({
+async function findMatchingPolicy(userId: string, endpoint: string, chainId?: number) {
+  const filter: Record<string, unknown> = {
     userId: new Types.ObjectId(userId),
     status: "active",
-  });
+    chainId: chainId ?? defaultChainId,
+  };
+  const policies = await EndpointPolicy.find(filter);
 
   let bestMatch: IEndpointPolicyDocument | null = null;
   for (const policy of policies) {
     if (endpoint.startsWith(policy.endpointPattern)) {
+      // Verify the character after the pattern is a URL boundary (/, ?, #, or end-of-string)
+      // to prevent cross-domain matches (e.g., pattern "https://api" matching "https://api-evil.com")
+      const nextChar = endpoint[policy.endpointPattern.length];
+      const patternEndsWithBoundary =
+        policy.endpointPattern.endsWith("/") ||
+        policy.endpointPattern.endsWith("?") ||
+        policy.endpointPattern.endsWith("#");
+      if (!patternEndsWithBoundary && nextChar !== undefined && nextChar !== "/" && nextChar !== "?" && nextChar !== "#") {
+        continue;
+      }
       if (!bestMatch || policy.endpointPattern.length > bestMatch.endpointPattern.length) {
         bestMatch = policy;
       }
@@ -65,10 +79,12 @@ export async function checkPolicy(
   _amount: number,
   endpoint: string,
   userId: string,
+  chainId?: number,
 ): Promise<PolicyCheckResult> {
   await connectDB();
 
-  const policy = await findMatchingPolicy(userId, endpoint);
+  const resolvedChainId = chainId ?? defaultChainId;
+  const policy = await findMatchingPolicy(userId, endpoint, resolvedChainId);
 
   if (!policy) {
     // Auto-create a draft policy so the user can review and activate it
@@ -77,8 +93,8 @@ export async function checkPolicy(
 
     // Upsert: create a draft if none exists, or reactivate an archived policy
     await EndpointPolicy.findOneAndUpdate(
-      { userId: userObjectId, endpointPattern: host },
-      { $set: { status: "draft", archivedAt: null }, $setOnInsert: { endpointPattern: host, userId: userObjectId } },
+      { userId: userObjectId, endpointPattern: host, chainId: resolvedChainId },
+      { $set: { status: "draft", archivedAt: null }, $setOnInsert: { endpointPattern: host, userId: userObjectId, chainId: resolvedChainId } },
       { upsert: true, returnDocument: "after" },
     );
 

@@ -1,9 +1,12 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 
+const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
+
 export interface IEndpointPolicy {
   _id: Types.ObjectId;
   endpointPattern: string;
   payFromHotWallet: boolean;
+  chainId: number;
   status: string;
   userId: Types.ObjectId;
   archivedAt: Date | null;
@@ -20,6 +23,7 @@ const endpointPolicySchema = new Schema<IEndpointPolicyDocument>(
     endpointPattern: { type: String, required: true },
     payFromHotWallet: { type: Boolean, default: false },
     status: { type: String, default: "active" },
+    chainId: { type: Number, default: defaultChainId },
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     archivedAt: { type: Date, default: null },
   },
@@ -36,7 +40,7 @@ endpointPolicySchema.virtual("id").get(function () {
 });
 
 endpointPolicySchema.index(
-  { userId: 1, endpointPattern: 1 },
+  { userId: 1, endpointPattern: 1, chainId: 1 },
   { unique: true }
 );
 

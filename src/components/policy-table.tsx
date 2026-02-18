@@ -40,9 +40,11 @@ type TabFilter = "all" | "active" | "draft" | "archived";
 
 interface PolicyTableProps {
   initialPolicies: Policy[];
+  chainName?: string;
+  chainId?: number;
 }
 
-export function PolicyTable({ initialPolicies }: PolicyTableProps) {
+export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTableProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [tab, setTab] = useState<TabFilter>("all");
@@ -144,7 +146,7 @@ export function PolicyTable({ initialPolicies }: PolicyTableProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Shield className="size-5" />
-          Endpoint Policies
+          Endpoint Policies{chainName ? ` — ${chainName}` : ""}
         </CardTitle>
         <CardAction>
           <Button size="sm" onClick={() => setDialogOpen(true)}>
@@ -255,6 +257,7 @@ export function PolicyTable({ initialPolicies }: PolicyTableProps) {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSuccess={handlePolicyCreated}
+        chainId={chainId}
       />
     </Card>
   );

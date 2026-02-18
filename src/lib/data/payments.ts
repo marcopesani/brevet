@@ -11,13 +11,17 @@ function withId<T extends { _id: Types.ObjectId; userId?: Types.ObjectId }>(doc:
 /**
  * Get all pending (non-expired) payments for a user.
  */
-export async function getPendingPayments(userId: string) {
+export async function getPendingPayments(userId: string, options?: { chainId?: number }) {
   await connectDB();
-  const docs = await PendingPayment.find({
+  const filter: Record<string, unknown> = {
     userId: new Types.ObjectId(userId),
     status: "pending",
     expiresAt: { $gt: new Date() },
-  })
+  };
+  if (options?.chainId !== undefined) {
+    filter.chainId = options.chainId;
+  }
+  const docs = await PendingPayment.find(filter)
     .sort({ createdAt: -1 })
     .lean();
   return docs.map(withId);
@@ -26,21 +30,28 @@ export async function getPendingPayments(userId: string) {
 /**
  * Get the count of pending (non-expired) payments for a user.
  */
-export async function getPendingCount(userId: string) {
+export async function getPendingCount(userId: string, options?: { chainId?: number }) {
   await connectDB();
-  return PendingPayment.countDocuments({
+  const filter: Record<string, unknown> = {
     userId: new Types.ObjectId(userId),
     status: "pending",
     expiresAt: { $gt: new Date() },
-  });
+  };
+  if (options?.chainId !== undefined) {
+    filter.chainId = options.chainId;
+  }
+  return PendingPayment.countDocuments(filter);
 }
 
 /**
- * Find a single pending payment by ID.
+ * Find a single pending payment by ID, scoped to the given user.
  */
-export async function getPendingPayment(paymentId: string) {
+export async function getPendingPayment(paymentId: string, userId: string) {
   await connectDB();
-  const doc = await PendingPayment.findById(paymentId).lean();
+  const doc = await PendingPayment.findOne({
+    _id: paymentId,
+    userId: new Types.ObjectId(userId),
+  }).lean();
   return doc ? withId(doc) : null;
 }
 
@@ -52,6 +63,7 @@ export async function createPendingPayment(data: {
   url: string;
   method?: string;
   amount: number;
+  chainId?: number;
   paymentRequirements: string;
   expiresAt?: Date;
   body?: string;
@@ -63,6 +75,7 @@ export async function createPendingPayment(data: {
     url: data.url,
     method: data.method ?? "GET",
     amount: data.amount,
+    ...(data.chainId !== undefined && { chainId: data.chainId }),
     paymentRequirements: data.paymentRequirements,
     expiresAt: data.expiresAt ?? new Date(Date.now() + 30 * 60 * 1000),
     requestBody: data.body ?? null,
@@ -73,19 +86,26 @@ export async function createPendingPayment(data: {
 }
 
 /**
- * Get a single pending payment by ID.
+ * Get a single pending payment by ID, scoped to the given user.
  */
-export async function getPendingPaymentById(paymentId: string) {
+export async function getPendingPaymentById(paymentId: string, userId: string) {
   await connectDB();
-  const doc = await PendingPayment.findById(paymentId).lean();
+  const doc = await PendingPayment.findOne({
+    _id: paymentId,
+    userId: new Types.ObjectId(userId),
+  }).lean();
   return doc ? withId(doc) : null;
 }
 
 /**
  * Mark a pending payment as completed and store response data.
+ * Only succeeds if the payment is currently "approved" (atomic precondition).
+ * Requires userId for defense-in-depth ownership verification.
+ * Returns null if the payment was already transitioned by another caller.
  */
 export async function completePendingPayment(
   paymentId: string,
+  userId: string,
   data: {
     responsePayload: string;
     responseStatus: number;
@@ -93,8 +113,8 @@ export async function completePendingPayment(
   },
 ) {
   await connectDB();
-  const doc = await PendingPayment.findByIdAndUpdate(
-    paymentId,
+  const doc = await PendingPayment.findOneAndUpdate(
+    { _id: paymentId, status: "approved", userId: new Types.ObjectId(userId) },
     {
       $set: {
         status: "completed",
@@ -111,9 +131,13 @@ export async function completePendingPayment(
 
 /**
  * Mark a pending payment as failed and store error details.
+ * Only succeeds if the payment is currently "approved" (atomic precondition).
+ * Requires userId for defense-in-depth ownership verification.
+ * Returns null if the payment was already transitioned by another caller.
  */
 export async function failPendingPayment(
   paymentId: string,
+  userId: string,
   data: {
     responsePayload?: string;
     responseStatus?: number;
@@ -121,8 +145,8 @@ export async function failPendingPayment(
   },
 ) {
   await connectDB();
-  const doc = await PendingPayment.findByIdAndUpdate(
-    paymentId,
+  const doc = await PendingPayment.findOneAndUpdate(
+    { _id: paymentId, status: "approved", userId: new Types.ObjectId(userId) },
     {
       $set: {
         status: "failed",
@@ -138,11 +162,14 @@ export async function failPendingPayment(
 
 /**
  * Mark a pending payment as approved and store the signature.
+ * Only succeeds if the payment is currently "pending" (atomic precondition).
+ * Requires userId for defense-in-depth ownership verification.
+ * Returns null if the payment was already transitioned by another caller.
  */
-export async function approvePendingPayment(paymentId: string, signature: string) {
+export async function approvePendingPayment(paymentId: string, userId: string, signature: string) {
   await connectDB();
-  const doc = await PendingPayment.findByIdAndUpdate(
-    paymentId,
+  const doc = await PendingPayment.findOneAndUpdate(
+    { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
     { $set: { status: "approved", signature } },
     { returnDocument: "after" },
   ).lean();
@@ -151,11 +178,14 @@ export async function approvePendingPayment(paymentId: string, signature: string
 
 /**
  * Mark a pending payment as rejected.
+ * Only succeeds if the payment is currently "pending" (atomic precondition).
+ * Requires userId for defense-in-depth ownership verification.
+ * Returns null if the payment was already transitioned by another caller.
  */
-export async function rejectPendingPayment(paymentId: string) {
+export async function rejectPendingPayment(paymentId: string, userId: string) {
   await connectDB();
-  const doc = await PendingPayment.findByIdAndUpdate(
-    paymentId,
+  const doc = await PendingPayment.findOneAndUpdate(
+    { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
     { $set: { status: "rejected" } },
     { returnDocument: "after" },
   ).lean();
@@ -164,11 +194,14 @@ export async function rejectPendingPayment(paymentId: string) {
 
 /**
  * Mark a pending payment as expired.
+ * Only succeeds if the payment is currently "pending" (atomic precondition).
+ * Requires userId for defense-in-depth ownership verification.
+ * Returns null if the payment was already transitioned by another caller.
  */
-export async function expirePendingPayment(paymentId: string) {
+export async function expirePendingPayment(paymentId: string, userId: string) {
   await connectDB();
-  const doc = await PendingPayment.findByIdAndUpdate(
-    paymentId,
+  const doc = await PendingPayment.findOneAndUpdate(
+    { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
     { $set: { status: "expired" } },
     { returnDocument: "after" },
   ).lean();

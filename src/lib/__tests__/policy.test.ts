@@ -133,6 +133,68 @@ describe("checkPolicy", () => {
       expect(result.action).toBe("rejected");
       expect(result.reason).toContain("No active policy");
     });
+
+    it("does not match across domain boundaries (M11)", async () => {
+      // Pattern "https://api.example.com" should NOT match "https://api.example.com.evil.com"
+      const result = await checkPolicy(0.05, "https://api.example.com.evil.com/resource", userId);
+
+      expect(result.action).toBe("rejected");
+      expect(result.reason).toContain("No active policy");
+    });
+
+    it("does not match when next char is not a URL boundary (M11)", async () => {
+      // Pattern "https://api.example.com" should NOT match "https://api.example.com-evil.com"
+      const result = await checkPolicy(0.05, "https://api.example.com-evil.com/resource", userId);
+
+      expect(result.action).toBe("rejected");
+      expect(result.reason).toContain("No active policy");
+    });
+
+    it("matches when next char is a query parameter boundary (M11)", async () => {
+      const result = await checkPolicy(0.05, "https://api.example.com?query=1", userId);
+
+      expect(result.action).toBe("hot_wallet");
+    });
+
+    it("matches when next char is a fragment boundary (M11)", async () => {
+      const result = await checkPolicy(0.05, "https://api.example.com#section", userId);
+
+      expect(result.action).toBe("hot_wallet");
+    });
+
+    it("matches exact endpoint pattern with no trailing path (M11)", async () => {
+      const result = await checkPolicy(0.05, "https://api.example.com", userId);
+
+      expect(result.action).toBe("hot_wallet");
+    });
+
+    it("matches when pattern ends with trailing slash (M11)", async () => {
+      // Create a policy with trailing slash
+      await EndpointPolicy.create(
+        createTestEndpointPolicy(userId, {
+          endpointPattern: "https://trailing.example.com/",
+        }),
+      );
+
+      const result = await checkPolicy(0.05, "https://trailing.example.com/resource", userId);
+
+      expect(result.action).toBe("hot_wallet");
+    });
+
+    it("still matches without trailing slash in pattern (M11)", async () => {
+      // The seeded policy has pattern "https://api.example.com" (no trailing slash)
+      const result = await checkPolicy(0.05, "https://api.example.com/resource", userId);
+
+      expect(result.action).toBe("hot_wallet");
+    });
+
+    it("still rejects cross-domain matches with trailing-slash pattern (M11)", async () => {
+      // Pattern "https://api.example.com" should NOT match "https://api.example.com-evil.com"
+      // (existing behavior preserved)
+      const result = await checkPolicy(0.05, "https://api.example.com-evil.com", userId);
+
+      expect(result.action).toBe("rejected");
+    });
   });
 
   it("ignores archived policies (treats as if no policy exists)", async () => {
@@ -164,6 +226,65 @@ describe("checkPolicy", () => {
       const result = await checkPolicy(0.01, "https://api.example.com/resource", userId);
 
       expect(result.action).toBe("hot_wallet");
+    });
+  });
+
+  describe("chain-aware policy matching", () => {
+    it("does not match a policy from a different chain", async () => {
+      // The seeded policy has the default chainId (8453).
+      // Querying with a different chainId should not find it.
+      const result = await checkPolicy(0.05, "https://api.example.com/resource", userId, 42161);
+
+      expect(result.action).toBe("rejected");
+      expect(result.reason).toContain("No active policy");
+    });
+
+    it("creates a draft policy with the specified chainId", async () => {
+      const result = await checkPolicy(0.01, "https://unknown-chain.example.com/resource", userId, 42161);
+
+      expect(result.action).toBe("rejected");
+
+      const draft = await EndpointPolicy.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+        endpointPattern: "https://unknown-chain.example.com",
+        chainId: 42161,
+      }).lean();
+      expect(draft).not.toBeNull();
+      expect(draft!.status).toBe("draft");
+      expect(draft!.chainId).toBe(42161);
+    });
+
+    it("matches a policy on the correct chain", async () => {
+      // Create a policy specifically for Arbitrum (42161)
+      await EndpointPolicy.create(
+        createTestEndpointPolicy(userId, {
+          endpointPattern: "https://arb-api.example.com",
+          chainId: 42161,
+        }),
+      );
+
+      const result = await checkPolicy(0.05, "https://arb-api.example.com/resource", userId, 42161);
+
+      expect(result.action).toBe("hot_wallet");
+    });
+
+    it("allows same endpoint pattern on different chains", async () => {
+      // Create a policy for the same endpoint on Arbitrum
+      await EndpointPolicy.create(
+        createTestEndpointPolicy(userId, {
+          endpointPattern: "https://api.example.com",
+          payFromHotWallet: false,
+          chainId: 42161,
+        }),
+      );
+
+      // Default chain should still match hot_wallet
+      const baseResult = await checkPolicy(0.05, "https://api.example.com/resource", userId);
+      expect(baseResult.action).toBe("hot_wallet");
+
+      // Arbitrum chain should match walletconnect
+      const arbResult = await checkPolicy(0.05, "https://api.example.com/resource", userId, 42161);
+      expect(arbResult.action).toBe("walletconnect");
     });
   });
 });

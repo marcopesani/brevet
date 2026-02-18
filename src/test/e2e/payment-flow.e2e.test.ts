@@ -5,7 +5,7 @@ import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import { TEST_WALLET_ADDRESS } from "@/test/helpers/crypto";
 import { EndpointPolicy } from "@/lib/models/endpoint-policy";
 import { Transaction } from "@/lib/models/transaction";
-import { chainConfig } from "@/lib/chain-config";
+import { getDefaultChainConfig } from "@/lib/chain-config";
 import { authorizationTypes } from "@/lib/x402/eip712";
 import { parsePaymentRequired } from "@/lib/x402/headers";
 // Mock fetch so executePayment can reach endpoints despite URL validation
@@ -116,7 +116,7 @@ describe("E2E: Full Payment Flow", () => {
     // Verify the signature recovers to our test wallet address
     const isValid = await verifyTypedData({
       address: TEST_WALLET_ADDRESS,
-      domain: chainConfig.usdcDomain,
+      domain: getDefaultChainConfig().usdcDomain,
       types: authorizationTypes,
       primaryType: "TransferWithAuthorization",
       message: {

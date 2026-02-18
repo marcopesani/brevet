@@ -1,11 +1,14 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 
+const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
+
 export interface IPendingPayment {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
   url: string;
   method: string;
   amount: number;
+  chainId: number;
   paymentRequirements: string;
   status: string;
   signature: string | null;
@@ -29,6 +32,7 @@ const pendingPaymentSchema = new Schema<IPendingPaymentDocument>(
     url: { type: String, required: true },
     method: { type: String, default: "GET" },
     amount: { type: Number, required: true },
+    chainId: { type: Number, default: defaultChainId, index: true },
     paymentRequirements: { type: String, required: true },
     status: { type: String, default: "pending" },
     signature: { type: String, default: null },

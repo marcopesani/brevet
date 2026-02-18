@@ -15,16 +15,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { chainConfig } from "@/lib/chain-config";
+import { getChainConfig, getDefaultChainConfig } from "@/lib/chain-config";
 import { withdrawFromWallet } from "@/app/actions/wallet";
 import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
 
 interface WithdrawWalletFormProps {
   balance: string | null;
+  chainId?: number;
 }
 
 export default function WithdrawWalletForm({
   balance,
+  chainId,
 }: WithdrawWalletFormProps) {
   const { address } = useAccount();
   const queryClient = useQueryClient();
@@ -32,6 +34,9 @@ export default function WithdrawWalletForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+
+  const chainConfig = chainId ? getChainConfig(chainId) ?? getDefaultChainConfig() : getDefaultChainConfig();
+  const explorerName = chainConfig.explorerUrl.replace("https://", "").split("/")[0];
 
   function handleMax() {
     if (balance) {
@@ -47,7 +52,7 @@ export default function WithdrawWalletForm({
     setTxHash(null);
 
     try {
-      const data = await withdrawFromWallet(parseFloat(amount), address);
+      const data = await withdrawFromWallet(parseFloat(amount), address, chainId);
 
       setTxHash(data.txHash);
       setAmount("");
@@ -116,7 +121,7 @@ export default function WithdrawWalletForm({
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-xs text-green-700 underline dark:text-green-300"
             >
-              View on BaseScan
+              View on {explorerName}
               <ExternalLink className="h-3 w-3" />
             </a>
           </div>

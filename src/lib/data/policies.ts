@@ -9,13 +9,16 @@ function withId<T extends { _id: Types.ObjectId }>(doc: T): Omit<T, "_id"> & { i
 }
 
 /**
- * Get endpoint policies for a user, optionally filtered by status.
+ * Get endpoint policies for a user, optionally filtered by status and/or chainId.
  */
-export async function getPolicies(userId: string, status?: string) {
+export async function getPolicies(userId: string, status?: string, options?: { chainId?: number }) {
   await connectDB();
   const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
   if (status) {
     filter.status = status;
+  }
+  if (options?.chainId !== undefined) {
+    filter.chainId = options.chainId;
   }
   const docs = await EndpointPolicy.find(filter)
     .sort({ createdAt: -1 })
@@ -33,7 +36,27 @@ export async function getPolicy(policyId: string) {
 }
 
 /**
+ * Validate that an endpoint pattern is a well-formed URL with at least scheme + host.
+ * Returns an error message if invalid, or null if valid.
+ */
+export function validateEndpointPattern(pattern: string): string | null {
+  try {
+    const parsed = new URL(pattern);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return "Endpoint pattern must use http or https protocol";
+    }
+    if (!parsed.hostname) {
+      return "Endpoint pattern must include a hostname";
+    }
+    return null;
+  } catch {
+    return "Endpoint pattern must be a valid URL (e.g., https://api.example.com)";
+  }
+}
+
+/**
  * Create a new endpoint policy. Returns null if a policy for this endpoint pattern already exists.
+ * Throws if the endpoint pattern is not a valid URL with scheme + host.
  */
 export async function createPolicy(
   userId: string,
@@ -41,15 +64,26 @@ export async function createPolicy(
     endpointPattern: string;
     payFromHotWallet?: boolean;
     status?: string;
+    chainId?: number;
   },
 ) {
+  const patternError = validateEndpointPattern(data.endpointPattern);
+  if (patternError) {
+    throw new Error(patternError);
+  }
+
   await connectDB();
   const userObjectId = new Types.ObjectId(userId);
 
-  const existing = await EndpointPolicy.findOne({
+  const existingFilter: Record<string, unknown> = {
     userId: userObjectId,
     endpointPattern: data.endpointPattern,
-  }).lean();
+  };
+  if (data.chainId !== undefined) {
+    existingFilter.chainId = data.chainId;
+  }
+
+  const existing = await EndpointPolicy.findOne(existingFilter).lean();
 
   if (existing) {
     return null;
@@ -60,6 +94,7 @@ export async function createPolicy(
     endpointPattern: data.endpointPattern,
     ...(data.payFromHotWallet !== undefined && { payFromHotWallet: data.payFromHotWallet }),
     ...(data.status !== undefined && { status: data.status }),
+    ...(data.chainId !== undefined && { chainId: data.chainId }),
   });
   const lean = doc.toObject();
   return withId(lean);
@@ -86,6 +121,7 @@ export async function updatePolicy(
       const conflict = await EndpointPolicy.findOne({
         userId: new Types.ObjectId(userId),
         endpointPattern: data.endpointPattern,
+        chainId: existing.chainId,
       }).lean();
       if (conflict) {
         return null;
@@ -108,11 +144,12 @@ export async function updatePolicy(
 
 /**
  * Activate a policy (set status to "active").
+ * Requires userId for defense-in-depth ownership verification.
  */
-export async function activatePolicy(policyId: string) {
+export async function activatePolicy(policyId: string, userId: string) {
   await connectDB();
-  const doc = await EndpointPolicy.findByIdAndUpdate(
-    policyId,
+  const doc = await EndpointPolicy.findOneAndUpdate(
+    { _id: policyId, userId: new Types.ObjectId(userId) },
     { $set: { status: "active" } },
     { returnDocument: "after" },
   ).lean();
@@ -121,11 +158,12 @@ export async function activatePolicy(policyId: string) {
 
 /**
  * Toggle the payFromHotWallet flag on a policy.
+ * Requires userId for defense-in-depth ownership verification.
  */
-export async function toggleHotWallet(policyId: string, payFromHotWallet: boolean) {
+export async function toggleHotWallet(policyId: string, userId: string, payFromHotWallet: boolean) {
   await connectDB();
-  const doc = await EndpointPolicy.findByIdAndUpdate(
-    policyId,
+  const doc = await EndpointPolicy.findOneAndUpdate(
+    { _id: policyId, userId: new Types.ObjectId(userId) },
     { $set: { payFromHotWallet } },
     { returnDocument: "after" },
   ).lean();
@@ -134,11 +172,12 @@ export async function toggleHotWallet(policyId: string, payFromHotWallet: boolea
 
 /**
  * Archive a policy (soft-delete).
+ * Requires userId for defense-in-depth ownership verification.
  */
-export async function archivePolicy(policyId: string) {
+export async function archivePolicy(policyId: string, userId: string) {
   await connectDB();
-  const doc = await EndpointPolicy.findByIdAndUpdate(
-    policyId,
+  const doc = await EndpointPolicy.findOneAndUpdate(
+    { _id: policyId, userId: new Types.ObjectId(userId) },
     { $set: { status: "archived", archivedAt: new Date() } },
     { returnDocument: "after" },
   ).lean();

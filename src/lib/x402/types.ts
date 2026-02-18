@@ -39,6 +39,8 @@ export interface PaymentResult {
   paymentRequirements?: string;
   /** Amount in USD for the pending payment. */
   amount?: number;
+  /** The chain ID selected for this payment (included when status is "pending_approval" or "completed"). */
+  chainId?: number;
   /** Settlement data from the Payment-Response header (V2) or X-Payment-Response (V1). */
   settlement?: import("@x402/core/types").SettleResponse;
 }

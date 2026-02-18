@@ -12,10 +12,10 @@ import {
   archivePolicy as _archivePolicy,
 } from "@/lib/data/policies";
 
-export async function getPolicies(status?: string) {
+export async function getPolicies(status?: string, options?: { chainId?: number }) {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
-  return _getPolicies(auth.userId, status);
+  return _getPolicies(auth.userId, status, options);
 }
 
 export async function getPolicy(policyId: string) {
@@ -32,6 +32,7 @@ export async function createPolicy(data: {
   endpointPattern: string;
   payFromHotWallet?: boolean;
   status?: string;
+  chainId?: number;
 }) {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
@@ -73,7 +74,7 @@ export async function activatePolicy(policyId: string) {
   if (!existing) throw new Error("Policy not found");
   if (existing.userId.toString() !== auth.userId) throw new Error("Forbidden");
 
-  const policy = await _activatePolicy(policyId);
+  const policy = await _activatePolicy(policyId, auth.userId);
 
   revalidatePath("/dashboard/policies");
   return policy;
@@ -87,7 +88,7 @@ export async function toggleHotWallet(policyId: string, payFromHotWallet: boolea
   if (!existing) throw new Error("Policy not found");
   if (existing.userId.toString() !== auth.userId) throw new Error("Forbidden");
 
-  const policy = await _toggleHotWallet(policyId, payFromHotWallet);
+  const policy = await _toggleHotWallet(policyId, auth.userId, payFromHotWallet);
 
   revalidatePath("/dashboard/policies");
   return policy;
@@ -103,7 +104,7 @@ export async function archivePolicy(policyId: string) {
 
   if (existing.status === "archived") throw new Error("Policy is already archived");
 
-  const policy = await _archivePolicy(policyId);
+  const policy = await _archivePolicy(policyId, auth.userId);
 
   revalidatePath("/dashboard/policies");
   return policy;

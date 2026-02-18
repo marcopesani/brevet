@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { AlertCircle, ExternalLink, FileJson } from "lucide-react";
 import { getTransactions } from "@/app/actions/transactions";
+import { useChain } from "@/contexts/chain-context";
+import { CHAIN_CONFIGS } from "@/lib/chain-config";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -38,6 +40,7 @@ interface Transaction {
   endpoint: string;
   txHash: string | null;
   network: string;
+  chainId?: number;
   status: string;
   type: string;
   createdAt: string | Date;
@@ -50,10 +53,15 @@ interface TransactionTableProps {
   initialTransactions: Transaction[];
 }
 
-function getExplorerUrl(network: string): string {
-  if (network === "eip155:84532") {
-    return "https://sepolia.basescan.org";
+function getExplorerUrl(tx: { chainId?: number; network: string }): string {
+  if (tx.chainId !== undefined && CHAIN_CONFIGS[tx.chainId]) {
+    return CHAIN_CONFIGS[tx.chainId].explorerUrl;
   }
+  // Fallback: match by network string
+  const config = Object.values(CHAIN_CONFIGS).find((c) => c.networkString === tx.network);
+  if (config) return config.explorerUrl;
+  // Legacy fallback
+  if (tx.network === "eip155:84532") return "https://sepolia.basescan.org";
   return "https://basescan.org";
 }
 
@@ -225,7 +233,7 @@ function TransactionDetailSheet({
               </Badge>
               {transaction.txHash && (
                 <a
-                  href={`${getExplorerUrl(transaction.network)}/tx/${transaction.txHash}`}
+                  href={`${getExplorerUrl(transaction)}/tx/${transaction.txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1"
@@ -288,13 +296,9 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
+  const { activeChain } = useChain();
 
   useEffect(() => {
-    if (!since && !until) {
-      setTransactions(initialTransactions);
-      return;
-    }
-
     startTransition(async () => {
       const sinceParam = since ? new Date(since).toISOString() : undefined;
       let untilParam: string | undefined;
@@ -303,15 +307,14 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
         untilDate.setHours(23, 59, 59, 999);
         untilParam = untilDate.toISOString();
       }
-      const data = await getTransactions(sinceParam, untilParam);
+      const data = await getTransactions(sinceParam, untilParam, activeChain.chain.id);
       setTransactions(data);
     });
-  }, [since, until, initialTransactions]);
+  }, [since, until, activeChain.chain.id]);
 
-  // Reset to first page when filters or page size change
-  useEffect(() => {
-    setCurrentPage(0);
-  }, [since, until, pageSize]);
+  const handleSinceChange = (value: string) => { setSince(value); setCurrentPage(0); };
+  const handleUntilChange = (value: string) => { setUntil(value); setCurrentPage(0); };
+  const handlePageSizeChange = (value: number) => { setPageSize(value); setCurrentPage(0); };
 
   const sorted = useMemo(() => {
     return [...transactions].sort((a, b) => {
@@ -337,7 +340,7 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
             id="filter-since"
             type="date"
             value={since}
-            onChange={(e) => setSince(e.target.value)}
+            onChange={(e) => handleSinceChange(e.target.value)}
             className="w-auto"
           />
         </div>
@@ -347,7 +350,7 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
             id="filter-until"
             type="date"
             value={until}
-            onChange={(e) => setUntil(e.target.value)}
+            onChange={(e) => handleUntilChange(e.target.value)}
             className="w-auto"
           />
         </div>
@@ -356,8 +359,8 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
             variant="ghost"
             size="sm"
             onClick={() => {
-              setSince("");
-              setUntil("");
+              handleSinceChange("");
+              handleUntilChange("");
             }}
           >
             Clear
@@ -444,7 +447,7 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
                         <div className="flex items-center gap-2">
                           {tx.txHash ? (
                             <a
-                              href={`${getExplorerUrl(tx.network)}/tx/${tx.txHash}`}
+                              href={`${getExplorerUrl(tx)}/tx/${tx.txHash}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
@@ -471,7 +474,7 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
               <span>Rows per page</span>
               <Select
                 value={String(pageSize)}
-                onValueChange={(v) => setPageSize(Number(v))}
+                onValueChange={(v) => handlePageSizeChange(Number(v))}
               >
                 <SelectTrigger size="sm">
                   <SelectValue />

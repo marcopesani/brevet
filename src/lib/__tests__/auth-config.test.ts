@@ -25,9 +25,9 @@ vi.mock("@/lib/hot-wallet", () => ({
 }));
 
 import { createPublicClient, http } from "viem";
-import { createHotWallet } from "@/lib/hot-wallet";
 import { User } from "@/lib/models/user";
 import { HotWallet } from "@/lib/models/hot-wallet";
+import { getEnvironmentChains } from "@/lib/chain-config";
 import {
   extractCredentials,
   verifySignature,
@@ -137,13 +137,14 @@ describe("verifySignature", () => {
 });
 
 describe("upsertUser", () => {
+  const envChains = getEnvironmentChains();
+
   beforeEach(async () => {
     await resetTestDb();
-    vi.mocked(createHotWallet).mockClear();
   });
 
-  it("returns existing user when found", async () => {
-    // Seed a user and hot wallet directly in the in-memory DB
+  it("returns existing user and backfills missing chain wallets", async () => {
+    // Seed a user with only one chain wallet
     const existingUser = await User.create({
       walletAddress: "0xexisting",
     });
@@ -151,29 +152,47 @@ describe("upsertUser", () => {
       address: "0xhot",
       encryptedPrivateKey: "enc",
       userId: existingUser._id,
+      chainId: envChains[0].chain.id,
     });
 
     const user = await upsertUser("0xexisting");
 
     expect(user.id).toBe(existingUser.id);
     expect(user.walletAddress).toBe("0xexisting");
-    expect(createHotWallet).not.toHaveBeenCalled();
+
+    // Should have created wallets for the remaining chains
+    const wallets = await HotWallet.find({ userId: user._id }).lean();
+    expect(wallets).toHaveLength(envChains.length);
   });
 
-  it("creates new user with hot wallet for new address", async () => {
+  it("creates new user with hot wallets on all environment chains", async () => {
     const user = await upsertUser("0xnewuser");
 
     expect(user.walletAddress).toBe("0xnewuser");
-    expect(createHotWallet).toHaveBeenCalledOnce();
 
     // Verify user was created in the database
     const userCount = await User.countDocuments();
     expect(userCount).toBe(1);
 
-    // Verify hot wallet was created
-    const hotWallet = await HotWallet.findOne({ userId: user._id }).lean();
-    expect(hotWallet).not.toBeNull();
-    expect(hotWallet!.address).toBe("0xhotwallet");
+    // Verify hot wallets were created for all environment chains
+    const wallets = await HotWallet.find({ userId: user._id }).lean();
+    expect(wallets).toHaveLength(envChains.length);
+
+    const chainIds = wallets.map((w) => w.chainId).sort();
+    const expectedChainIds = envChains.map((c) => c.chain.id).sort();
+    expect(chainIds).toEqual(expectedChainIds);
+  });
+
+  it("is idempotent — does not duplicate wallets on repeated login", async () => {
+    const user = await upsertUser("0xrepeat");
+    const firstCount = await HotWallet.countDocuments({ userId: user._id });
+
+    // Login again
+    await upsertUser("0xrepeat");
+    const secondCount = await HotWallet.countDocuments({ userId: user._id });
+
+    expect(secondCount).toBe(firstCount);
+    expect(secondCount).toBe(envChains.length);
   });
 });
 

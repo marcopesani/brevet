@@ -25,7 +25,7 @@ export async function getMessageParams() {
   return {
     domain: typeof window !== "undefined" ? window.location.host : "",
     uri: typeof window !== "undefined" ? window.location.origin : "",
-    chains: networks.map((n) => n.id),
+    chains: networks.map((n) => n.id).filter((id): id is number => typeof id === "number"),
     statement: "Please sign with your account",
   };
 }

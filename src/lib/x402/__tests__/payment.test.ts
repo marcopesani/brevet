@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resetTestDb, seedTestUser } from "../../../test/helpers/db";
-import { executePayment } from "../payment";
+import { executePayment, sanitizeHeaders } from "../payment";
 import { Transaction } from "../../models/transaction";
 import { HotWallet } from "../../models/hot-wallet";
 import { EndpointPolicy } from "../../models/endpoint-policy";
+import { createTestHotWallet, createTestEndpointPolicy } from "../../../test/helpers/fixtures";
 import mongoose from "mongoose";
 
 // Mock global fetch to avoid real network calls and bypass URL validation on loopback
@@ -152,7 +153,7 @@ describe("executePayment", () => {
     expect(result.error).toContain("no valid payment requirements");
   });
 
-  it("handles 402 with unsupported scheme/network", async () => {
+  it("handles 402 with unsupported network", async () => {
     const requirement = {
       ...DEFAULT_REQUIREMENT,
       scheme: "subscription",
@@ -163,7 +164,7 @@ describe("executePayment", () => {
     const result = await executePayment("https://api.example.com/resource", userId);
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("is not supported");
+    expect(result.error).toContain("accepted networks are supported");
   });
 
   it("completes payment flow: 402 → sign → re-request → 200", async () => {
@@ -196,6 +197,7 @@ describe("executePayment", () => {
     expect(tx!.status).toBe("completed");
     expect(tx!.txHash).toBe(txHash);
     expect(tx!.amount).toBe(0.05);
+    expect(tx!.chainId).toBe(84532);
   });
 
   it("rejects when no hot wallet exists", async () => {
@@ -205,8 +207,11 @@ describe("executePayment", () => {
 
     const result = await executePayment("https://api.example.com/resource", userId);
 
+    // No hot wallet → returns pending_approval for WalletConnect with chainId
     expect(result.success).toBe(false);
-    expect(result.error).toContain("No hot wallet found");
+    expect(result.status).toBe("pending_approval");
+    expect(result.signingStrategy).toBe("walletconnect");
+    expect(result.chainId).toBe(84532);
   });
 
   it("rejects when policy denies the payment (no active policy)", async () => {
@@ -316,8 +321,11 @@ describe("executePayment", () => {
 
   it("falls back to walletconnect when hot wallet balance is insufficient", async () => {
     // Override getUsdcBalance to return a very low balance
+    // Called twice: once during selectBestChain, once during balance verification
     const { getUsdcBalance } = await import("@/lib/hot-wallet");
-    vi.mocked(getUsdcBalance).mockResolvedValueOnce("0.001000");
+    vi.mocked(getUsdcBalance)
+      .mockResolvedValueOnce("0.001000")  // selectBestChain balance check
+      .mockResolvedValueOnce("0.001000"); // signing flow balance check
 
     mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
 
@@ -327,6 +335,7 @@ describe("executePayment", () => {
     expect(result.status).toBe("pending_approval");
     expect(result.signingStrategy).toBe("walletconnect");
     expect(result.paymentRequirements).toBeDefined();
+    expect(result.chainId).toBe(84532);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -345,5 +354,347 @@ describe("executePayment", () => {
     expect(result.signingStrategy).toBe("walletconnect");
     expect(result.paymentRequirements).toBeDefined();
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  describe("multi-chain selection", () => {
+    it("selects chain with highest balance when multiple networks offered", async () => {
+      const { getUsdcBalance } = await import("@/lib/hot-wallet");
+
+      // Create hot wallet + policy on Arbitrum Sepolia (421614)
+      const arbWalletData = createTestHotWallet(userId, { chainId: 421614 });
+      await HotWallet.create(arbWalletData);
+      await EndpointPolicy.create(
+        createTestEndpointPolicy(userId, { chainId: 421614 }),
+      );
+
+      // Mock balance: Base Sepolia has 10 USDC, Arbitrum Sepolia has 50 USDC
+      vi.mocked(getUsdcBalance)
+        .mockResolvedValueOnce("10.000000")   // Base Sepolia balance (checked during chain selection)
+        .mockResolvedValueOnce("50.000000")   // Arbitrum Sepolia balance (checked during chain selection)
+        .mockResolvedValueOnce("50.000000");  // Balance re-check in signing flow
+
+      const multiNetworkRequirement421614 = {
+        ...DEFAULT_REQUIREMENT,
+        network: "eip155:421614",
+        asset: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+      };
+
+      mockFetch.mockResolvedValueOnce(
+        make402Response([DEFAULT_REQUIREMENT, multiNetworkRequirement421614]),
+      );
+      mockFetch.mockResolvedValueOnce(
+        make200Response({ success: true }, { "X-PAYMENT-TX-HASH": "0x" + "e".repeat(64) }),
+      );
+
+      const result = await executePayment("https://api.example.com/resource", userId);
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe("completed");
+
+      // Transaction should be stored with Arbitrum Sepolia chainId (highest balance)
+      const tx = await Transaction.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+        endpoint: "https://api.example.com/resource",
+      }).lean();
+      expect(tx).not.toBeNull();
+      expect(tx!.chainId).toBe(421614);
+    });
+
+    it("falls back to WalletConnect when no hot wallet on any accepted chain", async () => {
+      // Delete default hot wallet
+      await HotWallet.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
+
+      // Endpoint only accepts Arbitrum Sepolia (421614) — user has no wallet there
+      const arbRequirement = {
+        ...DEFAULT_REQUIREMENT,
+        network: "eip155:421614",
+        asset: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+      };
+      mockFetch.mockResolvedValueOnce(make402Response([arbRequirement]));
+
+      const result = await executePayment("https://api.example.com/resource", userId);
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("pending_approval");
+      expect(result.signingStrategy).toBe("walletconnect");
+      expect(result.chainId).toBe(421614);
+    });
+
+    it("uses explicit chainId when provided", async () => {
+      const txHash = "0x" + "f".repeat(64);
+
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+      mockFetch.mockResolvedValueOnce(
+        make200Response({ success: true }, { "X-PAYMENT-TX-HASH": txHash }),
+      );
+
+      const result = await executePayment(
+        "https://api.example.com/resource",
+        userId,
+        undefined,
+        84532, // explicit chain
+      );
+
+      expect(result.success).toBe(true);
+
+      const tx = await Transaction.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+      }).lean();
+      expect(tx!.chainId).toBe(84532);
+    });
+
+    it("rejects when explicit chainId is not accepted by endpoint", async () => {
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+
+      const result = await executePayment(
+        "https://api.example.com/resource",
+        userId,
+        undefined,
+        42161, // Arbitrum mainnet — not in accepts (which has 84532)
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("not accepted by this endpoint");
+    });
+
+    it("rejects when explicit chainId is not supported", async () => {
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+
+      const result = await executePayment(
+        "https://api.example.com/resource",
+        userId,
+        undefined,
+        999999, // unsupported chain
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("is not supported");
+    });
+
+    it("stores chainId on transaction for default chain payment", async () => {
+      const txHash = "0x" + "a".repeat(64);
+
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+      mockFetch.mockResolvedValueOnce(
+        make200Response({ success: true }, { "X-PAYMENT-TX-HASH": txHash }),
+      );
+
+      await executePayment("https://api.example.com/resource", userId);
+
+      const tx = await Transaction.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+      }).lean();
+      expect(tx).not.toBeNull();
+      expect(tx!.chainId).toBe(84532);
+    });
+  });
+
+  describe("SSRF hardening", () => {
+    describe("H1: IPv6-mapped IPv4 bypass", () => {
+      it("rejects IPv6-mapped IPv4 loopback (::ffff:127.0.0.1)", async () => {
+        const result = await executePayment("http://[::ffff:127.0.0.1]/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects IPv6-mapped IPv4 link-local (::ffff:169.254.169.254)", async () => {
+        const result = await executePayment("http://[::ffff:169.254.169.254]/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects IPv6-mapped IPv4 private 10.x (::ffff:10.0.0.1)", async () => {
+        const result = await executePayment("http://[::ffff:10.0.0.1]/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects IPv6-mapped IPv4 private 192.168.x (::ffff:192.168.1.1)", async () => {
+        const result = await executePayment("http://[::ffff:192.168.1.1]/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects IPv6 link-local (fe80::1)", async () => {
+        const result = await executePayment("http://[fe80::1]/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("link-local");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects IPv6-mapped IPv4 in hex form (::ffff:7f00:1)", async () => {
+        const result = await executePayment("http://[::ffff:7f00:1]/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("allows IPv6-mapped public IPv4 (::ffff:8.8.8.8)", async () => {
+        mockFetch.mockResolvedValueOnce(make200Response({ data: "ok" }));
+        const result = await executePayment("http://[::ffff:8.8.8.8]/", userId);
+        expect(result.success).toBe(true);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe("H2: full loopback range", () => {
+      it("rejects 127.0.0.2", async () => {
+        const result = await executePayment("http://127.0.0.2/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects 127.1.1.1", async () => {
+        const result = await executePayment("http://127.1.1.1/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("rejects 127.255.255.255", async () => {
+        const result = await executePayment("http://127.255.255.255/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+
+      it("still blocks 127.0.0.1", async () => {
+        const result = await executePayment("http://127.0.0.1/", userId);
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("private");
+        expect(mockFetch).not.toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe("M9: header blocklist", () => {
+    it("strips blocked headers from initial and paid requests", async () => {
+      const txHash = "0x" + "a".repeat(64);
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+      mockFetch.mockResolvedValueOnce(
+        make200Response({ success: true }, { "X-PAYMENT-TX-HASH": txHash }),
+      );
+
+      const result = await executePayment(
+        "https://api.example.com/resource",
+        userId,
+        {
+          method: "GET",
+          headers: {
+            "Authorization": "Bearer stolen-token",
+            "Cookie": "session=abc",
+            "Host": "evil.com",
+            "X-Custom": "allowed-value",
+          },
+        },
+      );
+
+      expect(result.success).toBe(true);
+
+      // Check initial request headers
+      const [, firstInit] = mockFetch.mock.calls[0];
+      expect(firstInit.headers["X-Custom"]).toBe("allowed-value");
+      expect(firstInit.headers["Authorization"]).toBeUndefined();
+      expect(firstInit.headers["Cookie"]).toBeUndefined();
+      expect(firstInit.headers["Host"]).toBeUndefined();
+
+      // Check paid retry request headers
+      const [, secondInit] = mockFetch.mock.calls[1];
+      expect(secondInit.headers["X-Custom"]).toBe("allowed-value");
+      expect(secondInit.headers["Authorization"]).toBeUndefined();
+      expect(secondInit.headers["Cookie"]).toBeUndefined();
+      expect(secondInit.headers["Host"]).toBeUndefined();
+    });
+
+    it("strips CRLF from header values", async () => {
+      mockFetch.mockResolvedValueOnce(make200Response({ data: "ok" }));
+
+      await executePayment(
+        "https://api.example.com/free",
+        userId,
+        {
+          headers: {
+            "X-Custom": "value\r\nInjected-Header: evil",
+          },
+        },
+      );
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers["X-Custom"]).toBe("valueInjected-Header: evil");
+      expect(init.headers["Injected-Header"]).toBeUndefined();
+    });
+
+    it("blocks headers case-insensitively", async () => {
+      mockFetch.mockResolvedValueOnce(make200Response({ data: "ok" }));
+
+      await executePayment(
+        "https://api.example.com/free",
+        userId,
+        {
+          headers: {
+            "AUTHORIZATION": "Bearer token",
+            "cookie": "session=abc",
+            "Transfer-Encoding": "chunked",
+            "X-Payment": "fake",
+            "Payment-Signature": "fake",
+            "X-Forwarded-For": "1.2.3.4",
+            "X-Safe": "ok",
+          },
+        },
+      );
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers["X-Safe"]).toBe("ok");
+      expect(init.headers["AUTHORIZATION"]).toBeUndefined();
+      expect(init.headers["cookie"]).toBeUndefined();
+      expect(init.headers["Transfer-Encoding"]).toBeUndefined();
+      expect(init.headers["X-Payment"]).toBeUndefined();
+      expect(init.headers["Payment-Signature"]).toBeUndefined();
+      expect(init.headers["X-Forwarded-For"]).toBeUndefined();
+    });
+  });
+});
+
+describe("sanitizeHeaders", () => {
+  it("removes blocked headers", () => {
+    const result = sanitizeHeaders({
+      "Authorization": "Bearer token",
+      "Host": "evil.com",
+      "X-Custom": "ok",
+    });
+    expect(result).toEqual({ "X-Custom": "ok" });
+  });
+
+  it("strips CRLF characters from values", () => {
+    const result = sanitizeHeaders({
+      "X-Test": "line1\r\nline2",
+      "X-Other": "no\nnewline",
+    });
+    expect(result["X-Test"]).toBe("line1line2");
+    expect(result["X-Other"]).toBe("nonewline");
+  });
+
+  it("returns empty object when all headers are blocked", () => {
+    const result = sanitizeHeaders({
+      "Authorization": "token",
+      "Cookie": "session",
+    });
+    expect(result).toEqual({});
+  });
+
+  it("passes through safe headers unchanged", () => {
+    const result = sanitizeHeaders({
+      "Content-Type": "application/json",
+      "Accept": "text/html",
+    });
+    expect(result).toEqual({
+      "Content-Type": "application/json",
+      "Accept": "text/html",
+    });
   });
 });

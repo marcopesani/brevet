@@ -9,6 +9,7 @@ import {
   activatePolicy,
   toggleHotWallet,
   archivePolicy,
+  validateEndpointPattern,
 } from "../policies";
 
 const uid = () => new Types.ObjectId().toString();
@@ -99,8 +100,21 @@ describe("activatePolicy", () => {
     const userId = uid();
     const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", status: "draft" });
 
-    const updated = await activatePolicy(created._id.toString());
+    const updated = await activatePolicy(created._id.toString(), userId);
     expect(updated!.status).toBe("active");
+  });
+
+  it("returns null when userId does not match (IDOR protection)", async () => {
+    const userId = uid();
+    const attackerId = uid();
+    const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", status: "draft" });
+
+    const result = await activatePolicy(created._id.toString(), attackerId);
+    expect(result).toBeNull();
+
+    // Verify original was not modified
+    const original = await EndpointPolicy.findById(created._id).lean();
+    expect(original!.status).toBe("draft");
   });
 });
 
@@ -109,8 +123,21 @@ describe("toggleHotWallet", () => {
     const userId = uid();
     const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", payFromHotWallet: false });
 
-    const updated = await toggleHotWallet(created._id.toString(), true);
+    const updated = await toggleHotWallet(created._id.toString(), userId, true);
     expect(updated!.payFromHotWallet).toBe(true);
+  });
+
+  it("returns null when userId does not match (IDOR protection)", async () => {
+    const userId = uid();
+    const attackerId = uid();
+    const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", payFromHotWallet: false });
+
+    const result = await toggleHotWallet(created._id.toString(), attackerId, true);
+    expect(result).toBeNull();
+
+    // Verify original was not modified
+    const original = await EndpointPolicy.findById(created._id).lean();
+    expect(original!.payFromHotWallet).toBe(false);
   });
 });
 
@@ -119,8 +146,135 @@ describe("archivePolicy", () => {
     const userId = uid();
     const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", status: "active" });
 
-    const updated = await archivePolicy(created._id.toString());
+    const updated = await archivePolicy(created._id.toString(), userId);
     expect(updated!.status).toBe("archived");
     expect(updated!.archivedAt).toBeInstanceOf(Date);
+  });
+
+  it("returns null when userId does not match (IDOR protection)", async () => {
+    const userId = uid();
+    const attackerId = uid();
+    const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", status: "active" });
+
+    const result = await archivePolicy(created._id.toString(), attackerId);
+    expect(result).toBeNull();
+
+    // Verify original was not modified
+    const original = await EndpointPolicy.findById(created._id).lean();
+    expect(original!.status).toBe("active");
+  });
+});
+
+describe("chainId support", () => {
+  it("getPolicies filters by chainId", async () => {
+    const userId = uid();
+    await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", status: "active", chainId: 8453 });
+    await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", status: "active", chainId: 42161 });
+
+    const baseOnly = await getPolicies(userId, undefined, { chainId: 8453 });
+    expect(baseOnly).toHaveLength(1);
+    expect(baseOnly[0].chainId).toBe(8453);
+
+    const arbOnly = await getPolicies(userId, undefined, { chainId: 42161 });
+    expect(arbOnly).toHaveLength(1);
+    expect(arbOnly[0].chainId).toBe(42161);
+
+    const all = await getPolicies(userId);
+    expect(all).toHaveLength(2);
+  });
+
+  it("createPolicy stores chainId when provided", async () => {
+    const userId = uid();
+    const policy = await createPolicy(userId, {
+      endpointPattern: "https://arb-api.example.com",
+      status: "active",
+      chainId: 42161,
+    });
+
+    expect(policy).not.toBeNull();
+    expect(policy!.chainId).toBe(42161);
+  });
+
+  it("createPolicy allows same endpoint on different chains", async () => {
+    const userId = uid();
+    const p1 = await createPolicy(userId, {
+      endpointPattern: "https://api.example.com",
+      chainId: 8453,
+    });
+    const p2 = await createPolicy(userId, {
+      endpointPattern: "https://api.example.com",
+      chainId: 42161,
+    });
+
+    expect(p1).not.toBeNull();
+    expect(p2).not.toBeNull();
+    expect(p1!.chainId).toBe(8453);
+    expect(p2!.chainId).toBe(42161);
+  });
+
+  it("createPolicy rejects duplicate endpoint+chainId for same user", async () => {
+    const userId = uid();
+    await createPolicy(userId, {
+      endpointPattern: "https://api.example.com",
+      chainId: 42161,
+    });
+    const dup = await createPolicy(userId, {
+      endpointPattern: "https://api.example.com",
+      chainId: 42161,
+    });
+
+    expect(dup).toBeNull();
+  });
+});
+
+describe("validateEndpointPattern (M11)", () => {
+  it("accepts valid https URL", () => {
+    expect(validateEndpointPattern("https://api.example.com")).toBeNull();
+  });
+
+  it("accepts valid http URL", () => {
+    expect(validateEndpointPattern("http://api.example.com")).toBeNull();
+  });
+
+  it("accepts URL with path", () => {
+    expect(validateEndpointPattern("https://api.example.com/v1/data")).toBeNull();
+  });
+
+  it("rejects non-URL string", () => {
+    expect(validateEndpointPattern("not-a-url")).not.toBeNull();
+  });
+
+  it("rejects ftp protocol", () => {
+    expect(validateEndpointPattern("ftp://files.example.com")).not.toBeNull();
+  });
+
+  it("rejects javascript protocol", () => {
+    expect(validateEndpointPattern("javascript:alert(1)")).not.toBeNull();
+  });
+});
+
+describe("createPolicy endpoint pattern validation (M11)", () => {
+  it("throws for invalid endpoint pattern", async () => {
+    const userId = uid();
+    await expect(
+      createPolicy(userId, { endpointPattern: "not-a-url" }),
+    ).rejects.toThrow("valid URL");
+  });
+
+  it("throws for non-http protocol", async () => {
+    const userId = uid();
+    await expect(
+      createPolicy(userId, { endpointPattern: "ftp://files.example.com" }),
+    ).rejects.toThrow("http or https");
+  });
+
+  it("succeeds for valid https pattern", async () => {
+    const userId = uid();
+    const policy = await createPolicy(userId, {
+      endpointPattern: "https://api.example.com",
+      status: "active",
+    });
+    expect(policy).not.toBeNull();
+    expect(policy!.endpointPattern).toBe("https://api.example.com");
   });
 });

@@ -5,7 +5,7 @@ import {
   TEST_PRIVATE_KEY,
   TEST_WALLET_ADDRESS,
 } from "@/test/helpers/crypto";
-import { chainConfig } from "@/lib/chain-config";
+import { getDefaultChainConfig } from "@/lib/chain-config";
 import { createEvmSigner, authorizationTypes } from "@/lib/x402/eip712";
 import { buildPaymentHeaders } from "@/lib/x402/headers";
 import crypto from "crypto";
@@ -40,7 +40,7 @@ describe("E2E: EIP-712 Signing", () => {
       );
 
       const signature = await signer.signTypedData({
-        domain: chainConfig.usdcDomain,
+        domain: getDefaultChainConfig().usdcDomain,
         types: authorizationTypes,
         primaryType: "TransferWithAuthorization",
         message: {
@@ -56,7 +56,7 @@ describe("E2E: EIP-712 Signing", () => {
       // Verify the signature recovers to the test wallet address
       const isValid = await verifyTypedData({
         address: TEST_WALLET_ADDRESS,
-        domain: chainConfig.usdcDomain,
+        domain: getDefaultChainConfig().usdcDomain,
         types: authorizationTypes,
         primaryType: "TransferWithAuthorization",
         message: {
@@ -74,10 +74,10 @@ describe("E2E: EIP-712 Signing", () => {
     });
 
     it("should use the correct Sepolia USDC domain", () => {
-      expect(chainConfig.usdcDomain.name).toBe("USD Coin");
-      expect(chainConfig.usdcDomain.version).toBe("2");
-      expect(chainConfig.usdcDomain.chainId).toBe(84532);
-      expect(chainConfig.usdcDomain.verifyingContract).toBe(
+      expect(getDefaultChainConfig().usdcDomain.name).toBe("USD Coin");
+      expect(getDefaultChainConfig().usdcDomain.version).toBe("2");
+      expect(getDefaultChainConfig().usdcDomain.chainId).toBe(84532);
+      expect(getDefaultChainConfig().usdcDomain.verifyingContract).toBe(
         "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       );
     });
@@ -99,7 +99,7 @@ describe("E2E: EIP-712 Signing", () => {
         );
 
         const signature = await signer.signTypedData({
-          domain: chainConfig.usdcDomain,
+          domain: getDefaultChainConfig().usdcDomain,
           types: authorizationTypes,
           primaryType: "TransferWithAuthorization",
           message: {
@@ -114,7 +114,7 @@ describe("E2E: EIP-712 Signing", () => {
 
         const isValid = await verifyTypedData({
           address: TEST_WALLET_ADDRESS,
-          domain: chainConfig.usdcDomain,
+          domain: getDefaultChainConfig().usdcDomain,
           types: authorizationTypes,
           primaryType: "TransferWithAuthorization",
           message: {
@@ -148,7 +148,7 @@ describe("E2E: EIP-712 Signing", () => {
         );
 
         const signature = await signer.signTypedData({
-          domain: chainConfig.usdcDomain,
+          domain: getDefaultChainConfig().usdcDomain,
           types: authorizationTypes,
           primaryType: "TransferWithAuthorization",
           message: {
@@ -163,7 +163,7 @@ describe("E2E: EIP-712 Signing", () => {
 
         const isValid = await verifyTypedData({
           address: TEST_WALLET_ADDRESS,
-          domain: chainConfig.usdcDomain,
+          domain: getDefaultChainConfig().usdcDomain,
           types: authorizationTypes,
           primaryType: "TransferWithAuthorization",
           message: {
@@ -190,7 +190,7 @@ describe("E2E: EIP-712 Signing", () => {
       );
 
       const signature = await signer.signTypedData({
-        domain: chainConfig.usdcDomain,
+        domain: getDefaultChainConfig().usdcDomain,
         types: authorizationTypes,
         primaryType: "TransferWithAuthorization",
         message: {
@@ -207,7 +207,7 @@ describe("E2E: EIP-712 Signing", () => {
       const wrongAddress = ("0x" + "d".repeat(40)) as Hex;
       const isValid = await verifyTypedData({
         address: wrongAddress,
-        domain: chainConfig.usdcDomain,
+        domain: getDefaultChainConfig().usdcDomain,
         types: authorizationTypes,
         primaryType: "TransferWithAuthorization",
         message: {
@@ -304,7 +304,7 @@ describe("E2E: EIP-712 Signing", () => {
 
       // Cast needed: SDK types PaymentPayloadV1.network as `${string}:${string}`,
       // but V1 networks are plain names like "base-sepolia"
-      const headers = buildPaymentHeaders(paymentPayload as any);
+      const headers = buildPaymentHeaders(paymentPayload as unknown as Parameters<typeof buildPaymentHeaders>[0]);
 
       // V1 uses X-PAYMENT header
       expect(headers).toHaveProperty("X-PAYMENT");

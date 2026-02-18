@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { chainConfig } from "@/lib/chain-config";
+import { getChainConfig, getDefaultChainConfig } from "@/lib/chain-config";
 import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
 
 const USDC_DECIMALS = 6;
@@ -35,13 +35,17 @@ const ERC20_ABI = [
 
 interface FundWalletFormProps {
   hotWalletAddress: string | null;
+  chainId?: number;
 }
 
 export default function FundWalletForm({
   hotWalletAddress,
+  chainId,
 }: FundWalletFormProps) {
   const [amount, setAmount] = useState("");
   const queryClient = useQueryClient();
+
+  const chainConfig = chainId ? getChainConfig(chainId) ?? getDefaultChainConfig() : getDefaultChainConfig();
 
   const { writeContract, data: txHash, isPending, error, reset } = useWriteContract();
 
@@ -68,6 +72,8 @@ export default function FundWalletForm({
       queryClient.invalidateQueries({ queryKey: WALLET_BALANCE_QUERY_KEY });
     }
   }, [isSuccess, queryClient]);
+
+  const explorerName = chainConfig.explorerUrl.replace("https://", "").split("/")[0];
 
   const statusText = isPending
     ? "Confirming in wallet..."
@@ -118,7 +124,7 @@ export default function FundWalletForm({
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-xs text-green-700 underline dark:text-green-300"
             >
-              View on BaseScan
+              View on {explorerName}
               <ExternalLink className="h-3 w-3" />
             </a>
           </div>

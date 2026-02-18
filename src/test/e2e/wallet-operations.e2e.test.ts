@@ -8,7 +8,7 @@ import {
   TEST_WALLET_ADDRESS,
   encryptTestPrivateKey,
 } from "@/test/helpers/crypto";
-import { chainConfig } from "@/lib/chain-config";
+import { getDefaultChainConfig } from "@/lib/chain-config";
 import { createHotWallet, decryptPrivateKey } from "@/lib/hot-wallet";
 
 describe("E2E: Wallet Operations", () => {
@@ -74,7 +74,7 @@ describe("E2E: Wallet Operations", () => {
       ] as const;
 
       const balance = await client.readContract({
-        address: chainConfig.usdcAddress,
+        address: getDefaultChainConfig().usdcAddress,
         abi: USDC_ABI,
         functionName: "balanceOf",
         args: [TEST_WALLET_ADDRESS],
@@ -90,12 +90,12 @@ describe("E2E: Wallet Operations", () => {
     }, 15000); // 15s timeout for RPC call
 
     it("should use the correct chain config for Base Sepolia", () => {
-      expect(chainConfig.chain.id).toBe(84532);
-      expect(chainConfig.usdcAddress).toBe(
+      expect(getDefaultChainConfig().chain.id).toBe(84532);
+      expect(getDefaultChainConfig().usdcAddress).toBe(
         "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
       );
-      expect(chainConfig.networkString).toBe("eip155:84532");
-      expect(chainConfig.explorerUrl).toBe("https://sepolia.basescan.org");
+      expect(getDefaultChainConfig().networkString).toBe("eip155:84532");
+      expect(getDefaultChainConfig().explorerUrl).toBe("https://sepolia.basescan.org");
     });
 
     it("should read USDC contract symbol on Sepolia to verify contract existence", async () => {
@@ -115,7 +115,7 @@ describe("E2E: Wallet Operations", () => {
       ] as const;
 
       const symbol = await client.readContract({
-        address: chainConfig.usdcAddress,
+        address: getDefaultChainConfig().usdcAddress,
         abi: SYMBOL_ABI,
         functionName: "symbol",
       });

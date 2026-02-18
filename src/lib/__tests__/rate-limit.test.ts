@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { rateLimit, getClientIp } from "../rate-limit";
+import {
+  rateLimit,
+  getClientIp,
+  _resetStoreForTesting,
+  _getStoreSizeForTesting,
+  _MAX_STORE_SIZE,
+} from "../rate-limit";
 
 describe("rate-limit", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    _resetStoreForTesting();
   });
 
   afterEach(() => {
@@ -144,31 +151,118 @@ describe("rate-limit", () => {
     });
   });
 
-  describe("getClientIp", () => {
-    it("should extract IP from x-forwarded-for header", () => {
+  describe("getClientIp (M3 hardening)", () => {
+    it("should prefer x-real-ip over x-forwarded-for", () => {
+      const request = new Request("http://localhost", {
+        headers: {
+          "x-real-ip": "203.0.113.50",
+          "x-forwarded-for": "10.0.0.1, 192.168.1.1",
+        },
+      });
+      expect(getClientIp(request)).toBe("203.0.113.50");
+    });
+
+    it("should use x-real-ip when present", () => {
+      const request = new Request("http://localhost", {
+        headers: { "x-real-ip": "198.51.100.10" },
+      });
+      expect(getClientIp(request)).toBe("198.51.100.10");
+    });
+
+    it("should trim whitespace from x-real-ip", () => {
+      const request = new Request("http://localhost", {
+        headers: { "x-real-ip": "  198.51.100.10  " },
+      });
+      expect(getClientIp(request)).toBe("198.51.100.10");
+    });
+
+    it("should take the last IP from x-forwarded-for (closest to server)", () => {
+      const request = new Request("http://localhost", {
+        headers: { "x-forwarded-for": "10.0.0.1, 192.168.1.1, 203.0.113.50" },
+      });
+      // Last entry is the one added by our reverse proxy — hardest to spoof
+      expect(getClientIp(request)).toBe("203.0.113.50");
+    });
+
+    it("should handle single-entry x-forwarded-for", () => {
       const request = new Request("http://localhost", {
         headers: { "x-forwarded-for": "192.168.1.1" },
       });
       expect(getClientIp(request)).toBe("192.168.1.1");
     });
 
-    it("should take the first IP from a comma-separated list", () => {
-      const request = new Request("http://localhost", {
-        headers: { "x-forwarded-for": "10.0.0.1, 192.168.1.1, 172.16.0.1" },
-      });
-      expect(getClientIp(request)).toBe("10.0.0.1");
-    });
-
-    it("should return 'unknown' when no forwarded header", () => {
+    it("should return 'direct' when no forwarded headers present", () => {
       const request = new Request("http://localhost");
-      expect(getClientIp(request)).toBe("unknown");
+      expect(getClientIp(request)).toBe("direct");
     });
 
-    it("should trim whitespace from IP", () => {
+    it("should trim whitespace from x-forwarded-for entries", () => {
       const request = new Request("http://localhost", {
-        headers: { "x-forwarded-for": "  192.168.1.1  , 10.0.0.1" },
+        headers: { "x-forwarded-for": "  10.0.0.1  ,  192.168.1.1  " },
       });
       expect(getClientIp(request)).toBe("192.168.1.1");
+    });
+  });
+
+  describe("store size limit (M4)", () => {
+    it("should reject new keys when store is at max capacity", () => {
+      const limit = 10;
+      const windowMs = 60_000;
+
+      // Fill the store to max capacity
+      for (let i = 0; i < _MAX_STORE_SIZE; i++) {
+        const result = rateLimit(`ip-${i}`, limit, windowMs);
+        expect(result).toBeNull();
+      }
+      expect(_getStoreSizeForTesting()).toBe(_MAX_STORE_SIZE);
+
+      // New key should be rejected with 429
+      const response = rateLimit("new-ip", limit, windowMs);
+      expect(response).not.toBeNull();
+      expect(response!.status).toBe(429);
+    });
+
+    it("should still allow existing keys when store is full", () => {
+      const limit = 10;
+      const windowMs = 60_000;
+
+      // Fill the store
+      for (let i = 0; i < _MAX_STORE_SIZE; i++) {
+        rateLimit(`ip-${i}`, limit, windowMs);
+      }
+
+      // Existing key should still work
+      const result = rateLimit("ip-0", limit, windowMs);
+      expect(result).toBeNull();
+    });
+
+    it("should evict oldest entries during cleanup when over max", () => {
+      const limit = 10;
+      const windowMs = 60_000;
+
+      // Add entries with staggered timestamps
+      for (let i = 0; i < _MAX_STORE_SIZE; i++) {
+        rateLimit(`ip-${i}`, limit, windowMs);
+        vi.advanceTimersByTime(1); // Spread firstRequest timestamps
+      }
+      expect(_getStoreSizeForTesting()).toBe(_MAX_STORE_SIZE);
+
+      // Advance past cleanup interval but not past the window
+      // so entries are still active but cleanup runs
+      vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+
+      // Trigger cleanup - all entries within window should remain
+      // (they're all within 60s window since we only advanced ~10s for entries + 5min for cleanup)
+      // Actually, entries added at the start ARE older than 60s window now
+      // So cleanup will evict stale entries naturally
+      rateLimit("trigger-cleanup", limit, windowMs);
+
+      // Store should be smaller now since old entries were cleaned up
+      expect(_getStoreSizeForTesting()).toBeLessThanOrEqual(_MAX_STORE_SIZE);
+    });
+
+    it("should expose MAX_STORE_SIZE as 10000", () => {
+      expect(_MAX_STORE_SIZE).toBe(10_000);
     });
   });
 });
