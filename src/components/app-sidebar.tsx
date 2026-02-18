@@ -12,6 +12,7 @@ import {
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
+import { ChainSelector } from "@/components/chain-selector"
 import {
   Sidebar,
   SidebarContent,
@@ -83,6 +84,7 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <ChainSelector />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={navMain} />
