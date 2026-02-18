@@ -5,7 +5,9 @@ import {
   getChainIdFromMessage,
 } from "@reown/appkit-siwe";
 import { createPublicClient, http } from "viem";
-import { prisma } from "@/lib/db";
+import { connectDB } from "@/lib/db";
+import { User } from "@/lib/models/user";
+import { HotWallet } from "@/lib/models/hot-wallet";
 import { createHotWallet } from "@/lib/hot-wallet";
 
 declare module "next-auth" {
@@ -66,25 +68,19 @@ export async function verifySignature(
 
 /** Find or create a user by wallet address, creating a hot wallet for new users. */
 export async function upsertUser(walletAddress: string) {
-  let user = await prisma.user.findUnique({
-    where: { walletAddress },
-    include: { hotWallet: true },
-  });
+  await connectDB();
+
+  let user = await User.findOne({ walletAddress });
 
   if (!user) {
     const { address, encryptedPrivateKey } = createHotWallet();
 
-    user = await prisma.user.create({
-      data: {
-        walletAddress,
-        hotWallet: {
-          create: {
-            address,
-            encryptedPrivateKey,
-          },
-        },
-      },
-      include: { hotWallet: true },
+    user = await User.create({ walletAddress });
+
+    await HotWallet.create({
+      address,
+      encryptedPrivateKey,
+      userId: user._id,
     });
   }
 

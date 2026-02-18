@@ -3,7 +3,8 @@ import type { Hex } from "viem";
 import { verifyTypedData } from "viem";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import { TEST_WALLET_ADDRESS } from "@/test/helpers/crypto";
-import { prisma } from "@/lib/db";
+import { EndpointPolicy } from "@/lib/models/endpoint-policy";
+import { Transaction } from "@/lib/models/transaction";
 import { chainConfig } from "@/lib/chain-config";
 import { authorizationTypes } from "@/lib/x402/eip712";
 import { parsePaymentRequired } from "@/lib/x402/headers";
@@ -151,9 +152,7 @@ describe("E2E: Full Payment Flow", () => {
     await executePayment("https://api.example.com/resource", userId);
 
     // Verify transaction was recorded
-    const transactions = await prisma.transaction.findMany({
-      where: { userId },
-    });
+    const transactions = await Transaction.find({ userId }).lean();
     expect(transactions).toHaveLength(1);
     expect(transactions[0].amount).toBe(0.05); // 50000 / 1e6
     expect(transactions[0].endpoint).toBe(
@@ -167,7 +166,7 @@ describe("E2E: Full Payment Flow", () => {
 
   it("should reject payment when no active policy exists", async () => {
     // Remove all policies
-    await prisma.endpointPolicy.deleteMany({ where: { userId } });
+    await EndpointPolicy.deleteMany({ userId });
 
     mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
 
@@ -184,9 +183,12 @@ describe("E2E: Full Payment Flow", () => {
 
   it("should return pending_approval when payFromHotWallet is false", async () => {
     // Update policy to disable hot wallet
-    await prisma.endpointPolicy.update({
-      where: { userId_endpointPattern: { userId, endpointPattern: "https://api.example.com" } },
-      data: { payFromHotWallet: false },
+    const existing = await EndpointPolicy.findOne({
+      userId,
+      endpointPattern: "https://api.example.com",
+    });
+    await EndpointPolicy.findByIdAndUpdate(existing!._id, {
+      $set: { payFromHotWallet: false },
     });
 
     mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
@@ -204,9 +206,7 @@ describe("E2E: Full Payment Flow", () => {
     expect(result.paymentRequirements).toBeDefined();
 
     // Verify no transaction was created (pending, not completed)
-    const transactions = await prisma.transaction.findMany({
-      where: { userId },
-    });
+    const transactions = await Transaction.find({ userId }).lean();
     expect(transactions).toHaveLength(0);
   });
 
@@ -262,7 +262,7 @@ describe("E2E: Full Payment Flow", () => {
     expect(requirements!.accepts).toHaveLength(1);
     expect(requirements!.accepts[0].scheme).toBe("exact");
     expect(requirements!.accepts[0].network).toBe("base-sepolia");
-    expect((requirements!.accepts[0] as any).maxAmountRequired).toBe("50000");
+    expect((requirements!.accepts[0] as unknown as Record<string, unknown>).maxAmountRequired).toBe("50000");
     expect(requirements!.accepts[0].payTo).toBe(DEFAULT_REQUIREMENT.payTo);
   });
 });

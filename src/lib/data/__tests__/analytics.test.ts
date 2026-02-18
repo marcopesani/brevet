@@ -1,19 +1,12 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { prisma } from "@/lib/db";
+import { describe, it, expect } from "vitest";
+import { Transaction } from "@/lib/models/transaction";
+import { User } from "@/lib/models/user";
 import { getAnalytics } from "../analytics";
-
-type PrismaMock = typeof prisma & { _stores: Record<string, unknown[]> };
-
-beforeEach(() => {
-  const mock = prisma as PrismaMock;
-  for (const store of Object.values(mock._stores)) {
-    (store as unknown[]).length = 0;
-  }
-});
 
 describe("getAnalytics", () => {
   it("returns empty analytics when no transactions", async () => {
-    const result = await getAnalytics("u1");
+    const user = await User.create({ walletAddress: "0xUser1" });
+    const result = await getAnalytics(user._id.toString());
 
     expect(result.summary.today).toBe(0);
     expect(result.summary.thisWeek).toBe(0);
@@ -24,37 +17,35 @@ describe("getAnalytics", () => {
   });
 
   it("calculates summary from recent transactions", async () => {
+    const user = await User.create({ walletAddress: "0xUser1" });
+    const userId = user._id;
     const now = new Date();
 
     // Create a transaction from today
-    await prisma.transaction.create({
-      data: {
-        userId: "u1",
-        amount: 0.5,
-        endpoint: "https://api.example.com",
-        network: "base",
-        status: "completed",
-        type: "payment",
-        createdAt: now,
-      },
+    await Transaction.create({
+      userId,
+      amount: 0.5,
+      endpoint: "https://api.example.com",
+      network: "base",
+      status: "completed",
+      type: "payment",
+      createdAt: now,
     });
 
     // Create a transaction from yesterday
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
-    await prisma.transaction.create({
-      data: {
-        userId: "u1",
-        amount: 1.5,
-        endpoint: "https://api.example.com",
-        network: "base",
-        status: "completed",
-        type: "payment",
-        createdAt: yesterday,
-      },
+    await Transaction.create({
+      userId,
+      amount: 1.5,
+      endpoint: "https://api.example.com",
+      network: "base",
+      status: "completed",
+      type: "payment",
+      createdAt: yesterday,
     });
 
-    const result = await getAnalytics("u1");
+    const result = await getAnalytics(user._id.toString());
 
     expect(result.summary.today).toBe(0.5);
     expect(result.summary.totalTransactions).toBe(2);
@@ -63,37 +54,38 @@ describe("getAnalytics", () => {
   });
 
   it("only includes payment type transactions", async () => {
-    await prisma.transaction.create({
-      data: {
-        userId: "u1",
-        amount: 10,
-        endpoint: "withdrawal:0x123",
-        network: "base",
-        status: "completed",
-        type: "withdrawal",
-        createdAt: new Date(),
-      },
+    const user = await User.create({ walletAddress: "0xUser1" });
+
+    await Transaction.create({
+      userId: user._id,
+      amount: 10,
+      endpoint: "withdrawal:0x123",
+      network: "base",
+      status: "completed",
+      type: "withdrawal",
+      createdAt: new Date(),
     });
 
-    const result = await getAnalytics("u1");
+    const result = await getAnalytics(user._id.toString());
     expect(result.summary.totalTransactions).toBe(0);
     expect(result.summary.today).toBe(0);
   });
 
   it("excludes other users' transactions", async () => {
-    await prisma.transaction.create({
-      data: {
-        userId: "u2",
-        amount: 5,
-        endpoint: "https://a.com",
-        network: "base",
-        status: "completed",
-        type: "payment",
-        createdAt: new Date(),
-      },
+    const user1 = await User.create({ walletAddress: "0xUser1", email: "u1@test.com" });
+    const user2 = await User.create({ walletAddress: "0xUser2", email: "u2@test.com" });
+
+    await Transaction.create({
+      userId: user2._id,
+      amount: 5,
+      endpoint: "https://a.com",
+      network: "base",
+      status: "completed",
+      type: "payment",
+      createdAt: new Date(),
     });
 
-    const result = await getAnalytics("u1");
+    const result = await getAnalytics(user1._id.toString());
     expect(result.summary.totalTransactions).toBe(0);
   });
 });

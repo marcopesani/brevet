@@ -1,14 +1,15 @@
+import mongoose from "mongoose";
 import {
   TEST_WALLET_ADDRESS,
   TEST_ENCRYPTED_PRIVATE_KEY,
 } from "./crypto";
 
-/** Deterministic UUID for the default test user. */
-export const TEST_USER_ID = "00000000-0000-4000-a000-000000000001";
+/** Deterministic ObjectId for the default test user. */
+export const TEST_USER_ID = new mongoose.Types.ObjectId().toString();
 
 /**
  * Create test user data with sensible defaults.
- * Uses UUID IDs to match Supabase Auth / Postgres schema.
+ * Uses ObjectId strings to match MongoDB schema.
  */
 export function createTestUser(overrides?: {
   id?: string;
@@ -16,7 +17,9 @@ export function createTestUser(overrides?: {
   walletAddress?: string;
 }) {
   return {
-    id: overrides?.id ?? TEST_USER_ID,
+    _id: overrides?.id
+      ? new mongoose.Types.ObjectId(overrides.id)
+      : new mongoose.Types.ObjectId(TEST_USER_ID),
     email: overrides?.email ?? "test@example.com",
     walletAddress: overrides?.walletAddress ?? TEST_WALLET_ADDRESS,
   };
@@ -34,11 +37,13 @@ export function createTestHotWallet(
   },
 ) {
   return {
-    id: overrides?.id ?? "00000000-0000-4000-a000-000000000010",
+    _id: overrides?.id
+      ? new mongoose.Types.ObjectId(overrides.id)
+      : new mongoose.Types.ObjectId(),
     address: overrides?.address ?? TEST_WALLET_ADDRESS,
     encryptedPrivateKey:
       overrides?.encryptedPrivateKey ?? TEST_ENCRYPTED_PRIVATE_KEY,
-    userId,
+    userId: new mongoose.Types.ObjectId(userId),
   };
 }
 
@@ -55,11 +60,13 @@ export function createTestEndpointPolicy(
   },
 ) {
   return {
-    id: overrides?.id ?? "00000000-0000-4000-a000-000000000020",
+    _id: overrides?.id
+      ? new mongoose.Types.ObjectId(overrides.id)
+      : new mongoose.Types.ObjectId(),
     endpointPattern: overrides?.endpointPattern ?? "https://api.example.com",
     payFromHotWallet: overrides?.payFromHotWallet ?? true,
     status: overrides?.status ?? "active",
-    userId,
+    userId: new mongoose.Types.ObjectId(userId),
   };
 }
 
@@ -82,14 +89,16 @@ export function createTestTransaction(
   },
 ) {
   return {
-    id: overrides?.id ?? "00000000-0000-4000-a000-000000000030",
+    _id: overrides?.id
+      ? new mongoose.Types.ObjectId(overrides.id)
+      : new mongoose.Types.ObjectId(),
     amount: overrides?.amount ?? 0.05,
     endpoint: overrides?.endpoint ?? "https://api.example.com/resource",
     txHash: overrides?.txHash ?? "0x" + "a".repeat(64),
     network: overrides?.network ?? "base-sepolia",
     status: overrides?.status ?? "completed",
     type: overrides?.type ?? "payment",
-    userId,
+    userId: new mongoose.Types.ObjectId(userId),
   };
 }
 
@@ -110,7 +119,9 @@ export function createTestPendingPayment(
   },
 ) {
   return {
-    id: overrides?.id ?? "00000000-0000-4000-a000-000000000040",
+    _id: overrides?.id
+      ? new mongoose.Types.ObjectId(overrides.id)
+      : new mongoose.Types.ObjectId(),
     url: overrides?.url ?? "https://api.example.com/paid-resource",
     method: overrides?.method ?? "GET",
     amount: overrides?.amount ?? 0.05,
@@ -129,6 +140,6 @@ export function createTestPendingPayment(
     status: overrides?.status ?? "pending",
     signature: overrides?.signature ?? null,
     expiresAt: overrides?.expiresAt ?? new Date(Date.now() + 3600_000),
-    userId,
+    userId: new mongoose.Types.ObjectId(userId),
   };
 }

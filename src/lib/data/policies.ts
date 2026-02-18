@@ -1,26 +1,35 @@
-import { prisma } from "@/lib/db";
+import { EndpointPolicy } from "@/lib/models/endpoint-policy";
+import { Types } from "mongoose";
+import { connectDB } from "@/lib/db";
+
+/** Map a lean Mongoose doc to an object with string `id`. */
+function withId<T extends { _id: Types.ObjectId }>(doc: T): Omit<T, "_id"> & { id: string } {
+  const { _id, ...rest } = doc;
+  return { ...rest, id: _id.toString() };
+}
 
 /**
  * Get endpoint policies for a user, optionally filtered by status.
  */
 export async function getPolicies(userId: string, status?: string) {
-  const where: { userId: string; status?: string } = { userId };
+  await connectDB();
+  const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
   if (status) {
-    where.status = status;
+    filter.status = status;
   }
-  return prisma.endpointPolicy.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-  });
+  const docs = await EndpointPolicy.find(filter)
+    .sort({ createdAt: -1 })
+    .lean();
+  return docs.map(withId);
 }
 
 /**
  * Get a single endpoint policy by ID.
  */
 export async function getPolicy(policyId: string) {
-  return prisma.endpointPolicy.findUnique({
-    where: { id: policyId },
-  });
+  await connectDB();
+  const doc = await EndpointPolicy.findById(policyId).lean();
+  return doc ? withId(doc) : null;
 }
 
 /**
@@ -34,21 +43,26 @@ export async function createPolicy(
     status?: string;
   },
 ) {
-  const existing = await prisma.endpointPolicy.findUnique({
-    where: { userId_endpointPattern: { userId, endpointPattern: data.endpointPattern } },
-  });
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
+
+  const existing = await EndpointPolicy.findOne({
+    userId: userObjectId,
+    endpointPattern: data.endpointPattern,
+  }).lean();
+
   if (existing) {
     return null;
   }
 
-  return prisma.endpointPolicy.create({
-    data: {
-      userId,
-      endpointPattern: data.endpointPattern,
-      ...(data.payFromHotWallet !== undefined && { payFromHotWallet: data.payFromHotWallet }),
-      ...(data.status !== undefined && { status: data.status }),
-    },
+  const doc = await EndpointPolicy.create({
+    userId: userObjectId,
+    endpointPattern: data.endpointPattern,
+    ...(data.payFromHotWallet !== undefined && { payFromHotWallet: data.payFromHotWallet }),
+    ...(data.status !== undefined && { status: data.status }),
   });
+  const lean = doc.toObject();
+  return withId(lean);
 }
 
 /**
@@ -65,14 +79,14 @@ export async function updatePolicy(
     status?: string;
   },
 ) {
+  await connectDB();
   if (data.endpointPattern !== undefined) {
-    const existing = await prisma.endpointPolicy.findUnique({
-      where: { id: policyId },
-    });
+    const existing = await EndpointPolicy.findById(policyId).lean();
     if (existing && data.endpointPattern !== existing.endpointPattern) {
-      const conflict = await prisma.endpointPolicy.findUnique({
-        where: { userId_endpointPattern: { userId, endpointPattern: data.endpointPattern } },
-      });
+      const conflict = await EndpointPolicy.findOne({
+        userId: new Types.ObjectId(userId),
+        endpointPattern: data.endpointPattern,
+      }).lean();
       if (conflict) {
         return null;
       }
@@ -84,38 +98,49 @@ export async function updatePolicy(
   if (data.payFromHotWallet !== undefined) updateData.payFromHotWallet = data.payFromHotWallet;
   if (data.status !== undefined) updateData.status = data.status;
 
-  return prisma.endpointPolicy.update({
-    where: { id: policyId },
-    data: updateData,
-  });
+  const doc = await EndpointPolicy.findByIdAndUpdate(
+    policyId,
+    { $set: updateData },
+    { returnDocument: "after" },
+  ).lean();
+  return doc ? withId(doc) : null;
 }
 
 /**
  * Activate a policy (set status to "active").
  */
 export async function activatePolicy(policyId: string) {
-  return prisma.endpointPolicy.update({
-    where: { id: policyId },
-    data: { status: "active" },
-  });
+  await connectDB();
+  const doc = await EndpointPolicy.findByIdAndUpdate(
+    policyId,
+    { $set: { status: "active" } },
+    { returnDocument: "after" },
+  ).lean();
+  return doc ? withId(doc) : null;
 }
 
 /**
  * Toggle the payFromHotWallet flag on a policy.
  */
 export async function toggleHotWallet(policyId: string, payFromHotWallet: boolean) {
-  return prisma.endpointPolicy.update({
-    where: { id: policyId },
-    data: { payFromHotWallet },
-  });
+  await connectDB();
+  const doc = await EndpointPolicy.findByIdAndUpdate(
+    policyId,
+    { $set: { payFromHotWallet } },
+    { returnDocument: "after" },
+  ).lean();
+  return doc ? withId(doc) : null;
 }
 
 /**
  * Archive a policy (soft-delete).
  */
 export async function archivePolicy(policyId: string) {
-  return prisma.endpointPolicy.update({
-    where: { id: policyId },
-    data: { status: "archived", archivedAt: new Date() },
-  });
+  await connectDB();
+  const doc = await EndpointPolicy.findByIdAndUpdate(
+    policyId,
+    { $set: { status: "archived", archivedAt: new Date() } },
+    { returnDocument: "after" },
+  ).lean();
+  return doc ? withId(doc) : null;
 }

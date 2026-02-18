@@ -1,4 +1,6 @@
-import { prisma } from "@/lib/db";
+import { Transaction } from "@/lib/models/transaction";
+import { Types } from "mongoose";
+import { connectDB } from "@/lib/db";
 
 export interface AnalyticsSummary {
   today: number;
@@ -22,6 +24,7 @@ export interface AnalyticsData {
  * Get aggregated spending analytics for a user (last 30 days).
  */
 export async function getAnalytics(userId: string): Promise<AnalyticsData> {
+  await connectDB();
   const now = new Date();
   const thirtyDaysAgo = new Date(now);
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -36,14 +39,13 @@ export async function getAnalytics(userId: string): Promise<AnalyticsData> {
 
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const transactions = await prisma.transaction.findMany({
-    where: {
-      userId,
-      type: "payment",
-      createdAt: { gte: thirtyDaysAgo },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  const transactions = await Transaction.find({
+    userId: new Types.ObjectId(userId),
+    type: "payment",
+    createdAt: { $gte: thirtyDaysAgo },
+  })
+    .sort({ createdAt: 1 })
+    .lean();
 
   const dailyMap = new Map<string, number>();
 

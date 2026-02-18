@@ -1,4 +1,8 @@
-import { prisma } from "@/lib/db";
+import { Types } from "mongoose";
+import { User } from "@/lib/models/user";
+import { HotWallet } from "@/lib/models/hot-wallet";
+import { EndpointPolicy } from "@/lib/models/endpoint-policy";
+import { connectDB } from "@/lib/db";
 import { createHotWallet as createHotWalletKeys, getUsdcBalance, withdrawFromHotWallet as withdrawHotWallet } from "@/lib/hot-wallet";
 
 /**
@@ -6,17 +10,21 @@ import { createHotWallet as createHotWalletKeys, getUsdcBalance, withdrawFromHot
  * Returns null if the user has no hot wallet.
  */
 export async function getWalletBalance(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { hotWallet: true },
-  });
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
 
-  if (!user?.hotWallet) {
+  const user = await User.findById(userObjectId).lean();
+  if (!user) {
     return null;
   }
 
-  const balance = await getUsdcBalance(user.hotWallet.address);
-  return { balance, address: user.hotWallet.address };
+  const hotWallet = await HotWallet.findOne({ userId: userObjectId }).lean();
+  if (!hotWallet) {
+    return null;
+  }
+
+  const balance = await getUsdcBalance(hotWallet.address);
+  return { balance, address: hotWallet.address };
 }
 
 /**
@@ -24,30 +32,28 @@ export async function getWalletBalance(userId: string) {
  * Returns the wallet address and userId.
  */
 export async function ensureHotWallet(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { hotWallet: true },
-  });
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
 
+  const user = await User.findById(userObjectId).lean();
   if (!user) {
     return null;
   }
 
-  if (user.hotWallet) {
-    return { address: user.hotWallet.address, userId: user.id };
+  const existingWallet = await HotWallet.findOne({ userId: userObjectId }).lean();
+  if (existingWallet) {
+    return { address: existingWallet.address, userId: user._id.toString() };
   }
 
   const { address, encryptedPrivateKey } = createHotWalletKeys();
 
-  await prisma.hotWallet.create({
-    data: {
-      address,
-      encryptedPrivateKey,
-      userId: user.id,
-    },
+  await HotWallet.create({
+    address,
+    encryptedPrivateKey,
+    userId: userObjectId,
   });
 
-  return { address, userId: user.id };
+  return { address, userId: user._id.toString() };
 }
 
 /**
@@ -66,17 +72,29 @@ export async function withdrawFromWallet(
  * Returns null if not found.
  */
 export async function getHotWallet(userId: string) {
-  return prisma.hotWallet.findUnique({
-    where: { userId },
-  });
+  await connectDB();
+  const doc = await HotWallet.findOne({ userId: new Types.ObjectId(userId) }).lean();
+  if (!doc) return null;
+  return { ...doc, id: doc._id.toString() };
 }
 
 /**
  * Get user with hot wallet and endpoint policies (used by MCP check_balance tool).
  */
 export async function getUserWithWalletAndPolicies(userId: string) {
-  return prisma.user.findUnique({
-    where: { id: userId },
-    include: { hotWallet: true, endpointPolicies: true },
-  });
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
+
+  const user = await User.findById(userObjectId).lean();
+  if (!user) return null;
+
+  const hotWallet = await HotWallet.findOne({ userId: userObjectId }).lean();
+  const endpointPolicies = await EndpointPolicy.find({ userId: userObjectId }).lean();
+
+  return {
+    ...user,
+    id: user._id.toString(),
+    hotWallet: hotWallet ? { ...hotWallet, id: hotWallet._id.toString() } : null,
+    endpointPolicies: endpointPolicies.map((p) => ({ ...p, id: p._id.toString() })),
+  };
 }

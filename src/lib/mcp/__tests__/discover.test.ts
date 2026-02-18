@@ -6,13 +6,6 @@ import type { DiscoveryResponse } from "../tools";
 vi.mock("@/lib/x402/payment", () => ({
   executePayment: vi.fn(),
 }));
-vi.mock("@/lib/db", () => ({
-  prisma: {
-    user: { findUnique: vi.fn() },
-    transaction: { findMany: vi.fn() },
-    pendingPayment: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-  },
-}));
 vi.mock("@/lib/hot-wallet", () => ({
   getUsdcBalance: vi.fn(),
 }));

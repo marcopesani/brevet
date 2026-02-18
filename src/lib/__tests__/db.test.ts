@@ -1,24 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import mongoose from "mongoose";
 
+// Unmock @/lib/db so we test the real implementation
 vi.unmock("@/lib/db");
 
-vi.mock("@/generated/prisma/client", () => {
-  return { PrismaClient: class MockPrismaClient {} };
-});
-
-vi.mock("@prisma/adapter-pg", () => {
-  return { PrismaPg: class MockPrismaPg {} };
-});
-
-import { getPoolConfig } from "../db";
-
-describe("getPoolConfig", () => {
+describe("connectDB", () => {
   const origPoolSize = process.env.DATABASE_POOL_SIZE;
-  const origDatabaseUrl = process.env.DATABASE_URL;
+  const origMongoUri = process.env.MONGODB_URI;
 
   beforeEach(() => {
     delete process.env.DATABASE_POOL_SIZE;
-    process.env.DATABASE_URL = "postgresql://localhost:5432/test";
+    process.env.MONGODB_URI = "mongodb://localhost:27017/test";
   });
 
   afterEach(() => {
@@ -27,55 +19,24 @@ describe("getPoolConfig", () => {
     } else {
       delete process.env.DATABASE_POOL_SIZE;
     }
-    if (origDatabaseUrl !== undefined) {
-      process.env.DATABASE_URL = origDatabaseUrl;
+    if (origMongoUri !== undefined) {
+      process.env.MONGODB_URI = origMongoUri;
     } else {
-      delete process.env.DATABASE_URL;
+      delete process.env.MONGODB_URI;
     }
   });
 
-  it("returns default pool size of 20 when DATABASE_POOL_SIZE is not set", () => {
-    const config = getPoolConfig();
-    expect(config.max).toBe(20);
+  it("returns mongoose instance when already connected", async () => {
+    // MongoMemoryServer is already connected via setup.ts
+    expect(mongoose.connection.readyState).toBe(1);
+
+    const { connectDB } = await import("../db");
+    const result = await connectDB();
+    expect(result).toBe(mongoose);
   });
 
-  it("uses custom pool size when DATABASE_POOL_SIZE is valid", () => {
-    process.env.DATABASE_POOL_SIZE = "30";
-    const config = getPoolConfig();
-    expect(config.max).toBe(30);
-  });
-
-  it("falls back to 20 when DATABASE_POOL_SIZE is not a number", () => {
-    process.env.DATABASE_POOL_SIZE = "not-a-number";
-    const config = getPoolConfig();
-    expect(config.max).toBe(20);
-  });
-
-  it("falls back to 20 when DATABASE_POOL_SIZE is zero", () => {
-    process.env.DATABASE_POOL_SIZE = "0";
-    const config = getPoolConfig();
-    expect(config.max).toBe(20);
-  });
-
-  it("falls back to 20 when DATABASE_POOL_SIZE is negative", () => {
-    process.env.DATABASE_POOL_SIZE = "-5";
-    const config = getPoolConfig();
-    expect(config.max).toBe(20);
-  });
-
-  it("sets idleTimeoutMillis to 30000", () => {
-    const config = getPoolConfig();
-    expect(config.idleTimeoutMillis).toBe(30_000);
-  });
-
-  it("sets connectionTimeoutMillis to 10000", () => {
-    const config = getPoolConfig();
-    expect(config.connectionTimeoutMillis).toBe(10_000);
-  });
-
-  it("includes the DATABASE_URL as connectionString", () => {
-    process.env.DATABASE_URL = "postgresql://custom:5432/mydb";
-    const config = getPoolConfig();
-    expect(config.connectionString).toBe("postgresql://custom:5432/mydb");
+  it("mongoose connection is active and usable", () => {
+    expect(mongoose.connection.readyState).toBe(1);
+    expect(mongoose.connection.db).toBeDefined();
   });
 });

@@ -6,19 +6,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 x402 Gateway MCP is an MCP (Model Context Protocol) server and web dashboard that enables AI agents to make x402 HTTP payments on Base using USDC. When an AI agent accesses a paid API that returns HTTP 402, the gateway automatically handles the payment flow: parsing payment requirements, signing an EIP-712 message, retrying with payment proof, and logging the transaction.
 
-**Tech stack**: Next.js 16 (App Router), React 19, TypeScript 5, Prisma 7 (PostgreSQL), Tailwind CSS 4, shadcn/ui, viem/wagmi, Reown AppKit (WalletConnect), Vitest 4.
+**Tech stack**: Next.js 16 (App Router), React 19, TypeScript 5, Mongoose 8 (MongoDB Atlas), Tailwind CSS 4, shadcn/ui, viem/wagmi, Reown AppKit (WalletConnect), Vitest 4.
 
 ## Commands
 
 ```bash
 npm run dev              # Dev server on localhost:3000
-npm run build            # Production build (includes prisma generate)
+npm run build            # Production build
 npm run lint             # ESLint
 npm test                 # Unit + integration tests (watch mode)
 npm run test:run         # All tests once (CI mode)
 npm run test:e2e         # E2E tests only (requires Base Sepolia RPC)
-npx prisma migrate deploy  # Run database migrations
-npx prisma generate        # Regenerate Prisma client
+docker compose up -d     # Start MongoDB + app server
 ```
 
 Run a single test file: `npx vitest run src/lib/__tests__/policy.test.ts`
@@ -46,7 +45,7 @@ URL validation rejects localhost, private IPs, and internal hostnames (SSRF prot
 
 Endpoint: `POST /api/mcp/[userId]` using Streamable HTTP transport. Stateless — fresh server instance per request.
 
-Five tools defined in `src/lib/mcp/tools.ts`: `x402_pay`, `x402_check_balance`, `x402_spending_history`, `x402_check_pending`, `x402_discover`. MCP tools import from `src/lib/data/` (shared data layer) — they do not use API routes or inline Prisma queries.
+Five tools defined in `src/lib/mcp/tools.ts`: `x402_pay`, `x402_check_balance`, `x402_spending_history`, `x402_check_pending`, `x402_discover`. MCP tools import from `src/lib/data/` (shared data layer) — they do not use API routes or inline database queries.
 
 ### Endpoint Policy System
 
@@ -60,7 +59,7 @@ No middleware — route protection uses Next.js route groups: `(dashboard)` layo
 
 ### Hot Wallet
 
-Auto-created on first login. Private key encrypted with AES-256-GCM, stored in `HotWallet` table. Encryption key from `HOT_WALLET_ENCRYPTION_KEY` env var (64-char hex). Logic in `src/lib/hot-wallet.ts`.
+Auto-created on first login. Private key encrypted with AES-256-GCM, stored in `hotwallets` collection. Encryption key from `HOT_WALLET_ENCRYPTION_KEY` env var (64-char hex). Logic in `src/lib/hot-wallet.ts`.
 
 ### Route Groups
 
@@ -71,7 +70,7 @@ Auto-created on first login. Private key encrypted with AES-256-GCM, stored in `
 
 ### Data Architecture
 
-**Shared Data Layer** (`src/lib/data/`): Five modules — `payments.ts`, `policies.ts`, `transactions.ts`, `analytics.ts`, `wallet.ts`. Pure async functions that take `userId` as first parameter. No `"use server"` directive, no HTTP concerns, no auth checks. This is the single source of truth for all Prisma queries — both MCP tools and the dashboard use these.
+**Shared Data Layer** (`src/lib/data/`): Five modules — `payments.ts`, `policies.ts`, `transactions.ts`, `analytics.ts`, `wallet.ts`. Pure async functions that take `userId` as first parameter. No `"use server"` directive, no HTTP concerns, no auth checks. This is the single source of truth for all database queries (via Mongoose models) — both MCP tools and the dashboard use these.
 
 **Server Actions** (`src/app/actions/`): Thin wrappers with `"use server"` directive. Each action authenticates via `getAuthenticatedUser()`, calls the data layer, and calls `revalidatePath()` for mutations. Used by dashboard components for mutations (approve, reject, activate, create, etc.).
 
@@ -85,7 +84,7 @@ These rules prevent regression to the old polling-heavy architecture:
 
 - **Never create new API routes for dashboard data.** Use Server Components + data layer for reads, Server Actions for mutations.
 - **Never add `setInterval` or polling in components.** If data needs periodic updates, use React Query with `refetchInterval` and a shared hook in `src/hooks/`.
-- **Never write inline Prisma queries in components, API routes, or MCP tools.** All database access goes through `src/lib/data/`.
+- **Never write inline database queries in components, API routes, or MCP tools.** All database access goes through `src/lib/data/`.
 - **Never duplicate data-fetching logic.** If MCP tools and the dashboard need the same data, both must import from `src/lib/data/`.
 - **Server Components for read-only data.** If a component only displays data (no interactivity), it should be an async Server Component calling the data layer directly.
 - **Client Components only when needed.** Only use `"use client"` for: event handlers, useState/useEffect, browser APIs (wagmi, clipboard), interactive controls (sorting, filtering).
@@ -94,7 +93,7 @@ These rules prevent regression to the old polling-heavy architecture:
 
 ### Database
 
-PostgreSQL with Prisma. Schema in `prisma/schema.prisma`. Five models: `User`, `HotWallet`, `EndpointPolicy`, `Transaction`, `PendingPayment`. Row-Level Security applied via migrations. Prisma client generated to `src/generated/prisma/` (gitignored).
+MongoDB with Mongoose. Five collections: `users`, `hotwallets`, `endpointpolicies`, `transactions`, `pendingpayments`. Models defined in `src/lib/models/`.
 
 ### Chain Configuration
 
@@ -106,9 +105,9 @@ PostgreSQL with Prisma. Schema in `prisma/schema.prisma`. Five models: `User`, `
 - UI components: shadcn/ui (New York style, neutral theme) in `src/components/ui/`
 - File naming: kebab-case for utils (`hot-wallet.ts`), PascalCase for components
 - Runtime validation: Zod v4 for MCP tool schemas
-- Tests: co-located `__tests__/` directories; global mocks in `src/test/setup.ts` (Prisma client is always mocked)
+- Tests: co-located `__tests__/` directories; global mocks in `src/test/setup.ts` (uses mongodb-memory-server for in-memory MongoDB)
 - E2E tests make real RPC calls to Base Sepolia
-- Data access: all Prisma queries in `src/lib/data/` — never inline
+- Data access: all Mongoose queries in `src/lib/data/` — never inline
 - Server Actions: `src/app/actions/` for authenticated mutations with revalidation
 - React Query hooks: `src/hooks/` for client-side data that needs polling or cache invalidation
 - Rate limiting: in-memory sliding window (`src/lib/rate-limit.ts`), applied to `/api/mcp/[userId]` and `/api/payments/pending`
@@ -116,7 +115,18 @@ PostgreSQL with Prisma. Schema in `prisma/schema.prisma`. Five models: `User`, `
 ## Environment Setup
 
 Copy `.env.example` to `.env.local`. Required variables:
-- `DATABASE_URL` — PostgreSQL connection string
+- `MONGODB_URI` — MongoDB connection string (default: `mongodb://localhost:27017/x402_gateway`)
 - `HOT_WALLET_ENCRYPTION_KEY` — 64-char hex (generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
 - `NEXTAUTH_SECRET` — session encryption key
 - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` — from https://dashboard.reown.com
+
+### Local Development with Docker
+
+Start MongoDB and the app server together:
+
+```bash
+docker compose up -d    # Start MongoDB + Next.js dev server (localhost:3000)
+docker compose down      # Stop all services (data persists in named volume)
+```
+
+The app service mounts the project directory and runs `npm run dev`. Environment variables from `.env.local` can be added to `docker-compose.override.yml` for local overrides.

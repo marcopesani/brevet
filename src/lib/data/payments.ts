@@ -1,29 +1,37 @@
-import { prisma } from "@/lib/db";
+import { PendingPayment } from "@/lib/models/pending-payment";
+import { Types } from "mongoose";
+import { connectDB } from "@/lib/db";
+
+/** Map a lean Mongoose doc to an object with string `id` and `userId`. */
+function withId<T extends { _id: Types.ObjectId; userId?: Types.ObjectId }>(doc: T): Omit<T, "_id" | "userId"> & { id: string; userId: string } {
+  const { _id, userId, ...rest } = doc;
+  return { ...rest, id: _id.toString(), userId: userId ? userId.toString() : _id.toString() };
+}
 
 /**
  * Get all pending (non-expired) payments for a user.
  */
 export async function getPendingPayments(userId: string) {
-  return prisma.pendingPayment.findMany({
-    where: {
-      userId,
-      status: "pending",
-      expiresAt: { gt: new Date() },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  await connectDB();
+  const docs = await PendingPayment.find({
+    userId: new Types.ObjectId(userId),
+    status: "pending",
+    expiresAt: { $gt: new Date() },
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+  return docs.map(withId);
 }
 
 /**
  * Get the count of pending (non-expired) payments for a user.
  */
 export async function getPendingCount(userId: string) {
-  return prisma.pendingPayment.count({
-    where: {
-      userId,
-      status: "pending",
-      expiresAt: { gt: new Date() },
-    },
+  await connectDB();
+  return PendingPayment.countDocuments({
+    userId: new Types.ObjectId(userId),
+    status: "pending",
+    expiresAt: { $gt: new Date() },
   });
 }
 
@@ -31,9 +39,9 @@ export async function getPendingCount(userId: string) {
  * Find a single pending payment by ID.
  */
 export async function getPendingPayment(paymentId: string) {
-  return prisma.pendingPayment.findUnique({
-    where: { id: paymentId },
-  });
+  await connectDB();
+  const doc = await PendingPayment.findById(paymentId).lean();
+  return doc ? withId(doc) : null;
 }
 
 /**
@@ -49,27 +57,28 @@ export async function createPendingPayment(data: {
   body?: string;
   headers?: Record<string, string>;
 }) {
-  return prisma.pendingPayment.create({
-    data: {
-      userId: data.userId,
-      url: data.url,
-      method: data.method ?? "GET",
-      amount: data.amount,
-      paymentRequirements: data.paymentRequirements,
-      expiresAt: data.expiresAt ?? new Date(Date.now() + 30 * 60 * 1000),
-      requestBody: data.body ?? null,
-      requestHeaders: data.headers ? JSON.stringify(data.headers) : null,
-    },
+  await connectDB();
+  const doc = await PendingPayment.create({
+    userId: new Types.ObjectId(data.userId),
+    url: data.url,
+    method: data.method ?? "GET",
+    amount: data.amount,
+    paymentRequirements: data.paymentRequirements,
+    expiresAt: data.expiresAt ?? new Date(Date.now() + 30 * 60 * 1000),
+    requestBody: data.body ?? null,
+    requestHeaders: data.headers ? JSON.stringify(data.headers) : null,
   });
+  const lean = doc.toObject();
+  return withId(lean);
 }
 
 /**
  * Get a single pending payment by ID.
  */
 export async function getPendingPaymentById(paymentId: string) {
-  return prisma.pendingPayment.findUnique({
-    where: { id: paymentId },
-  });
+  await connectDB();
+  const doc = await PendingPayment.findById(paymentId).lean();
+  return doc ? withId(doc) : null;
 }
 
 /**
@@ -83,16 +92,21 @@ export async function completePendingPayment(
     txHash?: string;
   },
 ) {
-  return prisma.pendingPayment.update({
-    where: { id: paymentId },
-    data: {
-      status: "completed",
-      responsePayload: data.responsePayload,
-      responseStatus: data.responseStatus,
-      txHash: data.txHash ?? null,
-      completedAt: new Date(),
+  await connectDB();
+  const doc = await PendingPayment.findByIdAndUpdate(
+    paymentId,
+    {
+      $set: {
+        status: "completed",
+        responsePayload: data.responsePayload,
+        responseStatus: data.responseStatus,
+        txHash: data.txHash ?? null,
+        completedAt: new Date(),
+      },
     },
-  });
+    { returnDocument: "after" },
+  ).lean();
+  return doc ? withId(doc) : null;
 }
 
 /**
@@ -106,43 +120,57 @@ export async function failPendingPayment(
     error?: string;
   },
 ) {
-  return prisma.pendingPayment.update({
-    where: { id: paymentId },
-    data: {
-      status: "failed",
-      responsePayload: data.responsePayload ?? data.error ?? null,
-      responseStatus: data.responseStatus ?? null,
-      completedAt: new Date(),
+  await connectDB();
+  const doc = await PendingPayment.findByIdAndUpdate(
+    paymentId,
+    {
+      $set: {
+        status: "failed",
+        responsePayload: data.responsePayload ?? data.error ?? null,
+        responseStatus: data.responseStatus ?? null,
+        completedAt: new Date(),
+      },
     },
-  });
+    { returnDocument: "after" },
+  ).lean();
+  return doc ? withId(doc) : null;
 }
 
 /**
  * Mark a pending payment as approved and store the signature.
  */
 export async function approvePendingPayment(paymentId: string, signature: string) {
-  return prisma.pendingPayment.update({
-    where: { id: paymentId },
-    data: { status: "approved", signature },
-  });
+  await connectDB();
+  const doc = await PendingPayment.findByIdAndUpdate(
+    paymentId,
+    { $set: { status: "approved", signature } },
+    { returnDocument: "after" },
+  ).lean();
+  return doc ? withId(doc) : null;
 }
 
 /**
  * Mark a pending payment as rejected.
  */
 export async function rejectPendingPayment(paymentId: string) {
-  return prisma.pendingPayment.update({
-    where: { id: paymentId },
-    data: { status: "rejected" },
-  });
+  await connectDB();
+  const doc = await PendingPayment.findByIdAndUpdate(
+    paymentId,
+    { $set: { status: "rejected" } },
+    { returnDocument: "after" },
+  ).lean();
+  return doc ? withId(doc) : null;
 }
 
 /**
  * Mark a pending payment as expired.
  */
 export async function expirePendingPayment(paymentId: string) {
-  return prisma.pendingPayment.update({
-    where: { id: paymentId },
-    data: { status: "expired" },
-  });
+  await connectDB();
+  const doc = await PendingPayment.findByIdAndUpdate(
+    paymentId,
+    { $set: { status: "expired" } },
+    { returnDocument: "after" },
+  ).lean();
+  return doc ? withId(doc) : null;
 }

@@ -25,19 +25,21 @@ vi.mock("@/lib/hot-wallet", () => ({
 }));
 
 import { createPublicClient, http } from "viem";
-import { prisma } from "@/lib/db";
 import { createHotWallet } from "@/lib/hot-wallet";
+import { User } from "@/lib/models/user";
+import { HotWallet } from "@/lib/models/hot-wallet";
 import {
   extractCredentials,
   verifySignature,
   upsertUser,
   authOptions,
 } from "../auth-config";
+import { resetTestDb } from "../../test/helpers/db";
 
 // Access the mock verifyMessage function
 const mockVerifyMessage = (
-  await import("viem") as any
-).__mockVerifyMessage as ReturnType<typeof vi.fn>;
+  (await import("viem")) as unknown as { __mockVerifyMessage: ReturnType<typeof vi.fn> }
+).__mockVerifyMessage;
 
 describe("extractCredentials", () => {
   it("returns message and signature when both are provided", () => {
@@ -135,34 +137,25 @@ describe("verifySignature", () => {
 });
 
 describe("upsertUser", () => {
-  beforeEach(() => {
-    // Clear the prisma in-memory stores between tests
-    (prisma as any)._stores.user.length = 0;
-    (prisma as any)._stores.hotWallet.length = 0;
+  beforeEach(async () => {
+    await resetTestDb();
     vi.mocked(createHotWallet).mockClear();
   });
 
   it("returns existing user when found", async () => {
-    // Seed a user directly into the mock store
-    const existingUser = {
-      id: "user-1",
+    // Seed a user and hot wallet directly in the in-memory DB
+    const existingUser = await User.create({
       walletAddress: "0xexisting",
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    (prisma as any)._stores.user.push(existingUser);
-    (prisma as any)._stores.hotWallet.push({
-      id: "hw-1",
-      userId: "user-1",
+    });
+    await HotWallet.create({
       address: "0xhot",
       encryptedPrivateKey: "enc",
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      userId: existingUser._id,
     });
 
     const user = await upsertUser("0xexisting");
 
-    expect(user.id).toBe("user-1");
+    expect(user.id).toBe(existingUser.id);
     expect(user.walletAddress).toBe("0xexisting");
     expect(createHotWallet).not.toHaveBeenCalled();
   });
@@ -172,20 +165,25 @@ describe("upsertUser", () => {
 
     expect(user.walletAddress).toBe("0xnewuser");
     expect(createHotWallet).toHaveBeenCalledOnce();
-    // Verify user was created in the store
-    expect((prisma as any)._stores.user.length).toBe(1);
-    // The nested hotWallet create data is stored on the user record by the mock
-    expect(user.hotWallet).toBeDefined();
+
+    // Verify user was created in the database
+    const userCount = await User.countDocuments();
+    expect(userCount).toBe(1);
+
+    // Verify hot wallet was created
+    const hotWallet = await HotWallet.findOne({ userId: user._id }).lean();
+    expect(hotWallet).not.toBeNull();
+    expect(hotWallet!.address).toBe("0xhotwallet");
   });
 });
 
 describe("authOptions callbacks", () => {
-  const jwtCallback = authOptions.callbacks!.jwt as any;
-  const sessionCallback = authOptions.callbacks!.session as any;
+  const jwtCallback = authOptions.callbacks!.jwt as (params: { token: Record<string, unknown>; user?: { id: string; address: string; chainId: number } }) => Record<string, unknown>;
+  const sessionCallback = authOptions.callbacks!.session as (params: { session: Record<string, unknown>; token: Record<string, unknown> }) => Record<string, unknown>;
 
   describe("jwt callback", () => {
     it("sets userId, address, chainId on token when user is provided", () => {
-      const token = { sub: "sub-1" } as any;
+      const token: Record<string, unknown> = { sub: "sub-1" };
       const user = { id: "user-1", address: "0xabc", chainId: 1 };
 
       const result = jwtCallback({ token, user });
@@ -196,12 +194,12 @@ describe("authOptions callbacks", () => {
     });
 
     it("returns token unchanged when no user is provided", () => {
-      const token = {
+      const token: Record<string, unknown> = {
         sub: "sub-1",
         userId: "existing",
         address: "0xold",
         chainId: 42,
-      } as any;
+      };
 
       const result = jwtCallback({ token, user: undefined });
 
@@ -213,12 +211,12 @@ describe("authOptions callbacks", () => {
 
   describe("session callback", () => {
     it("enriches session with userId, address, chainId from token", () => {
-      const session = {} as any;
-      const token = {
+      const session: Record<string, unknown> = {};
+      const token: Record<string, unknown> = {
         userId: "user-1",
         address: "0xabc",
         chainId: 1,
-      } as any;
+      };
 
       const result = sessionCallback({ session, token });
 

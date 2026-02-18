@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/db";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import { createTestPendingPayment, TEST_USER_ID } from "@/test/helpers/fixtures";
+import { PendingPayment } from "@/lib/models/pending-payment";
 import { getAuthenticatedUser } from "@/lib/auth";
 
 // Mock auth
@@ -25,15 +25,10 @@ describe("Payments API routes", () => {
   describe("GET /api/payments/pending", () => {
     it("should return pending payments for the authenticated user", async () => {
       const { user } = await seedTestUser();
-      await prisma.pendingPayment.create({
-        data: createTestPendingPayment(user.id, { id: "pp-1" }),
-      });
-      await prisma.pendingPayment.create({
-        data: createTestPendingPayment(user.id, {
-          id: "pp-2",
-          amount: 0.1,
-        }),
-      });
+      await PendingPayment.create(createTestPendingPayment(user.id));
+      await PendingPayment.create(
+        createTestPendingPayment(user.id, { amount: 0.1 }),
+      );
 
       const { GET } = await import("@/app/api/payments/pending/route");
 
@@ -63,17 +58,16 @@ describe("Payments API routes", () => {
       const { user } = await seedTestUser();
 
       // Create an expired payment
-      await prisma.pendingPayment.create({
-        data: createTestPendingPayment(user.id, {
-          id: "expired-pp",
+      await PendingPayment.create(
+        createTestPendingPayment(user.id, {
           expiresAt: new Date(Date.now() - 60_000), // expired 1 minute ago
         }),
-      });
+      );
 
       // Create a valid pending payment
-      await prisma.pendingPayment.create({
-        data: createTestPendingPayment(user.id, { id: "valid-pp" }),
-      });
+      const validPayment = await PendingPayment.create(
+        createTestPendingPayment(user.id),
+      );
 
       const { GET } = await import("@/app/api/payments/pending/route");
 
@@ -84,7 +78,7 @@ describe("Payments API routes", () => {
 
       expect(response.status).toBe(200);
       expect(data).toHaveLength(1);
-      expect(data[0].id).toBe("valid-pp");
+      expect(data[0].id).toBe(validPayment._id.toString());
     });
 
     it("should return 401 when not authenticated", async () => {
