@@ -439,7 +439,8 @@ describe("x402_pay tool — multi-chain", () => {
     expect(executePayment).toHaveBeenCalledWith(
       "https://api.example.com/resource",
       TEST_USER_ID,
-      expect.objectContaining({ chainId: 42161 }),
+      { method: "GET", body: undefined, headers: undefined },
+      42161,
     );
   });
 
@@ -460,7 +461,8 @@ describe("x402_pay tool — multi-chain", () => {
     expect(executePayment).toHaveBeenCalledWith(
       "https://api.example.com/resource",
       TEST_USER_ID,
-      expect.objectContaining({ chainId: 42161 }),
+      { method: "GET", body: undefined, headers: undefined },
+      42161,
     );
   });
 
@@ -481,6 +483,7 @@ describe("x402_pay tool — multi-chain", () => {
 
     const callArgs = mockFn.mock.calls[0];
     expect(callArgs[2]).not.toHaveProperty("chainId");
+    expect(callArgs[3]).toBeUndefined();
   });
 
   it("returns error for unsupported chain name", async () => {

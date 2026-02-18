@@ -111,7 +111,7 @@ export function registerTools(server: McpServer, userId: string) {
           }
         }
 
-        const result = await executePayment(url, userId, { method: method ?? "GET", body, headers, ...(chainId !== undefined && { chainId }) } as Parameters<typeof executePayment>[2]);
+        const result = await executePayment(url, userId, { method: method ?? "GET", body, headers }, chainId);
 
         // Handle pending_approval status (WalletConnect tier)
         const resultAny = result as unknown as Record<string, unknown>;
@@ -120,6 +120,7 @@ export function registerTools(server: McpServer, userId: string) {
             status: string;
             paymentRequirements: string;
             amount: number;
+            chainId?: number;
           };
 
           // Create a pending payment record
@@ -128,6 +129,7 @@ export function registerTools(server: McpServer, userId: string) {
             url,
             method: method ?? "GET",
             amount: pendingResult.amount,
+            chainId: pendingResult.chainId,
             paymentRequirements: pendingResult.paymentRequirements,
             body,
             headers,
