@@ -46,7 +46,7 @@ export async function approvePendingPayment(
 
   const payment = await _getPendingPayment(paymentId);
   if (!payment) throw new Error("Pending payment not found");
-  if (payment.userId !== auth.userId) throw new Error("Forbidden");
+  if (payment.userId.toString() !== auth.userId) throw new Error("Forbidden");
   if (payment.status !== "pending") throw new Error(`Payment is already ${payment.status}`);
 
   logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: payment.amount });
@@ -216,7 +216,7 @@ export async function rejectPendingPayment(paymentId: string) {
 
   const payment = await _getPendingPayment(paymentId);
   if (!payment) throw new Error("Pending payment not found");
-  if (payment.userId !== auth.userId) throw new Error("Forbidden");
+  if (payment.userId.toString() !== auth.userId) throw new Error("Forbidden");
   if (payment.status !== "pending") throw new Error(`Payment is already ${payment.status}`);
 
   await _rejectPendingPayment(paymentId);
