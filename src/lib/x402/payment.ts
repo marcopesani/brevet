@@ -3,7 +3,7 @@ import { formatUnits } from "viem";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { createTransaction } from "@/lib/data/transactions";
-import { getHotWallet } from "@/lib/data/wallet";
+import { getHotWallet, getHotWalletWithKey } from "@/lib/data/wallet";
 import { decryptPrivateKey, getUsdcBalance, USDC_DECIMALS } from "@/lib/hot-wallet";
 import { checkPolicy } from "@/lib/policy";
 import { createEvmSigner } from "./eip712";
@@ -463,8 +463,8 @@ export async function executePayment(
 
   const selectedChainConfig = getChainConfig(selectedChainId)!;
 
-  // Step 4: Look up the user's hot wallet for the selected chain
-  const hotWallet = await getHotWallet(userId, selectedChainId);
+  // Step 4: Look up the user's hot wallet for the selected chain (with key for signing)
+  const hotWallet = await getHotWalletWithKey(userId, selectedChainId);
 
   if (!hotWallet) {
     // No hot wallet on this chain — return pending_approval for WalletConnect

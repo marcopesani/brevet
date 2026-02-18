@@ -88,7 +88,20 @@ export async function ensureAllHotWallets(userId: string): Promise<number> {
     return { address, encryptedPrivateKey, userId: userObjectId, chainId: c.chain.id };
   });
 
-  await HotWallet.insertMany(docs);
+  try {
+    await HotWallet.insertMany(docs, { ordered: false });
+  } catch (err: unknown) {
+    // Ignore duplicate key errors (code 11000) — a concurrent login already created the wallet.
+    // With ordered: false, non-duplicate inserts still succeed.
+    const isDuplicateKeyError =
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      (err as { code: number }).code === 11000;
+    if (!isDuplicateKeyError) {
+      throw err;
+    }
+  }
   return docs.length;
 }
 
@@ -105,10 +118,24 @@ export async function withdrawFromWallet(
 }
 
 /**
- * Get the user's hot wallet record for a specific chain (used by payment.ts for private key access).
- * Returns null if not found.
+ * Get the user's hot wallet record for a specific chain (excludes encryptedPrivateKey).
+ * Use getHotWalletWithKey() when the private key is needed. Returns null if not found.
  */
 export async function getHotWallet(userId: string, chainId?: number) {
+  await connectDB();
+  const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
+  const doc = await HotWallet.findOne({ userId: new Types.ObjectId(userId), chainId: resolvedChainId })
+    .select("-encryptedPrivateKey")
+    .lean();
+  if (!doc) return null;
+  return { ...doc, id: doc._id.toString() };
+}
+
+/**
+ * Get the user's hot wallet INCLUDING the encryptedPrivateKey (for payment signing and withdrawals).
+ * Only use this when the private key is actually needed — prefer getHotWallet() otherwise.
+ */
+export async function getHotWalletWithKey(userId: string, chainId?: number) {
   await connectDB();
   const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
   const doc = await HotWallet.findOne({ userId: new Types.ObjectId(userId), chainId: resolvedChainId }).lean();
@@ -121,7 +148,9 @@ export async function getHotWallet(userId: string, chainId?: number) {
  */
 export async function getAllHotWallets(userId: string) {
   await connectDB();
-  const docs = await HotWallet.find({ userId: new Types.ObjectId(userId) }).lean();
+  const docs = await HotWallet.find({ userId: new Types.ObjectId(userId) })
+    .select("-encryptedPrivateKey")
+    .lean();
   return docs.map((doc) => ({
     ...doc,
     id: doc._id.toString(),
@@ -142,7 +171,9 @@ export async function getUserWithWalletAndPolicies(userId: string, chainId?: num
   const user = await User.findById(userObjectId).lean();
   if (!user) return null;
 
-  const hotWallet = await HotWallet.findOne({ userId: userObjectId, chainId: resolvedChainId }).lean();
+  const hotWallet = await HotWallet.findOne({ userId: userObjectId, chainId: resolvedChainId })
+    .select("-encryptedPrivateKey")
+    .lean();
   const endpointPolicies = await EndpointPolicy.find({ userId: userObjectId }).lean();
 
   return {

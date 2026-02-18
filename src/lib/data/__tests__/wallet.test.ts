@@ -4,7 +4,7 @@ import { User } from "@/lib/models/user";
 import { HotWallet } from "@/lib/models/hot-wallet";
 import { EndpointPolicy } from "@/lib/models/endpoint-policy";
 import { getEnvironmentChains } from "@/lib/chain-config";
-import { getWalletBalance, ensureHotWallet, ensureAllHotWallets, getHotWallet, getUserWithWalletAndPolicies } from "../wallet";
+import { getWalletBalance, ensureHotWallet, ensureAllHotWallets, getHotWallet, getHotWalletWithKey, getAllHotWallets, getUserWithWalletAndPolicies } from "../wallet";
 
 vi.mock("@/lib/hot-wallet", () => ({
   getUsdcBalance: vi.fn().mockResolvedValue("100.000000"),
@@ -174,6 +174,24 @@ describe("ensureAllHotWallets", () => {
     const created = await ensureAllHotWallets(new mongoose.Types.ObjectId().toString());
     expect(created).toBe(0);
   });
+
+  it("handles concurrent calls without crashing (duplicate key race condition)", async () => {
+    const user = await User.create({ walletAddress: "0xUser1" });
+
+    // Run two concurrent calls — one may hit a duplicate key error
+    const [count1, count2] = await Promise.all([
+      ensureAllHotWallets(user._id.toString()),
+      ensureAllHotWallets(user._id.toString()),
+    ]);
+
+    // Both should return the expected count (docs.length) without throwing
+    expect(count1).toBe(envChains.length);
+    expect(count2).toBe(envChains.length);
+
+    // The final state should have exactly one wallet per chain
+    const wallets = await HotWallet.find({ userId: user._id }).lean();
+    expect(wallets).toHaveLength(envChains.length);
+  });
 });
 
 describe("getHotWallet", () => {
@@ -188,6 +206,20 @@ describe("getHotWallet", () => {
     const result = await getHotWallet(user._id.toString());
     expect(result).not.toBeNull();
     expect(result!.address).toBe("0xHW");
+  });
+
+  it("excludes encryptedPrivateKey from result", async () => {
+    const user = await User.create({ walletAddress: "0xUser1" });
+    await HotWallet.create({
+      userId: user._id,
+      address: "0xHW",
+      encryptedPrivateKey: "secret-enc-key",
+    });
+
+    const result = await getHotWallet(user._id.toString());
+    expect(result).not.toBeNull();
+    expect(result!.address).toBe("0xHW");
+    expect("encryptedPrivateKey" in result!).toBe(false);
   });
 
   it("returns null when no hot wallet", async () => {
@@ -217,6 +249,51 @@ describe("getHotWallet", () => {
     const arbResult = await getHotWallet(user._id.toString(), 42161);
     expect(arbResult).not.toBeNull();
     expect(arbResult!.address).toBe("0xArbHW");
+  });
+});
+
+describe("getHotWalletWithKey", () => {
+  it("returns hot wallet including encryptedPrivateKey", async () => {
+    const user = await User.create({ walletAddress: "0xUser1" });
+    await HotWallet.create({
+      userId: user._id,
+      address: "0xHW",
+      encryptedPrivateKey: "secret-enc-key",
+    });
+
+    const result = await getHotWalletWithKey(user._id.toString());
+    expect(result).not.toBeNull();
+    expect(result!.address).toBe("0xHW");
+    expect(result!.encryptedPrivateKey).toBe("secret-enc-key");
+  });
+
+  it("returns null when no hot wallet", async () => {
+    const result = await getHotWalletWithKey(nonExistentId());
+    expect(result).toBeNull();
+  });
+});
+
+describe("getAllHotWallets", () => {
+  it("excludes encryptedPrivateKey from results", async () => {
+    const user = await User.create({ walletAddress: "0xUser1" });
+    await HotWallet.create({
+      userId: user._id,
+      address: "0xHW1",
+      encryptedPrivateKey: "secret-key-1",
+      chainId: DEFAULT_CHAIN_ID,
+    });
+    await HotWallet.create({
+      userId: user._id,
+      address: "0xHW2",
+      encryptedPrivateKey: "secret-key-2",
+      chainId: 42161,
+    });
+
+    const results = await getAllHotWallets(user._id.toString());
+    expect(results).toHaveLength(2);
+    for (const wallet of results) {
+      expect("encryptedPrivateKey" in wallet).toBe(false);
+    }
   });
 });
 

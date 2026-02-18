@@ -75,6 +75,32 @@ describe("hot-wallet", () => {
       );
       process.env.HOT_WALLET_ENCRYPTION_KEY = originalKey;
     });
+
+    it("should throw if HOT_WALLET_ENCRYPTION_KEY is not exactly 64 hex chars", () => {
+      const originalKey = process.env.HOT_WALLET_ENCRYPTION_KEY;
+
+      // Too short
+      process.env.HOT_WALLET_ENCRYPTION_KEY = "abcdef";
+      expect(() => encryptPrivateKey("some-key")).toThrow(
+        "HOT_WALLET_ENCRYPTION_KEY must be exactly 64 hex characters",
+      );
+
+      // Non-hex characters
+      process.env.HOT_WALLET_ENCRYPTION_KEY =
+        "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
+      expect(() => encryptPrivateKey("some-key")).toThrow(
+        "HOT_WALLET_ENCRYPTION_KEY must be exactly 64 hex characters",
+      );
+
+      // Too long
+      process.env.HOT_WALLET_ENCRYPTION_KEY =
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef00";
+      expect(() => encryptPrivateKey("some-key")).toThrow(
+        "HOT_WALLET_ENCRYPTION_KEY must be exactly 64 hex characters",
+      );
+
+      process.env.HOT_WALLET_ENCRYPTION_KEY = originalKey;
+    });
   });
 
   describe("createHotWallet", () => {

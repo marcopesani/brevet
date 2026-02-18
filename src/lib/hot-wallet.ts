@@ -47,7 +47,11 @@ function getEncryptionKey(): Buffer {
   if (!key) {
     throw new Error("HOT_WALLET_ENCRYPTION_KEY is not set");
   }
-  // Expect a 64-char hex string (32 bytes)
+  if (!/^[0-9a-fA-F]{64}$/.test(key)) {
+    throw new Error(
+      "HOT_WALLET_ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes)",
+    );
+  }
   return Buffer.from(key, "hex");
 }
 
