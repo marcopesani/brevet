@@ -24,13 +24,13 @@ export function Hero() {
           </div>
 
           <h1 className="max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-            Let Your AI Agents Pay for APIs — Automatically
+            Connect your wallet. Let your agents pay.
           </h1>
 
           <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground sm:text-xl">
-            PayMCP bridges AI agents and paid APIs using the x402 HTTP payment
-            protocol. Secure, automatic USDC payments on Base — so your agents
-            can focus on getting work done.
+            Brevet bridges AI agents to your wallet for paid API access. One
+            integration. Spending policies you control. A dashboard to see
+            everything.
           </p>
 
           <div className="mt-10 flex flex-col gap-4 sm:flex-row">

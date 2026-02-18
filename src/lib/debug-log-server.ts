@@ -2,7 +2,8 @@
  * Server-only debug logger. Writes NDJSON to .cursor/debug.log.
  * Use only in server code (auth-config, auth, API routes).
  */
-const LOG_PATH = "/Users/marcopesani/Projects/x402-mcp-gateway/.cursor/debug.log";
+const path = require("path") as { join: (...segments: string[]) => string };
+const LOG_PATH = path.join(process.cwd(), ".cursor/debug.log");
 
 export function debugLogServer(payload: {
   location: string;

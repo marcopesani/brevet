@@ -83,7 +83,7 @@ describe("MCP API route", () => {
       expect(data.result).toBeDefined();
       expect(data.result.protocolVersion).toBeDefined();
       expect(data.result.serverInfo).toBeDefined();
-      expect(data.result.serverInfo.name).toBe("pay-mcp");
+      expect(data.result.serverInfo.name).toBe("brevet");
     });
 
     it("should include tool capabilities in initialize response", async () => {

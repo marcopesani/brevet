@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PayMCP",
-  description: "AI payment proxy with WalletConnect",
+  title: "Brevet",
+  description: "Spending authority for AI agents.",
 };
 
 export default async function RootLayout({

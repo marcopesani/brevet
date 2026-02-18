@@ -59,10 +59,11 @@ export function Features() {
       <div className="mx-auto max-w-5xl px-6">
         <div className="text-center">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Everything You Need for AI Payments
+            Built for agents that need to pay for things.
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Secure, automatic, and fully auditable payments for your AI agents.
+            Spending controls, tiered signing, full audit trail. Everything your
+            agents need to pay for APIs on your terms.
           </p>
         </div>
 

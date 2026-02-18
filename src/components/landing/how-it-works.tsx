@@ -19,7 +19,7 @@ const steps = [
     step: 2,
     title: "Configure Your Agent",
     description:
-      "Point your AI agent to the PayMCP MCP endpoint. Set per-endpoint spending policies to stay in control.",
+      "Point your AI agent to the Brevet MCP endpoint. Set per-endpoint spending policies to stay in control.",
     icon: Settings,
   },
   {
@@ -37,10 +37,10 @@ export function HowItWorks() {
       <div className="mx-auto max-w-5xl px-6">
         <div className="text-center">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            How It Works
+            Agent hits a paywall. Brevet handles the rest.
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Get your AI agents paying for APIs in three simple steps.
+            Three steps to connect your wallet and start paying.
           </p>
         </div>
 

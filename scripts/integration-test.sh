@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== x402 Gateway Integration Test ==="
+echo "=== Brevet Integration Test ==="
 echo ""
 
 # Colors
@@ -16,7 +16,7 @@ info() { echo -e "${YELLOW}ℹ $1${NC}"; }
 
 FAILED=0
 BASE_URL="${BASE_URL:-http://localhost:3000}"
-MONGO_URI="${MONGODB_URI:-mongodb://localhost:27017/x402_gateway}"
+MONGO_URI="${MONGODB_URI:-mongodb://localhost:27017/brevet}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ---------------------------------------------------------------------------

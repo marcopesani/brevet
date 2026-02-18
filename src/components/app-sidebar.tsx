@@ -76,9 +76,9 @@ export function AppSidebar({
             >
               <Link href="/dashboard">
                 <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-5 items-center justify-center rounded-md text-xs font-bold">
-                  P
+                  B
                 </div>
-                <span className="text-base font-semibold">PayMCP</span>
+                <span className="text-base font-semibold">Brevet</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

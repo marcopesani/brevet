@@ -9,29 +9,29 @@ import { CtaSection } from "@/components/landing/cta-section";
 import { Footer } from "@/components/landing/footer";
 
 export const metadata: Metadata = {
-  title: "PayMCP — AI Agent Payment Gateway for x402 APIs",
+  title: "Brevet — Your Agent's Spending Authority",
   description:
-    "Let your AI agents pay for APIs automatically. PayMCP uses the x402 protocol with USDC on Base for secure, programmable payments.",
+    "Connect your wallet. Let your agents pay for APIs autonomously. Spending policies, tiered signing, dashboard.",
   openGraph: {
-    title: "PayMCP — AI Agent Payment Gateway for x402 APIs",
+    title: "Brevet — Your Agent's Spending Authority",
     description:
-      "Let your AI agents pay for APIs automatically. PayMCP uses the x402 protocol with USDC on Base for secure, programmable payments.",
+      "Connect your wallet. Let your agents pay for APIs autonomously. Spending policies, tiered signing, dashboard.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "PayMCP — AI Agent Payment Gateway for x402 APIs",
+    title: "Brevet — Your Agent's Spending Authority",
     description:
-      "Let your AI agents pay for APIs automatically. PayMCP uses the x402 protocol with USDC on Base for secure, programmable payments.",
+      "Connect your wallet. Let your agents pay for APIs autonomously. Spending policies, tiered signing, dashboard.",
   },
 };
 
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "WebApplication",
-  name: "PayMCP",
+  name: "Brevet",
   description:
-    "AI agent payment gateway using the x402 HTTP payment protocol with USDC on Base.",
+    "Connect your wallet. Let your agents pay for APIs autonomously using the x402 HTTP payment protocol with USDC on Base.",
   applicationCategory: "FinanceApplication",
   operatingSystem: "Web",
   offers: {
