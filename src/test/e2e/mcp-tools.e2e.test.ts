@@ -4,7 +4,6 @@ import { createTestTransaction, createTestPendingPayment } from "@/test/helpers/
 import { EndpointPolicy } from "@/lib/models/endpoint-policy";
 import { Transaction } from "@/lib/models/transaction";
 import { PendingPayment } from "@/lib/models/pending-payment";
-import type { Hex } from "viem";
 
 /**
  * Minimal harness that captures tool handlers registered via McpServer.registerTool().
@@ -99,7 +98,7 @@ describe("E2E: MCP Tool Pipeline", () => {
     // Register tools fresh for each test
     const capture = createToolCapture();
     const { registerTools } = await import("@/lib/mcp/tools");
-    registerTools(capture.server as any, userId);
+    registerTools(capture.server as unknown as Parameters<typeof registerTools>[0], userId);
     tools = capture.tools;
   });
 

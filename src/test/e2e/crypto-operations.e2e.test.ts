@@ -284,7 +284,7 @@ describe("E2E: Crypto Operations", () => {
       };
 
       const result = createSigningRequest(
-        requirement as any,
+        requirement as unknown as Parameters<typeof createSigningRequest>[0],
         TEST_WALLET_ADDRESS,
       );
 
@@ -330,11 +330,11 @@ describe("E2E: Crypto Operations", () => {
       };
 
       const req1 = createSigningRequest(
-        requirement as any,
+        requirement as unknown as Parameters<typeof createSigningRequest>[0],
         TEST_WALLET_ADDRESS,
       );
       const req2 = createSigningRequest(
-        requirement as any,
+        requirement as unknown as Parameters<typeof createSigningRequest>[0],
         TEST_WALLET_ADDRESS,
       );
 

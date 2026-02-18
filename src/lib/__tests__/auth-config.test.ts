@@ -38,8 +38,8 @@ import { resetTestDb } from "../../test/helpers/db";
 
 // Access the mock verifyMessage function
 const mockVerifyMessage = (
-  await import("viem") as any
-).__mockVerifyMessage as ReturnType<typeof vi.fn>;
+  (await import("viem")) as unknown as { __mockVerifyMessage: ReturnType<typeof vi.fn> }
+).__mockVerifyMessage;
 
 describe("extractCredentials", () => {
   it("returns message and signature when both are provided", () => {
@@ -178,12 +178,12 @@ describe("upsertUser", () => {
 });
 
 describe("authOptions callbacks", () => {
-  const jwtCallback = authOptions.callbacks!.jwt as any;
-  const sessionCallback = authOptions.callbacks!.session as any;
+  const jwtCallback = authOptions.callbacks!.jwt as (params: { token: Record<string, unknown>; user?: { id: string; address: string; chainId: number } }) => Record<string, unknown>;
+  const sessionCallback = authOptions.callbacks!.session as (params: { session: Record<string, unknown>; token: Record<string, unknown> }) => Record<string, unknown>;
 
   describe("jwt callback", () => {
     it("sets userId, address, chainId on token when user is provided", () => {
-      const token = { sub: "sub-1" } as any;
+      const token: Record<string, unknown> = { sub: "sub-1" };
       const user = { id: "user-1", address: "0xabc", chainId: 1 };
 
       const result = jwtCallback({ token, user });
@@ -194,12 +194,12 @@ describe("authOptions callbacks", () => {
     });
 
     it("returns token unchanged when no user is provided", () => {
-      const token = {
+      const token: Record<string, unknown> = {
         sub: "sub-1",
         userId: "existing",
         address: "0xold",
         chainId: 42,
-      } as any;
+      };
 
       const result = jwtCallback({ token, user: undefined });
 
@@ -211,12 +211,12 @@ describe("authOptions callbacks", () => {
 
   describe("session callback", () => {
     it("enriches session with userId, address, chainId from token", () => {
-      const session = {} as any;
-      const token = {
+      const session: Record<string, unknown> = {};
+      const token: Record<string, unknown> = {
         userId: "user-1",
         address: "0xabc",
         chainId: 1,
-      } as any;
+      };
 
       const result = sessionCallback({ session, token });
 

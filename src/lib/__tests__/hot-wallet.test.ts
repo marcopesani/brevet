@@ -89,11 +89,11 @@ describe("hot-wallet", () => {
       expect(parts).toHaveLength(3);
     });
 
-    it("should decrypt to a key that derives the same address", () => {
+    it("should decrypt to a key that derives the same address", async () => {
       const wallet = createHotWallet();
       const decryptedKey = decryptPrivateKey(wallet.encryptedPrivateKey);
       // Import dynamically to get the real function (not mocked)
-      const { privateKeyToAccount } = require("viem/accounts");
+      const { privateKeyToAccount } = await import("viem/accounts");
       const account = privateKeyToAccount(decryptedKey as `0x${string}`);
       expect(account.address).toBe(wallet.address);
     });
@@ -154,7 +154,7 @@ describe("hot-wallet", () => {
       const mockReadContract = vi.fn().mockResolvedValue(BigInt(500000)); // 0.5 USDC
       vi.mocked(createPublicClient).mockReturnValue({
         readContract: mockReadContract,
-      } as any);
+      } as unknown as ReturnType<typeof createPublicClient>);
 
       const validAddress = "0x" + "1".repeat(40);
       await expect(
@@ -174,13 +174,13 @@ describe("hot-wallet", () => {
         .mockResolvedValue(BigInt(10_000_000)); // 10 USDC
       vi.mocked(createPublicClient).mockReturnValue({
         readContract: mockReadContract,
-      } as any);
+      } as unknown as ReturnType<typeof createPublicClient>);
 
       // Mock wallet client for transfer
       const mockWriteContract = vi.fn().mockResolvedValue(mockTxHash);
       vi.mocked(createWalletClient).mockReturnValue({
         writeContract: mockWriteContract,
-      } as any);
+      } as unknown as ReturnType<typeof createWalletClient>);
 
       const toAddress = "0x" + "2".repeat(40);
       const result = await withdrawFromHotWallet(user.id, 1.0, toAddress);

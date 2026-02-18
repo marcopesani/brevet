@@ -24,7 +24,7 @@ vi.mock("@/lib/hot-wallet", async (importOriginal) => {
 // but not for EIP-155 format strings. This mock registers a handler that returns
 // a mock payment payload so createPaymentPayload succeeds in tests.
 vi.mock("@x402/evm/exact/client", () => ({
-  registerExactEvmScheme: vi.fn().mockImplementation((client: any) => {
+  registerExactEvmScheme: vi.fn().mockImplementation((client: Record<string, unknown> & { registerV1: (network: string, handler: unknown) => void }) => {
     // Register a mock V1 scheme for eip155:84532 so createPaymentPayload works
     client.registerV1("eip155:84532", {
       scheme: "exact",
