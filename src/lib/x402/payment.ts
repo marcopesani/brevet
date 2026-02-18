@@ -164,10 +164,17 @@ const MAX_REDIRECTS = 5;
  * (e.g., Cloudflare Gateway, dnsmasq rebind-protection) to defend against DNS
  * rebinding attacks where a domain alternates between public and private IPs (M1).
  */
+/** Timeout for outbound fetch calls in the payment flow (M8). */
+const FETCH_TIMEOUT_MS = 30_000;
+
 async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
   let currentUrl = url;
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
-    const response = await fetch(currentUrl, { ...init, redirect: "manual" });
+    const response = await fetch(currentUrl, {
+      ...init,
+      redirect: "manual",
+      signal: init?.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
 
     // If not a redirect, return the response as-is
     if (response.status < 300 || response.status >= 400) {
@@ -292,6 +299,40 @@ async function selectBestChain(
 }
 
 /**
+ * Security-sensitive headers that must never be overridden by MCP tool callers.
+ * Compared case-insensitively against user-supplied header names.
+ */
+const BLOCKED_HEADERS = new Set([
+  "host",
+  "authorization",
+  "cookie",
+  "set-cookie",
+  "transfer-encoding",
+  "content-length",
+  "connection",
+  "x-payment",
+  "payment-signature",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-real-ip",
+  "origin",
+  "referer",
+]);
+
+/**
+ * Sanitize user-supplied headers: remove blocked headers and strip CRLF from values.
+ */
+export function sanitizeHeaders(headers: Record<string, string>): Record<string, string> {
+  const sanitized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (BLOCKED_HEADERS.has(key.toLowerCase())) continue;
+    // Strip CRLF characters to prevent header injection
+    sanitized[key] = value.replace(/[\r\n]/g, "");
+  }
+  return sanitized;
+}
+
+/**
  * Options for the HTTP request sent during the x402 payment flow.
  */
 export interface PaymentRequestOptions {
@@ -332,14 +373,15 @@ export async function executePayment(
     return { success: false, status: "rejected", signingStrategy: "rejected", error: `URL validation failed: ${urlError}` };
   }
 
-  // Step 1: Initial request (preserving caller's method, body, and headers)
+  // Step 1: Initial request (preserving caller's method, body, and sanitized headers)
   const method = options?.method ?? "GET";
+  const safeHeaders = options?.headers ? sanitizeHeaders(options.headers) : undefined;
   const requestInit: RequestInit = { method };
   if (options?.body) {
     requestInit.body = options.body;
   }
-  if (options?.headers) {
-    requestInit.headers = { ...options.headers };
+  if (safeHeaders) {
+    requestInit.headers = { ...safeHeaders };
   }
   let initialResponse: Response;
   try {
@@ -542,7 +584,7 @@ export async function executePayment(
   const paidRequestInit: RequestInit = {
     method,
     headers: {
-      ...options?.headers,
+      ...safeHeaders,
       ...paymentHeaders,
       ...(signInWithXHeader ? { 'SIGN-IN-WITH-X': signInWithXHeader } : {}),
     },

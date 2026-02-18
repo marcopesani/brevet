@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resetTestDb, seedTestUser } from "../../../test/helpers/db";
-import { executePayment } from "../payment";
+import { executePayment, sanitizeHeaders } from "../payment";
 import { Transaction } from "../../models/transaction";
 import { HotWallet } from "../../models/hot-wallet";
 import { EndpointPolicy } from "../../models/endpoint-policy";
@@ -569,6 +569,132 @@ describe("executePayment", () => {
         expect(result.error).toContain("private");
         expect(mockFetch).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe("M9: header blocklist", () => {
+    it("strips blocked headers from initial and paid requests", async () => {
+      const txHash = "0x" + "a".repeat(64);
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+      mockFetch.mockResolvedValueOnce(
+        make200Response({ success: true }, { "X-PAYMENT-TX-HASH": txHash }),
+      );
+
+      const result = await executePayment(
+        "https://api.example.com/resource",
+        userId,
+        {
+          method: "GET",
+          headers: {
+            "Authorization": "Bearer stolen-token",
+            "Cookie": "session=abc",
+            "Host": "evil.com",
+            "X-Custom": "allowed-value",
+          },
+        },
+      );
+
+      expect(result.success).toBe(true);
+
+      // Check initial request headers
+      const [, firstInit] = mockFetch.mock.calls[0];
+      expect(firstInit.headers["X-Custom"]).toBe("allowed-value");
+      expect(firstInit.headers["Authorization"]).toBeUndefined();
+      expect(firstInit.headers["Cookie"]).toBeUndefined();
+      expect(firstInit.headers["Host"]).toBeUndefined();
+
+      // Check paid retry request headers
+      const [, secondInit] = mockFetch.mock.calls[1];
+      expect(secondInit.headers["X-Custom"]).toBe("allowed-value");
+      expect(secondInit.headers["Authorization"]).toBeUndefined();
+      expect(secondInit.headers["Cookie"]).toBeUndefined();
+      expect(secondInit.headers["Host"]).toBeUndefined();
+    });
+
+    it("strips CRLF from header values", async () => {
+      mockFetch.mockResolvedValueOnce(make200Response({ data: "ok" }));
+
+      await executePayment(
+        "https://api.example.com/free",
+        userId,
+        {
+          headers: {
+            "X-Custom": "value\r\nInjected-Header: evil",
+          },
+        },
+      );
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers["X-Custom"]).toBe("valueInjected-Header: evil");
+      expect(init.headers["Injected-Header"]).toBeUndefined();
+    });
+
+    it("blocks headers case-insensitively", async () => {
+      mockFetch.mockResolvedValueOnce(make200Response({ data: "ok" }));
+
+      await executePayment(
+        "https://api.example.com/free",
+        userId,
+        {
+          headers: {
+            "AUTHORIZATION": "Bearer token",
+            "cookie": "session=abc",
+            "Transfer-Encoding": "chunked",
+            "X-Payment": "fake",
+            "Payment-Signature": "fake",
+            "X-Forwarded-For": "1.2.3.4",
+            "X-Safe": "ok",
+          },
+        },
+      );
+
+      const [, init] = mockFetch.mock.calls[0];
+      expect(init.headers["X-Safe"]).toBe("ok");
+      expect(init.headers["AUTHORIZATION"]).toBeUndefined();
+      expect(init.headers["cookie"]).toBeUndefined();
+      expect(init.headers["Transfer-Encoding"]).toBeUndefined();
+      expect(init.headers["X-Payment"]).toBeUndefined();
+      expect(init.headers["Payment-Signature"]).toBeUndefined();
+      expect(init.headers["X-Forwarded-For"]).toBeUndefined();
+    });
+  });
+});
+
+describe("sanitizeHeaders", () => {
+  it("removes blocked headers", () => {
+    const result = sanitizeHeaders({
+      "Authorization": "Bearer token",
+      "Host": "evil.com",
+      "X-Custom": "ok",
+    });
+    expect(result).toEqual({ "X-Custom": "ok" });
+  });
+
+  it("strips CRLF characters from values", () => {
+    const result = sanitizeHeaders({
+      "X-Test": "line1\r\nline2",
+      "X-Other": "no\nnewline",
+    });
+    expect(result["X-Test"]).toBe("line1line2");
+    expect(result["X-Other"]).toBe("nonewline");
+  });
+
+  it("returns empty object when all headers are blocked", () => {
+    const result = sanitizeHeaders({
+      "Authorization": "token",
+      "Cookie": "session",
+    });
+    expect(result).toEqual({});
+  });
+
+  it("passes through safe headers unchanged", () => {
+    const result = sanitizeHeaders({
+      "Content-Type": "application/json",
+      "Accept": "text/html",
+    });
+    expect(result).toEqual({
+      "Content-Type": "application/json",
+      "Accept": "text/html",
     });
   });
 });
