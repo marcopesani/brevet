@@ -1,30 +1,36 @@
-import { PrismaClient } from "@/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
+import mongoose from "mongoose";
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
+const globalForDb = globalThis as unknown as {
+  mongoosePromise: Promise<typeof mongoose> | undefined;
 };
 
-export function getPoolConfig() {
+function getConnectionConfig() {
   const raw = process.env.DATABASE_POOL_SIZE;
   const parsed = raw ? parseInt(raw, 10) : NaN;
-  const max = Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
+  const maxPoolSize = Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
 
   return {
-    connectionString: process.env.DATABASE_URL,
-    max,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
+    uri: process.env.MONGODB_URI!,
+    maxPoolSize,
   };
 }
 
-function createPrismaClient() {
-  const adapter = new PrismaPg(getPoolConfig());
-  return new PrismaClient({ adapter });
-}
+export async function connectDB(): Promise<typeof mongoose> {
+  if (mongoose.connection.readyState === 1) {
+    return mongoose;
+  }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+  if (globalForDb.mongoosePromise) {
+    return globalForDb.mongoosePromise;
+  }
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+  const { uri, maxPoolSize } = getConnectionConfig();
+
+  const promise = mongoose.connect(uri, { maxPoolSize });
+
+  if (process.env.NODE_ENV !== "production") {
+    globalForDb.mongoosePromise = promise;
+  }
+
+  return promise;
 }
