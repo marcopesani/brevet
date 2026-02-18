@@ -262,7 +262,7 @@ describe("E2E: Full Payment Flow", () => {
     expect(requirements!.accepts).toHaveLength(1);
     expect(requirements!.accepts[0].scheme).toBe("exact");
     expect(requirements!.accepts[0].network).toBe("base-sepolia");
-    expect((requirements!.accepts[0] as any).maxAmountRequired).toBe("50000");
+    expect((requirements!.accepts[0] as unknown as Record<string, unknown>).maxAmountRequired).toBe("50000");
     expect(requirements!.accepts[0].payTo).toBe(DEFAULT_REQUIREMENT.payTo);
   });
 });

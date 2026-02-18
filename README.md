@@ -68,8 +68,8 @@ cp .env.example .env.local
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 # Add the output to HOT_WALLET_ENCRYPTION_KEY in .env.local
 
-# Set up the database
-npx prisma migrate deploy
+# Start MongoDB (if not using Docker Compose)
+mongod --dbpath ./data
 
 # Start the development server
 npm run dev
@@ -194,7 +194,7 @@ pay-mcp/
 │   │   ├── mcp/                    # MCP server and tool definitions
 │   │   ├── x402/                   # x402 payment engine (EIP-712, headers, types)
 │   │   ├── chain-config.ts         # Environment-driven chain configuration
-│   │   ├── db.ts                   # Prisma client
+│   │   ├── db.ts                   # Mongoose connection
 │   │   ├── hot-wallet.ts           # Hot wallet management + encryption
 │   │   ├── policy.ts               # Spending policy enforcement
 │   │   ├── rate-limit.ts           # Request rate limiting
@@ -202,8 +202,6 @@ pay-mcp/
 │   └── test/
 │       ├── e2e/                    # E2E tests (Base Sepolia)
 │       └── helpers/                # Test utilities, fixtures, mock 402 server
-├── prisma/
-│   └── schema.prisma               # Database schema
 ├── vitest.config.ts                 # Test configuration
 └── package.json
 ```
@@ -217,7 +215,7 @@ pay-mcp/
 | `NEXT_PUBLIC_ALCHEMY_ID` | No | Alchemy API key for enhanced RPC access |
 | `RPC_URL` | No | Custom RPC URL (defaults to public Base RPC) |
 | `HOT_WALLET_ENCRYPTION_KEY` | Yes | 64-character hex string for AES-256 key encryption |
-| `DATABASE_URL` | No | SQLite database path (defaults to `file:./prisma/dev.db`) |
+| `MONGODB_URI` | No | MongoDB connection string (defaults to `mongodb://localhost:27017/x402_gateway`) |
 
 ## How x402 Works
 

@@ -1,4 +1,4 @@
-import { createWalletClient, PrivateKeyAccount, WalletClient, type Hex } from "viem";
+import { PrivateKeyAccount, type Hex } from "viem";
 import { formatUnits } from "viem";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
@@ -8,7 +8,7 @@ import { decryptPrivateKey, getUsdcBalance, USDC_DECIMALS } from "@/lib/hot-wall
 import { checkPolicy } from "@/lib/policy";
 import { createEvmSigner } from "./eip712";
 import { parsePaymentRequired, extractTxHashFromResponse, extractSettleResponse } from "./headers";
-import type { ClientEvmSigner,
+import type {
 PaymentResult, SigningStrategy } from "./types";
 import { chainConfig } from "../chain-config";
 import { logger } from "../logger";
@@ -16,7 +16,7 @@ import { SIWxExtension } from "@x402/extensions";
 import { createSIWxPayload,
 encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
 import { privateKeyToAccount } from "viem/accounts";
-import { http } from "wagmi";
+import { EVM_NETWORK_CHAIN_ID_MAP } from "@x402/evm/v1";
 
 /**
  * Validate a URL before making an HTTP request.
@@ -168,7 +168,13 @@ export async function executePayment(
     };
   }
 
-  if (!paymentRequired.accepts.some(accept => accept.network === chainConfig.networkString)) {
+  const isNetworkMatch = (network: string) => {
+    if (network === chainConfig.networkString) return true;
+    const v1ChainId = EVM_NETWORK_CHAIN_ID_MAP[network as keyof typeof EVM_NETWORK_CHAIN_ID_MAP];
+    return v1ChainId !== undefined && chainConfig.networkString === `eip155:${v1ChainId}`;
+  };
+
+  if (!paymentRequired.accepts.some(accept => isNetworkMatch(accept.network))) {
     return {
       success: false,
       status: "rejected",

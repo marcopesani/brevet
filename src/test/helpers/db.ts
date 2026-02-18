@@ -2,8 +2,6 @@ import mongoose from "mongoose";
 import { User } from "@/lib/models/user";
 import { HotWallet } from "@/lib/models/hot-wallet";
 import { EndpointPolicy } from "@/lib/models/endpoint-policy";
-import { Transaction } from "@/lib/models/transaction";
-import { PendingPayment } from "@/lib/models/pending-payment";
 import {
   createTestUser,
   createTestHotWallet,

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import type { x402Client } from "@x402/core/client";
 import { resetTestDb, seedTestUser } from "../../../test/helpers/db";
 import { executePayment } from "../payment";
 import { Transaction } from "../../models/transaction";
@@ -24,7 +25,7 @@ vi.mock("@/lib/hot-wallet", async (importOriginal) => {
 // but not for EIP-155 format strings. This mock registers a handler that returns
 // a mock payment payload so createPaymentPayload succeeds in tests.
 vi.mock("@x402/evm/exact/client", () => ({
-  registerExactEvmScheme: vi.fn().mockImplementation((client: any) => {
+  registerExactEvmScheme: vi.fn().mockImplementation((client: x402Client) => {
     // Register a mock V1 scheme for eip155:84532 so createPaymentPayload works
     client.registerV1("eip155:84532", {
       scheme: "exact",

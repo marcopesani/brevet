@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { Hex } from "viem";
+import type { PaymentRequirements } from "@x402/core/types";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import { TEST_WALLET_ADDRESS } from "@/test/helpers/crypto";
 import { chainConfig } from "@/lib/chain-config";
@@ -273,7 +274,7 @@ describe("E2E: Crypto Operations", () => {
   // ─── 3. WalletConnect Signing Request Construction ─────────────────────────
   describe("WalletConnect Signing Request Construction", () => {
     it("should construct correct EIP-712 typed data from payment requirements", () => {
-      const requirement = {
+      const requirement: PaymentRequirements = {
         scheme: "exact",
         network: "eip155:84532",
         asset: chainConfig.usdcAddress,
@@ -284,7 +285,7 @@ describe("E2E: Crypto Operations", () => {
       };
 
       const result = createSigningRequest(
-        requirement as any,
+        requirement,
         TEST_WALLET_ADDRESS,
       );
 
@@ -319,7 +320,7 @@ describe("E2E: Crypto Operations", () => {
     });
 
     it("should generate unique nonces on successive calls", () => {
-      const requirement = {
+      const requirement: PaymentRequirements = {
         scheme: "exact",
         network: "eip155:84532",
         asset: chainConfig.usdcAddress,
@@ -330,11 +331,11 @@ describe("E2E: Crypto Operations", () => {
       };
 
       const req1 = createSigningRequest(
-        requirement as any,
+        requirement,
         TEST_WALLET_ADDRESS,
       );
       const req2 = createSigningRequest(
-        requirement as any,
+        requirement,
         TEST_WALLET_ADDRESS,
       );
 

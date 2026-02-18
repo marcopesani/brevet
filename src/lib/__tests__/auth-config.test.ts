@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { JWT } from "next-auth/jwt";
+import type { Session } from "next-auth";
 
 // Mock viem before importing the module under test
 vi.mock("viem", () => {
@@ -38,8 +40,8 @@ import { resetTestDb } from "../../test/helpers/db";
 
 // Access the mock verifyMessage function
 const mockVerifyMessage = (
-  await import("viem") as any
-).__mockVerifyMessage as ReturnType<typeof vi.fn>;
+  await import("viem") as unknown as { __mockVerifyMessage: ReturnType<typeof vi.fn> }
+).__mockVerifyMessage;
 
 describe("extractCredentials", () => {
   it("returns message and signature when both are provided", () => {
@@ -178,12 +180,12 @@ describe("upsertUser", () => {
 });
 
 describe("authOptions callbacks", () => {
-  const jwtCallback = authOptions.callbacks!.jwt as any;
-  const sessionCallback = authOptions.callbacks!.session as any;
+  const jwtCallback = authOptions.callbacks!.jwt as (params: { token: JWT; user?: { id: string; address: string; chainId: number } }) => JWT;
+  const sessionCallback = authOptions.callbacks!.session as (params: { session: Session; token: JWT }) => Session;
 
   describe("jwt callback", () => {
     it("sets userId, address, chainId on token when user is provided", () => {
-      const token = { sub: "sub-1" } as any;
+      const token = { sub: "sub-1" } as JWT;
       const user = { id: "user-1", address: "0xabc", chainId: 1 };
 
       const result = jwtCallback({ token, user });
@@ -199,7 +201,7 @@ describe("authOptions callbacks", () => {
         userId: "existing",
         address: "0xold",
         chainId: 42,
-      } as any;
+      } as JWT;
 
       const result = jwtCallback({ token, user: undefined });
 
@@ -211,12 +213,12 @@ describe("authOptions callbacks", () => {
 
   describe("session callback", () => {
     it("enriches session with userId, address, chainId from token", () => {
-      const session = {} as any;
+      const session = {} as Session;
       const token = {
         userId: "user-1",
         address: "0xabc",
         chainId: 1,
-      } as any;
+      } as JWT;
 
       const result = sessionCallback({ session, token });
 
