@@ -3,7 +3,8 @@ import mongoose from "mongoose";
 import { User } from "@/lib/models/user";
 import { HotWallet } from "@/lib/models/hot-wallet";
 import { EndpointPolicy } from "@/lib/models/endpoint-policy";
-import { getWalletBalance, ensureHotWallet, getHotWallet, getUserWithWalletAndPolicies } from "../wallet";
+import { getEnvironmentChains } from "@/lib/chain-config";
+import { getWalletBalance, ensureHotWallet, ensureAllHotWallets, getHotWallet, getUserWithWalletAndPolicies } from "../wallet";
 
 vi.mock("@/lib/hot-wallet", () => ({
   getUsdcBalance: vi.fn().mockResolvedValue("100.000000"),
@@ -118,6 +119,60 @@ describe("ensureHotWallet", () => {
     // Verify two wallets exist
     const wallets = await HotWallet.find({ userId: user._id }).lean();
     expect(wallets).toHaveLength(2);
+  });
+});
+
+describe("ensureAllHotWallets", () => {
+  const envChains = getEnvironmentChains();
+
+  it("creates wallets for all environment chains when none exist", async () => {
+    const user = await User.create({ walletAddress: "0xUser1" });
+
+    const created = await ensureAllHotWallets(user._id.toString());
+
+    expect(created).toBe(envChains.length);
+    const wallets = await HotWallet.find({ userId: user._id }).lean();
+    expect(wallets).toHaveLength(envChains.length);
+
+    const chainIds = wallets.map((w) => w.chainId).sort();
+    const expectedChainIds = envChains.map((c) => c.chain.id).sort();
+    expect(chainIds).toEqual(expectedChainIds);
+  });
+
+  it("only creates missing chain wallets when some already exist", async () => {
+    const user = await User.create({ walletAddress: "0xUser1" });
+    await HotWallet.create({
+      userId: user._id,
+      address: "0xExistingWallet",
+      encryptedPrivateKey: "enc",
+      chainId: envChains[0].chain.id,
+    });
+
+    const created = await ensureAllHotWallets(user._id.toString());
+
+    expect(created).toBe(envChains.length - 1);
+    const wallets = await HotWallet.find({ userId: user._id }).lean();
+    expect(wallets).toHaveLength(envChains.length);
+  });
+
+  it("returns 0 when all wallets already exist", async () => {
+    const user = await User.create({ walletAddress: "0xUser1" });
+    for (const chain of envChains) {
+      await HotWallet.create({
+        userId: user._id,
+        address: `0xWallet${chain.chain.id}`,
+        encryptedPrivateKey: "enc",
+        chainId: chain.chain.id,
+      });
+    }
+
+    const created = await ensureAllHotWallets(user._id.toString());
+    expect(created).toBe(0);
+  });
+
+  it("returns 0 for non-existent user", async () => {
+    const created = await ensureAllHotWallets(new mongoose.Types.ObjectId().toString());
+    expect(created).toBe(0);
   });
 });
 

@@ -145,5 +145,15 @@ export function getDefaultChainConfig(): ChainConfig {
   return CHAIN_CONFIGS[defaultChainId] ?? CHAIN_CONFIGS[8453];
 }
 
+/**
+ * Returns chain configs matching the current environment (testnet vs mainnet).
+ * When running with a testnet default chain, returns only testnet chains; otherwise only mainnets.
+ */
+export function getEnvironmentChains(): ChainConfig[] {
+  const defaultConfig = getDefaultChainConfig();
+  const isTestnet = defaultConfig.chain.testnet === true;
+  return SUPPORTED_CHAINS.filter((c) => (c.chain.testnet === true) === isTestnet);
+}
+
 // Backward-compatible alias — deprecated, use getDefaultChainConfig()
 export const chainConfig: ChainConfig = getDefaultChainConfig();

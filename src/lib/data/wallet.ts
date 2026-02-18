@@ -4,6 +4,7 @@ import { HotWallet } from "@/lib/models/hot-wallet";
 import { EndpointPolicy } from "@/lib/models/endpoint-policy";
 import { connectDB } from "@/lib/db";
 import { createHotWallet as createHotWalletKeys, getUsdcBalance, withdrawFromHotWallet as withdrawHotWallet } from "@/lib/hot-wallet";
+import { getEnvironmentChains } from "@/lib/chain-config";
 
 const DEFAULT_CHAIN_ID = parseInt(
   process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
@@ -62,6 +63,33 @@ export async function ensureHotWallet(userId: string, chainId?: number) {
   });
 
   return { address, userId: user._id.toString() };
+}
+
+/**
+ * Ensure the user has a hot wallet on every environment-appropriate chain.
+ * Skips chains where a wallet already exists. Returns the number of wallets created.
+ */
+export async function ensureAllHotWallets(userId: string): Promise<number> {
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
+
+  const user = await User.findById(userObjectId).lean();
+  if (!user) return 0;
+
+  const chains = getEnvironmentChains();
+  const existingWallets = await HotWallet.find({ userId: userObjectId }).lean();
+  const existingChainIds = new Set(existingWallets.map((w) => w.chainId));
+
+  const missing = chains.filter((c) => !existingChainIds.has(c.chain.id));
+  if (missing.length === 0) return 0;
+
+  const docs = missing.map((c) => {
+    const { address, encryptedPrivateKey } = createHotWalletKeys();
+    return { address, encryptedPrivateKey, userId: userObjectId, chainId: c.chain.id };
+  });
+
+  await HotWallet.insertMany(docs);
+  return docs.length;
 }
 
 /**
