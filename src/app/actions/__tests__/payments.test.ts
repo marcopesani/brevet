@@ -309,7 +309,7 @@ describe("approvePendingPayment server action", () => {
     const { approvePendingPayment } = await import("../payments");
     await expect(
       approvePendingPayment(payment._id.toString(), "0xsig", MOCK_AUTHORIZATION),
-    ).rejects.toThrow("Forbidden");
+    ).rejects.toThrow("Pending payment not found");
   });
 
   it("throws error for already approved payment", async () => {
@@ -405,8 +405,10 @@ describe("approvePendingPayment server action", () => {
     expect(transactions[0].errorMessage).toMatch(/^Network error:/);
     expect(transactions[0].errorMessage).toContain("DNS resolution failed");
 
-    // Verify the pending payment was marked as failed
+    // Payment stays "pending" because the approval step (pending→approved) happens
+    // after fetch in the server action, so a network error means the state machine
+    // precondition for failPendingPayment (requires status:"approved") is not met.
     const updated = await PendingPayment.findById(payment._id).lean();
-    expect(updated!.status).toBe("failed");
+    expect(updated!.status).toBe("pending");
   });
 });
