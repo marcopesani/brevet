@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { User } from "@/lib/models/user";
-import { HotWallet } from "@/lib/models/hot-wallet";
-import { createHotWallet } from "@/lib/hot-wallet";
+import { getDefaultChainConfig } from "@/lib/chain-config";
+import { ensureAllHotWallets } from "@/lib/data/wallet";
 
 // Hardhat account #0 — deterministic test address
 const TEST_WALLET_ADDRESS = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
@@ -19,19 +19,15 @@ export async function POST() {
     user = await User.create({ walletAddress: TEST_WALLET_ADDRESS });
   }
 
-  let hotWallet = await HotWallet.findOne({ userId: user._id });
-  if (!hotWallet) {
-    const { address, encryptedPrivateKey } = createHotWallet();
-    hotWallet = await HotWallet.create({
-      address,
-      encryptedPrivateKey,
-      userId: user._id,
-    });
-  }
+  await ensureAllHotWallets(user._id.toString());
+
+  const defaultChainId = getDefaultChainConfig().chain.id;
+  const { getHotWallet } = await import("@/lib/data/wallet");
+  const hotWallet = await getHotWallet(user._id.toString(), defaultChainId);
 
   return NextResponse.json({
     userId: user._id.toString(),
     walletAddress: TEST_WALLET_ADDRESS,
-    hotWalletAddress: hotWallet.address,
+    hotWalletAddress: hotWallet?.address ?? null,
   });
 }
