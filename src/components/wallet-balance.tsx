@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Wallet, Copy, Check } from "lucide-react";
+import { Wallet, Copy, Check, ExternalLink } from "lucide-react";
 import {
   Card,
   CardHeader,
@@ -18,6 +18,8 @@ interface WalletBalanceProps {
   balance: string | null;
   balanceLoading: boolean;
   balanceError: Error | null;
+  chainName: string;
+  explorerUrl: string;
 }
 
 export default function WalletBalance({
@@ -25,6 +27,8 @@ export default function WalletBalance({
   balance,
   balanceLoading,
   balanceError,
+  chainName,
+  explorerUrl,
 }: WalletBalanceProps) {
   const [copied, setCopied] = useState(false);
 
@@ -41,12 +45,14 @@ export default function WalletBalance({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Wallet className="h-5 w-5" />
-            Hot Wallet
+            Hot Wallet — {chainName}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            No hot wallet found. Please reconnect your wallet.
+            {balanceLoading
+              ? "Loading wallet..."
+              : "No hot wallet found. Please reconnect your wallet."}
           </p>
         </CardContent>
       </Card>
@@ -60,10 +66,18 @@ export default function WalletBalance({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Wallet className="h-5 w-5" />
-          Hot Wallet
+          Hot Wallet — {chainName}
         </CardTitle>
         <CardDescription className="flex items-center gap-2">
-          <span className="font-mono text-xs">{truncatedAddress}</span>
+          <a
+            href={`${explorerUrl}/address/${hotWalletAddress}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 font-mono text-xs hover:underline"
+          >
+            {truncatedAddress}
+            <ExternalLink className="h-3 w-3" />
+          </a>
           <Button
             variant="ghost"
             size="icon"
