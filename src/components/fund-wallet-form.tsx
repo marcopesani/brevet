@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useWriteContract, useWaitForTransactionReceipt, useAccount, useSwitchChain } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseUnits } from "viem";
+import { toast } from "sonner";
 import { ArrowDownLeft, ExternalLink } from "lucide-react";
 import {
   Card,
@@ -45,6 +46,9 @@ export default function FundWalletForm({
   const [amount, setAmount] = useState("");
   const queryClient = useQueryClient();
 
+  const { chainId: walletChainId } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
+
   const chainConfig = chainId ? getChainConfig(chainId) ?? getDefaultChainConfig() : getDefaultChainConfig();
 
   const { writeContract, data: txHash, isPending, error, reset } = useWriteContract();
@@ -53,8 +57,17 @@ export default function FundWalletForm({
     hash: txHash,
   });
 
-  function handleFund() {
+  async function handleFund() {
     if (!hotWalletAddress || !amount || parseFloat(amount) <= 0) return;
+
+    if (walletChainId !== chainConfig.chain.id) {
+      try {
+        await switchChainAsync({ chainId: chainConfig.chain.id });
+      } catch {
+        toast.error("Failed to switch network");
+        return;
+      }
+    }
 
     writeContract({
       address: chainConfig.usdcAddress,

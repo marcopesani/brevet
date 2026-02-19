@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSignTypedData } from "wagmi";
+import { useSignTypedData, useAccount, useSwitchChain } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { authorizationTypes } from "@x402/evm";
 import type { PaymentRequirements } from "@x402/core/types";
@@ -99,6 +99,8 @@ export default function PendingPaymentCard({
     "approve" | "reject" | null
   >(null);
   const { signTypedDataAsync } = useSignTypedData();
+  const { chainId: walletChainId } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
   const queryClient = useQueryClient();
   const { activeChain } = useChain();
   const remaining = useCountdown(payment.expiresAt);
@@ -132,6 +134,15 @@ export default function PendingPaymentCard({
       const amountWei = BigInt(requirement.amount);
       const nonce = generateNonce();
       const now = BigInt(Math.floor(Date.now() / 1_000));
+
+      if (walletChainId !== paymentChainConfig.chain.id) {
+        try {
+          await switchChainAsync({ chainId: paymentChainConfig.chain.id });
+        } catch {
+          toast.error("Failed to switch network");
+          return;
+        }
+      }
 
       const authorization = {
         from: walletAddress as Hex,
