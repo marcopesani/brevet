@@ -388,7 +388,7 @@ describe("E2E: Multi-Chain", () => {
 
       // Register tools
       const capture = createToolCapture();
-      const { registerTools } = await import("@/lib/mcp/tools");
+      const { registerTools } = await import("@/lib/mcp/register-tools");
       registerTools(
         capture.server as unknown as Parameters<typeof registerTools>[0],
         userId,
