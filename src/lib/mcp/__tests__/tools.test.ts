@@ -52,7 +52,7 @@ describe("x402_get_result tool", () => {
     vi.restoreAllMocks();
     await resetTestDb();
     server = new McpServer({ name: "test", version: "0.0.1" });
-    const { registerTools } = await import("../tools");
+    const { registerTools } = await import("../register-tools");
     registerTools(server, TEST_USER_ID);
   });
 
@@ -257,7 +257,7 @@ describe("x402_check_pending tool", () => {
     vi.restoreAllMocks();
     await resetTestDb();
     server = new McpServer({ name: "test", version: "0.0.1" });
-    const { registerTools } = await import("../tools");
+    const { registerTools } = await import("../register-tools");
     registerTools(server, TEST_USER_ID);
   });
 
@@ -418,7 +418,7 @@ describe("x402_pay tool — multi-chain", () => {
     vi.restoreAllMocks();
     await resetTestDb();
     server = new McpServer({ name: "test", version: "0.0.1" });
-    const { registerTools } = await import("../tools");
+    const { registerTools } = await import("../register-tools");
     registerTools(server, TEST_USER_ID);
   });
 
@@ -513,7 +513,7 @@ describe("x402_check_balance tool — multi-chain", () => {
     });
 
     server = new McpServer({ name: "test", version: "0.0.1" });
-    const { registerTools } = await import("../tools");
+    const { registerTools } = await import("../register-tools");
     registerTools(server, userId.toString());
   });
 
@@ -607,7 +607,7 @@ describe("x402_spending_history tool — multi-chain", () => {
     vi.restoreAllMocks();
     await resetTestDb();
     server = new McpServer({ name: "test", version: "0.0.1" });
-    const { registerTools } = await import("../tools");
+    const { registerTools } = await import("../register-tools");
     registerTools(server, TEST_USER_ID);
   });
 
@@ -687,7 +687,7 @@ describe("x402_check_pending tool — chain info in response", () => {
     vi.restoreAllMocks();
     await resetTestDb();
     server = new McpServer({ name: "test", version: "0.0.1" });
-    const { registerTools } = await import("../tools");
+    const { registerTools } = await import("../register-tools");
     registerTools(server, TEST_USER_ID);
   });
 

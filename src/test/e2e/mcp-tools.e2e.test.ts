@@ -97,7 +97,7 @@ describe("E2E: MCP Tool Pipeline", () => {
 
     // Register tools fresh for each test
     const capture = createToolCapture();
-    const { registerTools } = await import("@/lib/mcp/tools");
+    const { registerTools } = await import("@/lib/mcp/register-tools");
     registerTools(capture.server as unknown as Parameters<typeof registerTools>[0], userId);
     tools = capture.tools;
   });

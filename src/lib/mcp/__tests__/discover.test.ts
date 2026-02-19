@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { DiscoveryResponse } from "../tools";
+import type { DiscoveryResponse } from "../tools/x402-discover";
 
 // Mock dependencies used by other tools in registerTools
 vi.mock("@/lib/x402/payment", () => ({
@@ -89,7 +89,7 @@ describe("x402_discover tool", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     server = new McpServer({ name: "test", version: "0.0.1" });
-    const { registerTools } = await import("../tools");
+    const { registerTools } = await import("../register-tools");
     registerTools(server, "test-user");
   });
 

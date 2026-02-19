@@ -45,7 +45,7 @@ URL validation rejects localhost, private IPs, and internal hostnames (SSRF prot
 
 Endpoint: `POST /api/mcp/[userId]` using Streamable HTTP transport. Stateless — fresh server instance per request.
 
-Five tools defined in `src/lib/mcp/tools.ts`: `x402_pay`, `x402_check_balance`, `x402_spending_history`, `x402_check_pending`, `x402_discover`. MCP tools import from `src/lib/data/` (shared data layer) — they do not use API routes or inline database queries.
+Six tools defined in `src/lib/mcp/tools/` (one file per tool): `x402_pay`, `x402_check_balance`, `x402_spending_history`, `x402_check_pending`, `x402_get_result`, `x402_discover`. MCP tools import from `src/lib/data/` (shared data layer) — they do not use API routes or inline database queries.
 
 ### Endpoint Policy System
 
@@ -103,6 +103,7 @@ MongoDB with Mongoose. Five collections: `users`, `hotwallets`, `endpointpolicie
 
 - Import alias: `@/*` maps to `src/*`
 - UI components: shadcn/ui (New York style, neutral theme) in `src/components/ui/`
+- Never use barrel files
 - File naming: kebab-case for utils (`hot-wallet.ts`), PascalCase for components
 - Runtime validation: Zod v4 for MCP tool schemas
 - Tests: co-located `__tests__/` directories; global mocks in `src/test/setup.ts` (uses mongodb-memory-server for in-memory MongoDB)
