@@ -1,0 +1,820 @@
+diff --git a/node_modules/@x402/evm/dist/cjs/exact/facilitator/index.js b/node_modules/@x402/evm/dist/cjs/exact/facilitator/index.js
+index 33b5ec8..74db622 100644
+--- a/node_modules/@x402/evm/dist/cjs/exact/facilitator/index.js
++++ b/node_modules/@x402/evm/dist/cjs/exact/facilitator/index.js
+@@ -32,6 +32,19 @@ function isPermit2Payload(payload) {
+ 
+ // src/exact/facilitator/eip3009.ts
+ var import_viem = require("viem");
++var EIP1271_MAGIC_VALUE = "0x1626ba7e";
++var eip1271ABI = [
++  {
++    type: "function",
++    name: "isValidSignature",
++    inputs: [
++      { name: "hash", type: "bytes32" },
++      { name: "signature", type: "bytes" }
++    ],
++    outputs: [{ name: "magicValue", type: "bytes4" }],
++    stateMutability: "view"
++  }
++];
+ 
+ // src/constants.ts
+ var authorizationTypes = {
+@@ -240,7 +253,7 @@ var x402ExactPermit2ProxyABI = [
+ ];
+ 
+ // src/exact/facilitator/eip3009.ts
+-async function verifyEIP3009(signer, payload, requirements, eip3009Payload) {
++async function verifyEIP3009(signer, payload, requirements, eip3009Payload, config = { deployERC4337WithEIP6492: false }) {
+   const payer = eip3009Payload.authorization.from;
+   if (payload.accepted.scheme !== "exact" || requirements.scheme !== "exact") {
+     return {
+@@ -249,14 +262,15 @@ async function verifyEIP3009(signer, payload, requirements, eip3009Payload) {
+       payer
+     };
+   }
+-  if (!requirements.extra?.name || !requirements.extra?.version) {
++  const name = requirements.extra?.name;
++  const version = requirements.extra?.version;
++  if (typeof name !== "string" || typeof version !== "string") {
+     return {
+       isValid: false,
+       invalidReason: "missing_eip712_domain",
+       payer
+     };
+   }
+-  const { name, version } = requirements.extra;
+   const erc20Address = (0, import_viem.getAddress)(requirements.asset);
+   if (payload.accepted.network !== requirements.network) {
+     return {
+@@ -283,36 +297,67 @@ async function verifyEIP3009(signer, payload, requirements, eip3009Payload) {
+       nonce: eip3009Payload.authorization.nonce
+     }
+   };
++  const signedPayload = eip3009Payload.signature;
++  const erc6492Data = (0, import_viem.parseErc6492Signature)(signedPayload);
++  const signatureLength = erc6492Data.signature.startsWith("0x") ? erc6492Data.signature.length - 2 : erc6492Data.signature.length;
++  let isValidSignature = false;
+   try {
+-    const recoveredAddress = await signer.verifyTypedData({
+-      address: eip3009Payload.authorization.from,
++    isValidSignature = await signer.verifyTypedData({
++      address: payer,
+       ...permitTypedData,
+-      signature: eip3009Payload.signature
++      signature: signedPayload
+     });
+-    if (!recoveredAddress) {
+-      return {
+-        isValid: false,
+-        invalidReason: "invalid_exact_evm_payload_signature",
+-        payer
+-      };
+-    }
+   } catch {
+-    const signature = eip3009Payload.signature;
+-    const signatureLength = signature.startsWith("0x") ? signature.length - 2 : signature.length;
+-    const isSmartWallet = signatureLength > 130;
+-    if (isSmartWallet) {
+-      const payerAddress = eip3009Payload.authorization.from;
+-      const bytecode = await signer.getCode({ address: payerAddress });
+-      if (!bytecode || bytecode === "0x") {
+-        const erc6492Data = (0, import_viem.parseErc6492Signature)(signature);
+-        const hasDeploymentInfo = erc6492Data.address && erc6492Data.data && !(0, import_viem.isAddressEqual)(erc6492Data.address, "0x0000000000000000000000000000000000000000");
+-        if (!hasDeploymentInfo) {
++    isValidSignature = false;
++  }
++  if (!isValidSignature) {
++    let bytecode;
++    try {
++      bytecode = await signer.getCode({ address: payer });
++    } catch {
++      bytecode = undefined;
++    }
++    if (bytecode && bytecode !== "0x") {
++      const digest = (0, import_viem.hashTypedData)(permitTypedData);
++      try {
++        const magicValue = await signer.readContract({
++          address: payer,
++          abi: eip1271ABI,
++          functionName: "isValidSignature",
++          args: [digest, erc6492Data.signature]
++        });
++        if (typeof magicValue !== "string" || magicValue.toLowerCase() !== EIP1271_MAGIC_VALUE) {
++          return {
++            isValid: false,
++            invalidReason: "invalid_exact_evm_payload_signature",
++            payer
++          };
++        }
++      } catch {
++        return {
++          isValid: false,
++          invalidReason: "invalid_exact_evm_payload_signature",
++          payer
++        };
++      }
++    } else {
++      const hasDeploymentInfo = erc6492Data.address && erc6492Data.data && !(0, import_viem.isAddressEqual)(erc6492Data.address, "0x0000000000000000000000000000000000000000");
++      if (hasDeploymentInfo) {
++        if (config.deployERC4337WithEIP6492) {
++          // Facilitators with sponsored deployment support can handle this in settle().
++        } else {
+           return {
+             isValid: false,
+             invalidReason: "invalid_exact_evm_payload_undeployed_smart_wallet",
+-            payer: payerAddress
++            payer
+           };
+         }
++      } else if (signatureLength > 130) {
++        return {
++          isValid: false,
++          invalidReason: "invalid_exact_evm_payload_undeployed_smart_wallet",
++          payer
++        };
+       } else {
+         return {
+           isValid: false,
+@@ -320,12 +365,6 @@ async function verifyEIP3009(signer, payload, requirements, eip3009Payload) {
+           payer
+         };
+       }
+-    } else {
+-      return {
+-        isValid: false,
+-        invalidReason: "invalid_exact_evm_payload_signature",
+-        payer
+-      };
+     }
+   }
+   if ((0, import_viem.getAddress)(eip3009Payload.authorization.to) !== (0, import_viem.getAddress)(requirements.payTo)) {
+@@ -382,7 +421,7 @@ async function verifyEIP3009(signer, payload, requirements, eip3009Payload) {
+ }
+ async function settleEIP3009(signer, payload, requirements, eip3009Payload, config) {
+   const payer = eip3009Payload.authorization.from;
+-  const valid = await verifyEIP3009(signer, payload, requirements, eip3009Payload);
++  const valid = await verifyEIP3009(signer, payload, requirements, eip3009Payload, config);
+   if (!valid.isValid) {
+     return {
+       success: false,
+@@ -405,10 +444,15 @@ async function settleEIP3009(signer, payload, requirements, eip3009Payload, conf
+         await signer.waitForTransactionReceipt({ hash: deployTx });
+       }
+     }
+-    const signatureLength = signature.startsWith("0x") ? signature.length - 2 : signature.length;
+-    const isECDSA = signatureLength === 130;
++    let bytecode2;
++    try {
++      bytecode2 = await signer.getCode({ address: payer });
++    } catch {
++      bytecode2 = undefined;
++    }
++    const isContractWallet = Boolean(bytecode2 && bytecode2 !== "0x");
+     let tx;
+-    if (isECDSA) {
++    if (!isContractWallet) {
+       const parsedSig = (0, import_viem.parseSignature)(signature);
+       tx = await signer.writeContract({
+         address: (0, import_viem.getAddress)(requirements.asset),
+@@ -567,25 +611,55 @@ async function verifyPermit2(signer, payload, requirements, permit2Payload) {
+       }
+     }
+   };
++  const signedPayload2 = permit2Payload.signature;
++  const erc6492Data2 = (0, import_viem2.parseErc6492Signature)(signedPayload2);
++  let isValidSignature2 = false;
+   try {
+-    const isValid = await signer.verifyTypedData({
++    isValidSignature2 = await signer.verifyTypedData({
+       address: payer,
+       ...permit2TypedData,
+-      signature: permit2Payload.signature
++      signature: signedPayload2
+     });
+-    if (!isValid) {
++  } catch {
++    isValidSignature2 = false;
++  }
++  if (!isValidSignature2) {
++    let bytecode;
++    try {
++      bytecode = await signer.getCode({ address: payer });
++    } catch {
++      bytecode = undefined;
++    }
++    if (bytecode && bytecode !== "0x") {
++      const digest = (0, import_viem2.hashTypedData)(permit2TypedData);
++      try {
++        const magicValue = await signer.readContract({
++          address: payer,
++          abi: eip1271ABI,
++          functionName: "isValidSignature",
++          args: [digest, erc6492Data2.signature]
++        });
++        if (typeof magicValue !== "string" || magicValue.toLowerCase() !== EIP1271_MAGIC_VALUE) {
++          return {
++            isValid: false,
++            invalidReason: "invalid_permit2_signature",
++            payer
++          };
++        }
++      } catch {
++        return {
++          isValid: false,
++          invalidReason: "invalid_permit2_signature",
++          payer
++        };
++      }
++    } else {
+       return {
+         isValid: false,
+         invalidReason: "invalid_permit2_signature",
+         payer
+       };
+     }
+-  } catch {
+-    return {
+-      isValid: false,
+-      invalidReason: "invalid_permit2_signature",
+-      payer
+-    };
+   }
+   try {
+     const allowance = await signer.readContract({
+@@ -757,7 +831,7 @@ var ExactEvmScheme = class {
+       return verifyPermit2(this.signer, payload, requirements, rawPayload);
+     }
+     const eip3009Payload = rawPayload;
+-    return verifyEIP3009(this.signer, payload, requirements, eip3009Payload);
++    return verifyEIP3009(this.signer, payload, requirements, eip3009Payload, this.config);
+   }
+   /**
+    * Settles a payment by executing the transfer.
+@@ -882,14 +956,17 @@ var ExactEvmSchemeV12 = class {
+         payer: exactEvmPayload.authorization.from
+       };
+     }
+-    if (!requirements.extra?.name || !requirements.extra?.version) {
++    const nameV1 = requirements.extra?.name;
++    const versionV1 = requirements.extra?.version;
++    if (typeof nameV1 !== "string" || typeof versionV1 !== "string") {
+       return {
+         isValid: false,
+         invalidReason: "missing_eip712_domain",
+         payer: exactEvmPayload.authorization.from
+       };
+     }
+-    const { name, version } = requirements.extra;
++    const name = nameV1;
++    const version = versionV1;
+     const erc20Address = (0, import_viem5.getAddress)(requirements.asset);
+     if (payloadV1.network !== requirements.network) {
+       return {
+@@ -916,36 +993,67 @@ var ExactEvmSchemeV12 = class {
+         nonce: exactEvmPayload.authorization.nonce
+       }
+     };
++    const signedPayloadV1 = exactEvmPayload.signature;
++    const erc6492DataV1 = (0, import_viem5.parseErc6492Signature)(signedPayloadV1);
++    const signatureLengthV1 = erc6492DataV1.signature.startsWith("0x") ? erc6492DataV1.signature.length - 2 : erc6492DataV1.signature.length;
++    let isValidSignatureV1 = false;
+     try {
+-      const recoveredAddress = await this.signer.verifyTypedData({
++      isValidSignatureV1 = await this.signer.verifyTypedData({
+         address: exactEvmPayload.authorization.from,
+         ...permitTypedData,
+-        signature: exactEvmPayload.signature
++        signature: signedPayloadV1
+       });
+-      if (!recoveredAddress) {
+-        return {
+-          isValid: false,
+-          invalidReason: "invalid_exact_evm_payload_signature",
+-          payer: exactEvmPayload.authorization.from
+-        };
+-      }
+     } catch {
+-      const signature = exactEvmPayload.signature;
+-      const signatureLength = signature.startsWith("0x") ? signature.length - 2 : signature.length;
+-      const isSmartWallet = signatureLength > 130;
+-      if (isSmartWallet) {
+-        const payerAddress = exactEvmPayload.authorization.from;
+-        const bytecode = await this.signer.getCode({ address: payerAddress });
+-        if (!bytecode || bytecode === "0x") {
+-          const erc6492Data = (0, import_viem5.parseErc6492Signature)(signature);
+-          const hasDeploymentInfo = erc6492Data.address && erc6492Data.data && !(0, import_viem5.isAddressEqual)(erc6492Data.address, "0x0000000000000000000000000000000000000000");
+-          if (!hasDeploymentInfo) {
++      isValidSignatureV1 = false;
++    }
++    if (!isValidSignatureV1) {
++      let bytecodeV1;
++      try {
++        bytecodeV1 = await this.signer.getCode({ address: exactEvmPayload.authorization.from });
++      } catch {
++        bytecodeV1 = undefined;
++      }
++      if (bytecodeV1 && bytecodeV1 !== "0x") {
++        const digestV1 = (0, import_viem5.hashTypedData)(permitTypedData);
++        try {
++          const magicValueV1 = await this.signer.readContract({
++            address: exactEvmPayload.authorization.from,
++            abi: eip1271ABI,
++            functionName: "isValidSignature",
++            args: [digestV1, erc6492DataV1.signature]
++          });
++          if (typeof magicValueV1 !== "string" || magicValueV1.toLowerCase() !== EIP1271_MAGIC_VALUE) {
++            return {
++              isValid: false,
++              invalidReason: "invalid_exact_evm_payload_signature",
++              payer: exactEvmPayload.authorization.from
++            };
++          }
++        } catch {
++          return {
++            isValid: false,
++            invalidReason: "invalid_exact_evm_payload_signature",
++            payer: exactEvmPayload.authorization.from
++          };
++        }
++      } else {
++        const hasDeploymentInfoV1 = erc6492DataV1.address && erc6492DataV1.data && !(0, import_viem5.isAddressEqual)(erc6492DataV1.address, "0x0000000000000000000000000000000000000000");
++        if (hasDeploymentInfoV1) {
++          if (this.config.deployERC4337WithEIP6492) {
++            // Facilitators with sponsored deployment support can handle this in settle().
++          } else {
+             return {
+               isValid: false,
+               invalidReason: "invalid_exact_evm_payload_undeployed_smart_wallet",
+-              payer: payerAddress
++              payer: exactEvmPayload.authorization.from
+             };
+           }
++        } else if (signatureLengthV1 > 130) {
++          return {
++            isValid: false,
++            invalidReason: "invalid_exact_evm_payload_undeployed_smart_wallet",
++            payer: exactEvmPayload.authorization.from
++          };
+         } else {
+           return {
+             isValid: false,
+@@ -953,12 +1061,6 @@ var ExactEvmSchemeV12 = class {
+             payer: exactEvmPayload.authorization.from
+           };
+         }
+-      } else {
+-        return {
+-          isValid: false,
+-          invalidReason: "invalid_exact_evm_payload_signature",
+-          payer: exactEvmPayload.authorization.from
+-        };
+       }
+     }
+     if ((0, import_viem5.getAddress)(exactEvmPayload.authorization.to) !== (0, import_viem5.getAddress)(requirements.payTo)) {
+@@ -1056,10 +1158,15 @@ var ExactEvmSchemeV12 = class {
+           console.log(`Smart wallet for ${payerAddress} already deployed, skipping deployment`);
+         }
+       }
+-      const signatureLength = signature.startsWith("0x") ? signature.length - 2 : signature.length;
+-      const isECDSA = signatureLength === 130;
++      let bytecodeV1Settle;
++      try {
++        bytecodeV1Settle = await this.signer.getCode({ address: exactEvmPayload.authorization.from });
++      } catch {
++        bytecodeV1Settle = undefined;
++      }
++      const isContractWalletV1 = Boolean(bytecodeV1Settle && bytecodeV1Settle !== "0x");
+       let tx;
+-      if (isECDSA) {
++      if (!isContractWalletV1) {
+         const parsedSig = (0, import_viem5.parseSignature)(signature);
+         tx = await this.signer.writeContract({
+           address: (0, import_viem5.getAddress)(requirements.asset),
+diff --git a/node_modules/@x402/evm/dist/esm/chunk-RPL6OFJL.mjs b/node_modules/@x402/evm/dist/esm/chunk-RPL6OFJL.mjs
+index 1a75433..e49a9ab 100644
+--- a/node_modules/@x402/evm/dist/esm/chunk-RPL6OFJL.mjs
++++ b/node_modules/@x402/evm/dist/esm/chunk-RPL6OFJL.mjs
+@@ -314,7 +314,20 @@ var ExactEvmSchemeV1 = class {
+ };
+ 
+ // src/exact/v1/facilitator/scheme.ts
+-import { getAddress as getAddress2, isAddressEqual, parseErc6492Signature, parseSignature } from "viem";
++import { getAddress as getAddress2, hashTypedData as hashTypedData3, isAddressEqual, parseErc6492Signature, parseSignature } from "viem";
++var EIP1271_MAGIC_VALUE_V1 = "0x1626ba7e";
++var eip1271ABI_V1 = [
++  {
++    type: "function",
++    name: "isValidSignature",
++    inputs: [
++      { name: "hash", type: "bytes32" },
++      { name: "signature", type: "bytes" }
++    ],
++    outputs: [{ name: "magicValue", type: "bytes4" }],
++    stateMutability: "view"
++  }
++];
+ var ExactEvmSchemeV12 = class {
+   /**
+    * Creates a new ExactEvmFacilitatorV1 instance.
+@@ -378,14 +391,17 @@ var ExactEvmSchemeV12 = class {
+         payer: exactEvmPayload.authorization.from
+       };
+     }
+-    if (!requirements.extra?.name || !requirements.extra?.version) {
++    const nameV1 = requirements.extra?.name;
++    const versionV1 = requirements.extra?.version;
++    if (typeof nameV1 !== "string" || typeof versionV1 !== "string") {
+       return {
+         isValid: false,
+         invalidReason: "missing_eip712_domain",
+         payer: exactEvmPayload.authorization.from
+       };
+     }
+-    const { name, version } = requirements.extra;
++    const name = nameV1;
++    const version = versionV1;
+     const erc20Address = getAddress2(requirements.asset);
+     if (payloadV1.network !== requirements.network) {
+       return {
+@@ -412,36 +428,67 @@ var ExactEvmSchemeV12 = class {
+         nonce: exactEvmPayload.authorization.nonce
+       }
+     };
++    const signedPayloadV1 = exactEvmPayload.signature;
++    const erc6492DataV1 = parseErc6492Signature(signedPayloadV1);
++    const signatureLengthV1 = erc6492DataV1.signature.startsWith("0x") ? erc6492DataV1.signature.length - 2 : erc6492DataV1.signature.length;
++    let isValidSignatureV1 = false;
+     try {
+-      const recoveredAddress = await this.signer.verifyTypedData({
++      isValidSignatureV1 = await this.signer.verifyTypedData({
+         address: exactEvmPayload.authorization.from,
+         ...permitTypedData,
+-        signature: exactEvmPayload.signature
++        signature: signedPayloadV1
+       });
+-      if (!recoveredAddress) {
+-        return {
+-          isValid: false,
+-          invalidReason: "invalid_exact_evm_payload_signature",
+-          payer: exactEvmPayload.authorization.from
+-        };
+-      }
+     } catch {
+-      const signature = exactEvmPayload.signature;
+-      const signatureLength = signature.startsWith("0x") ? signature.length - 2 : signature.length;
+-      const isSmartWallet = signatureLength > 130;
+-      if (isSmartWallet) {
+-        const payerAddress = exactEvmPayload.authorization.from;
+-        const bytecode = await this.signer.getCode({ address: payerAddress });
+-        if (!bytecode || bytecode === "0x") {
+-          const erc6492Data = parseErc6492Signature(signature);
+-          const hasDeploymentInfo = erc6492Data.address && erc6492Data.data && !isAddressEqual(erc6492Data.address, "0x0000000000000000000000000000000000000000");
+-          if (!hasDeploymentInfo) {
++      isValidSignatureV1 = false;
++    }
++    if (!isValidSignatureV1) {
++      let bytecodeV1;
++      try {
++        bytecodeV1 = await this.signer.getCode({ address: exactEvmPayload.authorization.from });
++      } catch {
++        bytecodeV1 = undefined;
++      }
++      if (bytecodeV1 && bytecodeV1 !== "0x") {
++        const digestV1 = hashTypedData3(permitTypedData);
++        try {
++          const magicValueV1 = await this.signer.readContract({
++            address: exactEvmPayload.authorization.from,
++            abi: eip1271ABI_V1,
++            functionName: "isValidSignature",
++            args: [digestV1, erc6492DataV1.signature]
++          });
++          if (typeof magicValueV1 !== "string" || magicValueV1.toLowerCase() !== EIP1271_MAGIC_VALUE_V1) {
++            return {
++              isValid: false,
++              invalidReason: "invalid_exact_evm_payload_signature",
++              payer: exactEvmPayload.authorization.from
++            };
++          }
++        } catch {
++          return {
++            isValid: false,
++            invalidReason: "invalid_exact_evm_payload_signature",
++            payer: exactEvmPayload.authorization.from
++          };
++        }
++      } else {
++        const hasDeploymentInfoV1 = erc6492DataV1.address && erc6492DataV1.data && !isAddressEqual(erc6492DataV1.address, "0x0000000000000000000000000000000000000000");
++        if (hasDeploymentInfoV1) {
++          if (this.config.deployERC4337WithEIP6492) {
++            // Facilitators with sponsored deployment support can handle this in settle().
++          } else {
+             return {
+               isValid: false,
+               invalidReason: "invalid_exact_evm_payload_undeployed_smart_wallet",
+-              payer: payerAddress
++              payer: exactEvmPayload.authorization.from
+             };
+           }
++        } else if (signatureLengthV1 > 130) {
++          return {
++            isValid: false,
++            invalidReason: "invalid_exact_evm_payload_undeployed_smart_wallet",
++            payer: exactEvmPayload.authorization.from
++          };
+         } else {
+           return {
+             isValid: false,
+@@ -449,12 +496,6 @@ var ExactEvmSchemeV12 = class {
+             payer: exactEvmPayload.authorization.from
+           };
+         }
+-      } else {
+-        return {
+-          isValid: false,
+-          invalidReason: "invalid_exact_evm_payload_signature",
+-          payer: exactEvmPayload.authorization.from
+-        };
+       }
+     }
+     if (getAddress2(exactEvmPayload.authorization.to) !== getAddress2(requirements.payTo)) {
+@@ -552,10 +593,15 @@ var ExactEvmSchemeV12 = class {
+           console.log(`Smart wallet for ${payerAddress} already deployed, skipping deployment`);
+         }
+       }
+-      const signatureLength = signature.startsWith("0x") ? signature.length - 2 : signature.length;
+-      const isECDSA = signatureLength === 130;
++      let bytecodeV1Settle;
++      try {
++        bytecodeV1Settle = await this.signer.getCode({ address: exactEvmPayload.authorization.from });
++      } catch {
++        bytecodeV1Settle = undefined;
++      }
++      const isContractWalletV1 = Boolean(bytecodeV1Settle && bytecodeV1Settle !== "0x");
+       let tx;
+-      if (isECDSA) {
++      if (!isContractWalletV1) {
+         const parsedSig = parseSignature(signature);
+         tx = await this.signer.writeContract({
+           address: getAddress2(requirements.asset),
+diff --git a/node_modules/@x402/evm/dist/esm/exact/facilitator/index.mjs b/node_modules/@x402/evm/dist/esm/exact/facilitator/index.mjs
+index 44ea719..2a52f13 100644
+--- a/node_modules/@x402/evm/dist/esm/exact/facilitator/index.mjs
++++ b/node_modules/@x402/evm/dist/esm/exact/facilitator/index.mjs
+@@ -13,8 +13,21 @@ import {
+ } from "../../chunk-RPL6OFJL.mjs";
+ 
+ // src/exact/facilitator/eip3009.ts
+-import { getAddress, isAddressEqual, parseErc6492Signature, parseSignature } from "viem";
+-async function verifyEIP3009(signer, payload, requirements, eip3009Payload) {
++import { getAddress, hashTypedData, isAddressEqual, parseErc6492Signature, parseSignature } from "viem";
++var EIP1271_MAGIC_VALUE = "0x1626ba7e";
++var eip1271ABI = [
++  {
++    type: "function",
++    name: "isValidSignature",
++    inputs: [
++      { name: "hash", type: "bytes32" },
++      { name: "signature", type: "bytes" }
++    ],
++    outputs: [{ name: "magicValue", type: "bytes4" }],
++    stateMutability: "view"
++  }
++];
++async function verifyEIP3009(signer, payload, requirements, eip3009Payload, config = { deployERC4337WithEIP6492: false }) {
+   const payer = eip3009Payload.authorization.from;
+   if (payload.accepted.scheme !== "exact" || requirements.scheme !== "exact") {
+     return {
+@@ -23,14 +36,15 @@ async function verifyEIP3009(signer, payload, requirements, eip3009Payload) {
+       payer
+     };
+   }
+-  if (!requirements.extra?.name || !requirements.extra?.version) {
++  const name = requirements.extra?.name;
++  const version = requirements.extra?.version;
++  if (typeof name !== "string" || typeof version !== "string") {
+     return {
+       isValid: false,
+       invalidReason: "missing_eip712_domain",
+       payer
+     };
+   }
+-  const { name, version } = requirements.extra;
+   const erc20Address = getAddress(requirements.asset);
+   if (payload.accepted.network !== requirements.network) {
+     return {
+@@ -57,36 +71,67 @@ async function verifyEIP3009(signer, payload, requirements, eip3009Payload) {
+       nonce: eip3009Payload.authorization.nonce
+     }
+   };
++  const signedPayload = eip3009Payload.signature;
++  const erc6492Data = parseErc6492Signature(signedPayload);
++  const signatureLength = erc6492Data.signature.startsWith("0x") ? erc6492Data.signature.length - 2 : erc6492Data.signature.length;
++  let isValidSignature = false;
+   try {
+-    const recoveredAddress = await signer.verifyTypedData({
+-      address: eip3009Payload.authorization.from,
++    isValidSignature = await signer.verifyTypedData({
++      address: payer,
+       ...permitTypedData,
+-      signature: eip3009Payload.signature
++      signature: signedPayload
+     });
+-    if (!recoveredAddress) {
+-      return {
+-        isValid: false,
+-        invalidReason: "invalid_exact_evm_payload_signature",
+-        payer
+-      };
+-    }
+   } catch {
+-    const signature = eip3009Payload.signature;
+-    const signatureLength = signature.startsWith("0x") ? signature.length - 2 : signature.length;
+-    const isSmartWallet = signatureLength > 130;
+-    if (isSmartWallet) {
+-      const payerAddress = eip3009Payload.authorization.from;
+-      const bytecode = await signer.getCode({ address: payerAddress });
+-      if (!bytecode || bytecode === "0x") {
+-        const erc6492Data = parseErc6492Signature(signature);
+-        const hasDeploymentInfo = erc6492Data.address && erc6492Data.data && !isAddressEqual(erc6492Data.address, "0x0000000000000000000000000000000000000000");
+-        if (!hasDeploymentInfo) {
++    isValidSignature = false;
++  }
++  if (!isValidSignature) {
++    let bytecode;
++    try {
++      bytecode = await signer.getCode({ address: payer });
++    } catch {
++      bytecode = undefined;
++    }
++    if (bytecode && bytecode !== "0x") {
++      const digest = hashTypedData(permitTypedData);
++      try {
++        const magicValue = await signer.readContract({
++          address: payer,
++          abi: eip1271ABI,
++          functionName: "isValidSignature",
++          args: [digest, erc6492Data.signature]
++        });
++        if (typeof magicValue !== "string" || magicValue.toLowerCase() !== EIP1271_MAGIC_VALUE) {
++          return {
++            isValid: false,
++            invalidReason: "invalid_exact_evm_payload_signature",
++            payer
++          };
++        }
++      } catch {
++        return {
++          isValid: false,
++          invalidReason: "invalid_exact_evm_payload_signature",
++          payer
++        };
++      }
++    } else {
++      const hasDeploymentInfo = erc6492Data.address && erc6492Data.data && !isAddressEqual(erc6492Data.address, "0x0000000000000000000000000000000000000000");
++      if (hasDeploymentInfo) {
++        if (config.deployERC4337WithEIP6492) {
++          // Facilitators with sponsored deployment support can handle this in settle().
++        } else {
+           return {
+             isValid: false,
+             invalidReason: "invalid_exact_evm_payload_undeployed_smart_wallet",
+-            payer: payerAddress
++            payer
+           };
+         }
++      } else if (signatureLength > 130) {
++        return {
++          isValid: false,
++          invalidReason: "invalid_exact_evm_payload_undeployed_smart_wallet",
++          payer
++        };
+       } else {
+         return {
+           isValid: false,
+@@ -94,12 +139,6 @@ async function verifyEIP3009(signer, payload, requirements, eip3009Payload) {
+           payer
+         };
+       }
+-    } else {
+-      return {
+-        isValid: false,
+-        invalidReason: "invalid_exact_evm_payload_signature",
+-        payer
+-      };
+     }
+   }
+   if (getAddress(eip3009Payload.authorization.to) !== getAddress(requirements.payTo)) {
+@@ -156,7 +195,7 @@ async function verifyEIP3009(signer, payload, requirements, eip3009Payload) {
+ }
+ async function settleEIP3009(signer, payload, requirements, eip3009Payload, config) {
+   const payer = eip3009Payload.authorization.from;
+-  const valid = await verifyEIP3009(signer, payload, requirements, eip3009Payload);
++  const valid = await verifyEIP3009(signer, payload, requirements, eip3009Payload, config);
+   if (!valid.isValid) {
+     return {
+       success: false,
+@@ -179,10 +218,15 @@ async function settleEIP3009(signer, payload, requirements, eip3009Payload, conf
+         await signer.waitForTransactionReceipt({ hash: deployTx });
+       }
+     }
+-    const signatureLength = signature.startsWith("0x") ? signature.length - 2 : signature.length;
+-    const isECDSA = signatureLength === 130;
++    let bytecode2;
++    try {
++      bytecode2 = await signer.getCode({ address: payer });
++    } catch {
++      bytecode2 = undefined;
++    }
++    const isContractWallet = Boolean(bytecode2 && bytecode2 !== "0x");
+     let tx;
+-    if (isECDSA) {
++    if (!isContractWallet) {
+       const parsedSig = parseSignature(signature);
+       tx = await signer.writeContract({
+         address: getAddress(requirements.asset),
+@@ -244,7 +288,7 @@ async function settleEIP3009(signer, payload, requirements, eip3009Payload, conf
+ }
+ 
+ // src/exact/facilitator/permit2.ts
+-import { getAddress as getAddress2 } from "viem";
++import { getAddress as getAddress2, hashTypedData as hashTypedData2, parseErc6492Signature as parseErc6492Signature2 } from "viem";
+ var erc20AllowanceABI = [
+   {
+     type: "function",
+@@ -341,25 +385,55 @@ async function verifyPermit2(signer, payload, requirements, permit2Payload) {
+       }
+     }
+   };
++  const signedPayload2 = permit2Payload.signature;
++  const erc6492Data2 = parseErc6492Signature2(signedPayload2);
++  let isValidSignature2 = false;
+   try {
+-    const isValid = await signer.verifyTypedData({
++    isValidSignature2 = await signer.verifyTypedData({
+       address: payer,
+       ...permit2TypedData,
+-      signature: permit2Payload.signature
++      signature: signedPayload2
+     });
+-    if (!isValid) {
++  } catch {
++    isValidSignature2 = false;
++  }
++  if (!isValidSignature2) {
++    let bytecode;
++    try {
++      bytecode = await signer.getCode({ address: payer });
++    } catch {
++      bytecode = undefined;
++    }
++    if (bytecode && bytecode !== "0x") {
++      const digest = hashTypedData2(permit2TypedData);
++      try {
++        const magicValue = await signer.readContract({
++          address: payer,
++          abi: eip1271ABI,
++          functionName: "isValidSignature",
++          args: [digest, erc6492Data2.signature]
++        });
++        if (typeof magicValue !== "string" || magicValue.toLowerCase() !== EIP1271_MAGIC_VALUE) {
++          return {
++            isValid: false,
++            invalidReason: "invalid_permit2_signature",
++            payer
++          };
++        }
++      } catch {
++        return {
++          isValid: false,
++          invalidReason: "invalid_permit2_signature",
++          payer
++        };
++      }
++    } else {
+       return {
+         isValid: false,
+         invalidReason: "invalid_permit2_signature",
+         payer
+       };
+     }
+-  } catch {
+-    return {
+-      isValid: false,
+-      invalidReason: "invalid_permit2_signature",
+-      payer
+-    };
+   }
+   try {
+     const allowance = await signer.readContract({
+@@ -531,7 +605,7 @@ var ExactEvmScheme = class {
+       return verifyPermit2(this.signer, payload, requirements, rawPayload);
+     }
+     const eip3009Payload = rawPayload;
+-    return verifyEIP3009(this.signer, payload, requirements, eip3009Payload);
++    return verifyEIP3009(this.signer, payload, requirements, eip3009Payload, this.config);
+   }
+   /**
+    * Settles a payment by executing the transfer.
