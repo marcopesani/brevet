@@ -38,7 +38,7 @@ function chainDisplayName(config: ChainConfig): string {
 }
 
 export function ChainSelector() {
-  const { activeChain, setActiveChainId, supportedChains } = useChain()
+  const { activeChain, setActiveChainId, supportedChains, isSwitchingChain } = useChain()
 
   const mainnets = supportedChains.filter((c) => !c.chain.testnet)
   const testnets = supportedChains.filter((c) => c.chain.testnet)
@@ -47,6 +47,7 @@ export function ChainSelector() {
     <Select
       value={String(activeChain.chain.id)}
       onValueChange={(value) => setActiveChainId(Number(value))}
+      disabled={isSwitchingChain}
     >
       <SelectTrigger size="sm" className="w-full">
         <SelectValue>
