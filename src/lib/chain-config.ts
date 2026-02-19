@@ -40,7 +40,7 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     chain: sepolia,
     usdcAddress: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
     usdcDomain: {
-      name: "USD Coin",
+      name: "USDC",
       version: "2",
       chainId: 11155111,
       verifyingContract: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
@@ -66,7 +66,7 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     chain: baseSepolia,
     usdcAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     usdcDomain: {
-      name: "USD Coin",
+      name: "USDC",
       version: "2",
       chainId: 84532,
       verifyingContract: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
@@ -144,7 +144,7 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     chain: polygonAmoy,
     usdcAddress: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
     usdcDomain: {
-      name: "USD Coin",
+      name: "USDC",
       version: "2",
       chainId: 80002,
       verifyingContract: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",

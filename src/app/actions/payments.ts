@@ -16,6 +16,7 @@ import { createTransaction } from "@/lib/data/transactions";
 import { buildPaymentHeaders, extractSettleResponse, extractTxHashFromResponse } from "@/lib/x402/headers";
 import { logger } from "@/lib/logger";
 import type { Hex } from "viem";
+import { PaymentPayload } from "@x402/core/types";
 
 export async function getPendingPayments() {
   const auth = await getAuthenticatedUser();
@@ -70,7 +71,7 @@ export async function approvePendingPayment(
     ? storedPaymentRequired.accepts[0]
     : (Array.isArray(storedPaymentRequired) ? storedPaymentRequired[0] : storedPaymentRequired);
 
-  const paymentPayload = {
+  const paymentPayload: PaymentPayload = {
     x402Version,
     resource,
     accepted: acceptedRequirement,
