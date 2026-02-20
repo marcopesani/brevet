@@ -262,8 +262,6 @@ brevet/
 | `NEXTAUTH_URL` | Production | The canonical URL of your site (default: `http://localhost:3000`) |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | Yes | WalletConnect project ID from [dashboard.reown.com](https://dashboard.reown.com) |
 | `NEXT_PUBLIC_CHAIN_ID` | No | Default chain ID: `8453` (Base mainnet, default), `84532` (Base Sepolia), `1` (Ethereum mainnet), or `11155111` (Ethereum Sepolia) |
-| `NEXT_PUBLIC_ALCHEMY_ID` | No | Alchemy API key for enhanced RPC access |
-| `RPC_URL` | No | Custom RPC URL (defaults to public Base RPC) |
 
 ## How x402 Works
 
