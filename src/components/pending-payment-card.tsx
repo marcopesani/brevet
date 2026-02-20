@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { authorizationTypes } from "@x402/evm";
 import type { PaymentRequirements } from "@x402/core/types";
 import { useChain } from "@/contexts/chain-context";
-import { CHAIN_CONFIGS } from "@/lib/chain-config";
+import { CHAIN_CONFIGS, getNetworkIdentifiers } from "@/lib/chain-config";
 import type { Hex } from "viem";
 import { toast } from "sonner";
 import {
@@ -122,8 +122,9 @@ export default function PendingPaymentCard({
     try {
       const parsed = JSON.parse(payment.paymentRequirements);
       const requirements: PaymentRequirements[] = Array.isArray(parsed) ? parsed : parsed.accepts;
+      const acceptedNetworks = getNetworkIdentifiers(paymentChainConfig);
       const requirement = requirements.find(
-        (r) => r.scheme === "exact" && r.network === paymentChainConfig.networkString
+        (r) => r.scheme === "exact" && r.network != null && acceptedNetworks.includes(r.network)
       );
 
       if (!requirement) {

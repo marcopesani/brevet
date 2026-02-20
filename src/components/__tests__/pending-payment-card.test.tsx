@@ -96,6 +96,18 @@ const ARB_PAYMENT_REQUIREMENTS = JSON.stringify({
   ],
 });
 
+// Plain chain name (e.g. Zapper returns "base" instead of "eip155:8453")
+const BASE_PLAIN_NETWORK_REQUIREMENTS = JSON.stringify({
+  accepts: [
+    {
+      scheme: "exact",
+      network: "base",
+      amount: "1100",
+      payTo: "0x43a2a720cd0911690c248075f4a29a5e7716f758",
+    },
+  ],
+});
+
 function createPayment(overrides: Partial<PendingPayment> = {}): PendingPayment {
   return {
     id: "pay-1",
@@ -208,5 +220,29 @@ describe("PendingPaymentCard chain switch guard", () => {
     });
 
     expect(mockSignTypedDataAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("PendingPaymentCard payment requirement network match", () => {
+  it("accepts requirement with plain network name (e.g. base) and proceeds to sign", async () => {
+    const payment = createPayment({
+      chainId: 8453,
+      paymentRequirements: BASE_PLAIN_NETWORK_REQUIREMENTS,
+    });
+
+    mockSignTypedDataAsync.mockResolvedValueOnce("0xsignature");
+
+    renderCard(payment);
+
+    const approveButtons = screen.getAllByRole("button");
+    const approveButton = approveButtons.find((b) => b.textContent?.includes("Approve"));
+    fireEvent.click(approveButton!);
+
+    await waitFor(() => {
+      expect(mockSignTypedDataAsync).toHaveBeenCalled();
+    });
+
+    expect(mockApprovePendingPayment).toHaveBeenCalled();
+    expect(mockToastError).not.toHaveBeenCalledWith("No supported payment requirement found");
   });
 });
