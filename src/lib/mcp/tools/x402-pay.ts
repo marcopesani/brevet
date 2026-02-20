@@ -2,6 +2,7 @@ import { z } from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executePayment } from "@/lib/x402/payment";
 import { createPendingPayment } from "@/lib/data/payments";
+import { formatAmountForDisplay } from "@/lib/x402/display";
 import { resolveChainParam, textContent, jsonContent, toolError } from "../shared";
 
 export function registerX402Pay(server: McpServer, userId: string): void {
@@ -59,7 +60,8 @@ export function registerX402Pay(server: McpServer, userId: string): void {
           const pendingResult = resultAny as {
             status: string;
             paymentRequirements: string;
-            amount: number;
+            amountRaw?: string;
+            asset?: string;
             chainId?: number;
           };
 
@@ -67,15 +69,24 @@ export function registerX402Pay(server: McpServer, userId: string): void {
             userId,
             url,
             method: method ?? "GET",
-            amount: pendingResult.amount,
+            amountRaw: pendingResult.amountRaw,
+            asset: pendingResult.asset,
             chainId: pendingResult.chainId,
             paymentRequirements: pendingResult.paymentRequirements,
             body,
             headers,
           });
 
+          const chainId = pendingResult.chainId ?? 8453;
+          const { displayAmount, symbol } = formatAmountForDisplay(
+            pendingResult.amountRaw,
+            pendingResult.asset,
+            chainId,
+          );
+          const amountLabel = displayAmount !== "—" ? `${displayAmount} ${symbol}` : "unknown amount";
+
           return textContent(
-            `Payment of $${pendingResult.amount.toFixed(6)} requires user approval. Payment ID: ${pendingPayment.id}. The user has been notified and has 30 minutes to approve. Use x402_check_pending to check the status.`,
+            `Payment of ${amountLabel} requires user approval. Payment ID: ${pendingPayment.id}. The user has been notified and has 30 minutes to approve. Use x402_check_pending to check the status.`,
           );
         }
 

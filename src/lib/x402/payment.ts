@@ -479,7 +479,8 @@ export async function executePayment(
       status: "pending_approval",
       signingStrategy: "manual_approval",
       paymentRequirements: JSON.stringify(paymentRequired),
-      amount: amountUsd,
+      amountRaw: selectedRequirement.amount ?? (selectedRequirement as unknown as { maxAmountRequired?: string }).maxAmountRequired ?? "",
+      asset: selectedRequirement.asset,
       chainId: selectedChainId,
     };
   }
@@ -518,7 +519,8 @@ export async function executePayment(
       status: "pending_approval",
       signingStrategy: "manual_approval",
       paymentRequirements: JSON.stringify(paymentRequired),
-      amount: amountUsd,
+      amountRaw: selectedRequirement.amount ?? (selectedRequirement as unknown as { maxAmountRequired?: string }).maxAmountRequired ?? "",
+      asset: selectedRequirement.asset,
       chainId: selectedChainId,
     };
   }

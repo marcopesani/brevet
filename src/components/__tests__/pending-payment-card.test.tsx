@@ -74,12 +74,14 @@ import PendingPaymentCard, {
 } from "@/components/pending-payment-card";
 
 // ── Helpers ─────────────────────────────────────────────────────────
+const BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BASE_PAYMENT_REQUIREMENTS = JSON.stringify({
   accepts: [
     {
       scheme: "exact",
       network: "eip155:8453",
       amount: "100000",
+      asset: BASE_USDC_ADDRESS,
       payTo: "0x1234567890123456789012345678901234567890",
     },
   ],
@@ -103,6 +105,17 @@ const BASE_PLAIN_NETWORK_REQUIREMENTS = JSON.stringify({
       scheme: "exact",
       network: "base",
       amount: "1100",
+      payTo: "0x43a2a720cd0911690c248075f4a29a5e7716f758",
+    },
+  ],
+});
+
+// Requirement with no amount — approve must show error and not sign
+const BASE_NO_AMOUNT_REQUIREMENTS = JSON.stringify({
+  accepts: [
+    {
+      scheme: "exact",
+      network: "base",
       payTo: "0x43a2a720cd0911690c248075f4a29a5e7716f758",
     },
   ],
@@ -244,5 +257,44 @@ describe("PendingPaymentCard payment requirement network match", () => {
 
     expect(mockApprovePendingPayment).toHaveBeenCalled();
     expect(mockToastError).not.toHaveBeenCalledWith("No supported payment requirement found");
+  });
+
+  it("shows error and does not sign when requirement has no amount", async () => {
+    const payment = createPayment({
+      chainId: 8453,
+      paymentRequirements: BASE_NO_AMOUNT_REQUIREMENTS,
+    });
+
+    renderCard(payment);
+
+    const approveButtons = screen.getAllByRole("button");
+    const approveButton = approveButtons.find((b) => b.textContent?.includes("Approve"));
+    fireEvent.click(approveButton!);
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("Payment requirement has no amount; cannot approve");
+    });
+
+    expect(mockSignTypedDataAsync).not.toHaveBeenCalled();
+    expect(mockApprovePendingPayment).not.toHaveBeenCalled();
+  });
+
+  it("displays formatted amount and symbol from requirement", () => {
+    const payment = createPayment({
+      chainId: 8453,
+      paymentRequirements: BASE_PAYMENT_REQUIREMENTS,
+    });
+    renderCard(payment);
+    expect(screen.getByText("0.1 USDC")).toBeInTheDocument();
+  });
+
+  it("displays Unknown when requirement has no amount", () => {
+    const payment = createPayment({
+      chainId: 8453,
+      amount: 0,
+      paymentRequirements: BASE_NO_AMOUNT_REQUIREMENTS,
+    });
+    renderCard(payment);
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
   });
 });

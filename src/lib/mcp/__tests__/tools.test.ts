@@ -399,7 +399,8 @@ describe("x402_check_pending tool", () => {
     const parsed = parseToolResult(result);
     expect(parsed.status).toBe("pending");
     expect(parsed.id).toBe(payment._id.toString());
-    expect(parsed.amount).toBe(0.05);
+    expect(parsed.amountRaw).toBe(null);
+    expect(parsed.amountDisplay).toBe(null);
     expect(parsed.url).toBe("https://api.example.com/resource");
     expect(parsed.timeRemainingSeconds).toBeGreaterThan(0);
     expect(parsed.timeRemainingSeconds).toBeLessThanOrEqual(600);

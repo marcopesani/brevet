@@ -324,7 +324,8 @@ describe("E2E: MCP Tool Pipeline", () => {
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.id).toBe(pending.id);
       expect(parsed.status).toBe("pending");
-      expect(parsed.amount).toBe(0.05);
+      expect(parsed).toHaveProperty("amountRaw");
+      expect(parsed).toHaveProperty("amountDisplay");
       expect(parsed.url).toBe("https://api.example.com/paid-resource");
       expect(parsed.timeRemainingSeconds).toBeGreaterThan(0);
     });

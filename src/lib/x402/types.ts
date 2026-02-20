@@ -37,8 +37,10 @@ export interface PaymentResult {
   error?: string;
   /** Included when status is "pending_approval" — JSON-encoded payment requirements for client-side signing. */
   paymentRequirements?: string;
-  /** Amount in USD for the pending payment. */
-  amount?: number;
+  /** Raw token amount from the selected requirement (when status is "pending_approval"). */
+  amountRaw?: string;
+  /** Asset contract address from the selected requirement (when status is "pending_approval"). */
+  asset?: string;
   /** The chain ID selected for this payment (included when status is "pending_approval" or "completed"). */
   chainId?: number;
   /** Settlement data from the Payment-Response header (V2) or X-Payment-Response (V1). */

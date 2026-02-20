@@ -7,6 +7,7 @@ import { authorizationTypes } from "@x402/evm";
 import type { PaymentRequirements } from "@x402/core/types";
 import { useChain } from "@/contexts/chain-context";
 import { CHAIN_CONFIGS, getNetworkIdentifiers } from "@/lib/chain-config";
+import { formatAmountForDisplay } from "@/lib/x402/display";
 import type { Hex } from "viem";
 import { toast } from "sonner";
 import {
@@ -30,7 +31,9 @@ import { Clock, Check, X, Loader2 } from "lucide-react";
 export interface PendingPayment {
   id: string;
   url: string;
-  amount: number;
+  amount?: number;
+  amountRaw?: string;
+  asset?: string;
   chainId?: number;
   paymentRequirements: string;
   status: string;
@@ -131,6 +134,14 @@ export default function PendingPaymentCard({
         toast.error("No supported payment requirement found");
         return;
       }
+      if (!requirement.payTo) {
+        toast.error("Payment requirement missing payTo address");
+        return;
+      }
+      if (requirement.amount == null || requirement.amount === "") {
+        toast.error("Payment requirement has no amount; cannot approve");
+        return;
+      }
 
       const amountWei = BigInt(requirement.amount);
       const nonce = generateNonce();
@@ -214,6 +225,36 @@ export default function PendingPaymentCard({
   const urgencyVariant = getUrgencyVariant(remaining);
   const isActioning = actionInProgress !== null;
 
+  // Display amount from requirement (amountRaw + asset) or legacy payment.amount
+  const parsed = (() => {
+    try {
+      return JSON.parse(payment.paymentRequirements);
+    } catch {
+      return null;
+    }
+  })();
+  const requirements: PaymentRequirements[] = parsed
+    ? (Array.isArray(parsed) ? parsed : parsed.accepts ?? [])
+    : [];
+  const acceptedNetworks = getNetworkIdentifiers(paymentChainConfig);
+  const displayRequirement = requirements.find(
+    (r) => r.scheme === "exact" && r.network != null && acceptedNetworks.includes(r.network),
+  );
+  const amountForDisplay =
+    displayRequirement && (payment.amountRaw != null || displayRequirement.amount)
+      ? formatAmountForDisplay(
+          payment.amountRaw ?? displayRequirement.amount,
+          payment.asset ?? displayRequirement.asset,
+          payment.chainId ?? paymentChainConfig.chain.id,
+        )
+      : payment.amount != null && payment.amount > 0
+        ? { displayAmount: payment.amount.toFixed(6), symbol: "USDC" }
+        : { displayAmount: "—", symbol: "" };
+  const amountLabel =
+    amountForDisplay.displayAmount === "—"
+      ? "Unknown"
+      : `${amountForDisplay.displayAmount} ${amountForDisplay.symbol}`.trim();
+
   return (
     <Card>
       <CardHeader>
@@ -230,7 +271,7 @@ export default function PendingPaymentCard({
       <CardContent className="space-y-2">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <div className="text-muted-foreground">Amount</div>
-          <div className="font-medium">${payment.amount.toFixed(6)} USDC</div>
+          <div className="font-medium">{amountLabel}</div>
           <div className="text-muted-foreground">Chain</div>
           <div>{paymentChainConfig.chain.name}</div>
           <div className="text-muted-foreground">Created</div>

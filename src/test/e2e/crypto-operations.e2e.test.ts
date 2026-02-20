@@ -465,7 +465,7 @@ describe("E2E: Crypto Operations", () => {
       expect(result.success).toBe(false);
       expect(result.status).toBe("pending_approval");
       expect(result.signingStrategy).toBe("manual_approval");
-      expect(result.amount).toBe(0.05);
+      expect(result.amountRaw).toBe("50000");
       expect(result.paymentRequirements).toBeDefined();
     });
   });
