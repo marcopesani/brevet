@@ -9,6 +9,21 @@ const DEFAULT_CHAIN_ID = parseInt(
   10,
 );
 
+/** Serialize a lean SmartAccount doc for the Server→Client boundary. */
+function serialize<T extends { _id: Types.ObjectId; userId: Types.ObjectId; createdAt?: Date; updatedAt?: Date; sessionKeyExpiry?: Date }>(
+  doc: T,
+) {
+  const { _id, userId, createdAt, updatedAt, sessionKeyExpiry, ...rest } = doc;
+  return {
+    ...rest,
+    id: _id.toString(),
+    userId: userId.toString(),
+    ...(createdAt !== undefined && { createdAt: createdAt instanceof Date ? createdAt.toISOString() : createdAt }),
+    ...(updatedAt !== undefined && { updatedAt: updatedAt instanceof Date ? updatedAt.toISOString() : updatedAt }),
+    ...(sessionKeyExpiry !== undefined && { sessionKeyExpiry: sessionKeyExpiry instanceof Date ? sessionKeyExpiry.toISOString() : sessionKeyExpiry }),
+  };
+}
+
 /**
  * Get the user's smart account record for a specific chain (excludes sensitive fields).
  * Returns null if not found.
@@ -22,7 +37,7 @@ export async function getSmartAccount(userId: string, chainId: number) {
     .select("-sessionKeyEncrypted -serializedAccount")
     .lean();
   if (!doc) return null;
-  return { ...doc, id: doc._id.toString(), userId: doc.userId.toString() };
+  return serialize(doc);
 }
 
 /**
@@ -36,7 +51,7 @@ export async function getSmartAccountWithSessionKey(userId: string, chainId: num
     chainId,
   }).lean();
   if (!doc) return null;
-  return { ...doc, id: doc._id.toString(), userId: doc.userId.toString() };
+  return serialize(doc);
 }
 
 /**
@@ -49,11 +64,7 @@ export async function getAllSmartAccounts(userId: string) {
   })
     .select("-sessionKeyEncrypted -serializedAccount")
     .lean();
-  return docs.map((doc) => ({
-    ...doc,
-    id: doc._id.toString(),
-    userId: doc.userId.toString(),
-  }));
+  return docs.map(serialize);
 }
 
 /**
@@ -96,7 +107,7 @@ export async function createSmartAccountRecord(data: {
     sessionKeyStatus: "pending_grant",
   });
   const lean = doc.toObject();
-  return { ...lean, id: lean._id.toString(), userId: lean.userId.toString() };
+  return serialize(lean);
 }
 
 /**
@@ -116,7 +127,7 @@ export async function ensureSmartAccount(
     chainId,
   }).lean();
   if (existing) {
-    return { ...existing, id: existing._id.toString(), userId: existing.userId.toString() };
+    return serialize(existing);
   }
 
   const smartAccountAddress = await computeSmartAccountAddress(
@@ -136,7 +147,7 @@ export async function ensureSmartAccount(
     sessionKeyStatus: "pending_grant",
   });
   const lean = doc.toObject();
-  return { ...lean, id: lean._id.toString(), userId: lean.userId.toString() };
+  return serialize(lean);
 }
 
 /**
@@ -155,7 +166,7 @@ export async function storeSerializedAccount(
     { returnDocument: "after" },
   ).lean();
   if (!doc) return null;
-  return { ...doc, id: doc._id.toString(), userId: doc.userId.toString() };
+  return serialize(doc);
 }
 
 /**
@@ -179,5 +190,5 @@ export async function updateSessionKeyStatus(
     { returnDocument: "after" },
   ).lean();
   if (!doc) return null;
-  return { ...doc, id: doc._id.toString(), userId: doc.userId.toString() };
+  return serialize(doc);
 }
