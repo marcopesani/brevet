@@ -13,13 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 interface WalletBalanceProps {
-  accountAddress: string | null;
-  balance: string | null;
+  accountAddress?: string;
+  balance?: string;
   balanceLoading: boolean;
-  balanceError: Error | null;
+  balanceError?: Error;
   chainName: string;
   explorerUrl: string;
-  sessionKeyStatus?: string | null;
+  sessionKeyStatus?: string;
 }
 
 export default function WalletBalance({

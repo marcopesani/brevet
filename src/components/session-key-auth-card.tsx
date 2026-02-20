@@ -39,7 +39,7 @@ import {
 import { getChainConfig } from "@/lib/chain-config";
 
 interface SessionKeyAuthCardProps {
-  smartAccountAddress: string | null;
+  smartAccountAddress?: string;
   sessionKeyAddress?: string;
   chainId: number;
 }

@@ -35,7 +35,7 @@ const ERC20_ABI = [
 ] as const;
 
 interface FundWalletFormProps {
-  accountAddress: string | null;
+  accountAddress?: string;
   chainId?: number;
 }
 
