@@ -38,10 +38,12 @@ export async function createPolicy(data: {
   if (!auth) throw new Error("Unauthorized");
 
   const policy = await _createPolicy(auth.userId, data);
-  if (!policy) throw new Error("A policy for this endpoint pattern already exists");
+  if (!policy) {
+    return { success: false as const, error: "A policy for this endpoint pattern already exists" };
+  }
 
   revalidatePath("/dashboard/policies");
-  return policy;
+  return { success: true as const, policy };
 }
 
 export async function updatePolicy(
