@@ -108,6 +108,11 @@ function validateUrl(url: string): string | null {
     return `Unsupported protocol: ${parsed.protocol} (only http and https are allowed)`;
   }
 
+  // Allow internal/private network targets during local development.
+  if (process.env.NODE_ENV === "development") {
+    return null;
+  }
+
   const hostname = parsed.hostname;
 
   // Reject localhost and loopback
