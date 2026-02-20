@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { getAuthenticatedUser } from "@/lib/auth";
-import WalletContent from "./wallet-content";
+import WalletPageContent from "./wallet-page-content";
+import WalletLoading from "./loading";
 
 export default async function WalletPage() {
   const user = await getAuthenticatedUser();
@@ -9,5 +11,9 @@ export default async function WalletPage() {
     redirect("/login");
   }
 
-  return <WalletContent userId={user.userId} />;
+  return (
+    <Suspense fallback={<WalletLoading />}>
+      <WalletPageContent />
+    </Suspense>
+  );
 }

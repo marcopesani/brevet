@@ -7,7 +7,6 @@ import {
 import { createPublicClient, http } from "viem";
 import { connectDB } from "@/lib/db";
 import { User } from "@/lib/models/user";
-import { ensureAllHotWallets } from "@/lib/data/wallet";
 
 declare module "next-auth" {
   interface User {
@@ -30,7 +29,13 @@ declare module "next-auth/jwt" {
   }
 }
 
-const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!;
+const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+if (!projectId || projectId.trim() === "")
+  throw new Error("Missing required env var: NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID");
+
+const authSecret = process.env.NEXTAUTH_SECRET;
+if (!authSecret || authSecret.trim() === "")
+  throw new Error("Missing required env var: NEXTAUTH_SECRET");
 
 /** Validate and extract message + signature from credentials. */
 export function extractCredentials(credentials: Record<string, string> | undefined): {
@@ -65,7 +70,7 @@ export async function verifySignature(
   });
 }
 
-/** Find or create a user by wallet address, ensuring hot wallets exist on all environment chains. */
+/** Find or create a user by wallet address. */
 export async function upsertUser(walletAddress: string) {
   await connectDB();
 
@@ -75,15 +80,11 @@ export async function upsertUser(walletAddress: string) {
     user = await User.create({ walletAddress });
   }
 
-  // Create hot wallets for any chains that don't have one yet.
-  // For new users this creates all wallets; for existing users it backfills missing chains.
-  await ensureAllHotWallets(user._id.toString());
-
   return user;
 }
 
 export const authOptions: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: authSecret,
   pages: {
     signIn: "/login",
   },

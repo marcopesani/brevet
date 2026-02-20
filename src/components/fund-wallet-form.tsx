@@ -35,12 +35,12 @@ const ERC20_ABI = [
 ] as const;
 
 interface FundWalletFormProps {
-  hotWalletAddress: string | null;
+  accountAddress?: string;
   chainId?: number;
 }
 
 export default function FundWalletForm({
-  hotWalletAddress,
+  accountAddress,
   chainId,
 }: FundWalletFormProps) {
   const [amount, setAmount] = useState("");
@@ -58,7 +58,7 @@ export default function FundWalletForm({
   });
 
   async function handleFund() {
-    if (!hotWalletAddress || !amount || parseFloat(amount) <= 0) return;
+    if (!accountAddress || !amount || parseFloat(amount) <= 0) return;
 
     if (walletChainId !== chainConfig.chain.id) {
       try {
@@ -74,7 +74,7 @@ export default function FundWalletForm({
       abi: ERC20_ABI,
       functionName: "transfer",
       args: [
-        hotWalletAddress as `0x${string}`,
+        accountAddress as `0x${string}`,
         parseUnits(amount, USDC_DECIMALS),
       ],
     });
@@ -99,7 +99,7 @@ export default function FundWalletForm({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ArrowDownLeft className="h-5 w-5" />
-          Fund Wallet
+          Fund Account
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -113,7 +113,7 @@ export default function FundWalletForm({
             onChange={(e) => setAmount(e.target.value)}
             min="0"
             step="0.01"
-            disabled={!hotWalletAddress || isPending || isConfirming}
+            disabled={!accountAddress || isPending || isConfirming}
           />
         </div>
         {error && (
@@ -158,14 +158,14 @@ export default function FundWalletForm({
         ) : (
           <Button
             onClick={handleFund}
-            disabled={!hotWalletAddress || isPending || isConfirming || !amount || parseFloat(amount) <= 0}
+            disabled={!accountAddress || isPending || isConfirming || !amount || parseFloat(amount) <= 0}
             className="w-full"
           >
             {isPending
               ? "Confirming in wallet..."
               : isConfirming
                 ? "Transaction pending..."
-                : "Fund Wallet"}
+                : "Fund Account"}
           </Button>
         )}
       </CardFooter>

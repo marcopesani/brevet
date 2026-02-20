@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Wallet, Copy, Check, ExternalLink } from "lucide-react";
+import { Wallet, Copy, Check, ExternalLink, Shield } from "lucide-react";
 import {
   Card,
   CardHeader,
@@ -13,64 +13,65 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 interface WalletBalanceProps {
-  hotWalletAddress: string | null;
-  userId: string;
-  balance: string | null;
+  accountAddress?: string;
+  balance?: string;
   balanceLoading: boolean;
-  balanceError: Error | null;
+  balanceError?: Error;
   chainName: string;
   explorerUrl: string;
+  sessionKeyStatus?: string;
 }
 
 export default function WalletBalance({
-  hotWalletAddress,
+  accountAddress,
   balance,
   balanceLoading,
   balanceError,
   chainName,
   explorerUrl,
+  sessionKeyStatus,
 }: WalletBalanceProps) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    if (!hotWalletAddress) return;
-    await navigator.clipboard.writeText(hotWalletAddress);
+    if (!accountAddress) return;
+    await navigator.clipboard.writeText(accountAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
 
-  if (!hotWalletAddress) {
+  if (!accountAddress) {
     return (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Wallet className="h-5 w-5" />
-            Hot Wallet — {chainName}
+            Smart Account — {chainName}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
             {balanceLoading
-              ? "Loading wallet..."
-              : "No hot wallet found. Please reconnect your wallet."}
+              ? "Loading account..."
+              : "No smart account found. Please reconnect your wallet."}
           </p>
         </CardContent>
       </Card>
     );
   }
 
-  const truncatedAddress = `${hotWalletAddress.slice(0, 6)}...${hotWalletAddress.slice(-4)}`;
+  const truncatedAddress = `${accountAddress.slice(0, 6)}...${accountAddress.slice(-4)}`;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Wallet className="h-5 w-5" />
-          Hot Wallet — {chainName}
+          Smart Account — {chainName}
         </CardTitle>
         <CardDescription className="flex items-center gap-2">
           <a
-            href={`${explorerUrl}/address/${hotWalletAddress}`}
+            href={`${explorerUrl}/address/${accountAddress}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 font-mono text-xs hover:underline"
@@ -92,7 +93,7 @@ export default function WalletBalance({
           </Button>
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
         <div className="space-y-1">
           <p className="text-sm text-muted-foreground">USDC Balance</p>
           <div className="flex items-baseline gap-2">
@@ -108,6 +109,28 @@ export default function WalletBalance({
             <Badge variant="secondary">USDC</Badge>
           </div>
         </div>
+        {sessionKeyStatus && (
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Session Key:</span>
+            <Badge
+              variant={sessionKeyStatus === "active" ? "default" : "outline"}
+              className={
+                sessionKeyStatus === "active"
+                  ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                  : ""
+              }
+            >
+              {sessionKeyStatus === "active"
+                ? "Active"
+                : sessionKeyStatus === "pending_grant"
+                  ? "Pending Authorization"
+                  : sessionKeyStatus === "expired"
+                    ? "Expired"
+                    : "Revoked"}
+            </Badge>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

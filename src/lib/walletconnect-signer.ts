@@ -3,6 +3,7 @@ import type { PaymentRequirements } from "@x402/core/types";
 import { authorizationTypes } from "@x402/evm";
 import crypto from "crypto";
 import { getChainConfig, getDefaultChainConfig } from "@/lib/chain-config";
+import { getRequirementAmount } from "@/lib/x402/requirements";
 
 /**
  * A signing request to be fulfilled client-side via Wagmi's `useSignTypedData`.
@@ -46,7 +47,11 @@ export function createSigningRequest(
   const chainConfig = chainId ? getChainConfig(chainId) : undefined;
   const usdcDomain = chainConfig?.usdcDomain ?? getDefaultChainConfig().usdcDomain;
 
-  const amountWei = BigInt(requirement.amount);
+  const amountStr = getRequirementAmount(requirement);
+  if (amountStr == null || amountStr === "") {
+    throw new Error("Payment requirement has no amount");
+  }
+  const amountWei = BigInt(amountStr);
   const nonce = `0x${crypto.randomBytes(32).toString("hex")}` as Hex;
   const now = BigInt(Math.floor(Date.now() / 1_000));
 

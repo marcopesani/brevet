@@ -5,7 +5,7 @@ const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
 export interface IEndpointPolicy {
   _id: Types.ObjectId;
   endpointPattern: string;
-  payFromHotWallet: boolean;
+  autoSign: boolean;
   chainId: number;
   status: string;
   userId: Types.ObjectId;
@@ -21,7 +21,7 @@ export interface IEndpointPolicyDocument
 const endpointPolicySchema = new Schema<IEndpointPolicyDocument>(
   {
     endpointPattern: { type: String, required: true },
-    payFromHotWallet: { type: Boolean, default: false },
+    autoSign: { type: Boolean, default: false },
     status: { type: String, default: "active" },
     chainId: { type: Number, default: defaultChainId },
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },

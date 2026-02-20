@@ -21,6 +21,25 @@ vi.mock("@/lib/hot-wallet", async (importOriginal) => {
   };
 });
 
+// Mock smart-account signer creation to avoid real RPC calls.
+// Returns a simple EOA signer backed by TEST_PRIVATE_KEY so signature verification works.
+vi.mock("@/lib/smart-account", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/smart-account")>();
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const { TEST_PRIVATE_KEY: key } = await import("@/test/helpers/crypto");
+  const account = privateKeyToAccount(key);
+  const mockSigner = {
+    address: account.address,
+    signTypedData: (args: Parameters<typeof account.signTypedData>[0]) =>
+      account.signTypedData(args),
+  };
+  return {
+    ...actual,
+    createSmartAccountSigner: vi.fn().mockResolvedValue(mockSigner),
+    createSmartAccountSignerFromSerialized: vi.fn().mockResolvedValue(mockSigner),
+  };
+});
+
 describe("E2E: Full Payment Flow", () => {
   let userId: string;
 
@@ -32,10 +51,11 @@ describe("E2E: Full Payment Flow", () => {
     network: "base-sepolia",
     maxAmountRequired: "50000", // 0.05 USDC
     resource: "https://api.example.com/resource",
+    description: "Payment for API access",
     payTo: ("0x" + "b".repeat(40)) as Hex,
     maxTimeoutSeconds: 3600,
     asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-    extra: { name: "USD Coin", version: "2" },
+    extra: { name: "USDC", version: "2" },
   };
 
   /**
@@ -93,7 +113,7 @@ describe("E2E: Full Payment Flow", () => {
 
     expect(result.success).toBe(true);
     expect(result.status).toBe("completed");
-    expect(result.signingStrategy).toBe("hot_wallet");
+    expect(result.signingStrategy).toBe("auto_sign");
 
     // Verify that the second fetch call included a payment header
     expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -181,14 +201,14 @@ describe("E2E: Full Payment Flow", () => {
     expect(result.error).toContain("Policy denied");
   });
 
-  it("should return pending_approval when payFromHotWallet is false", async () => {
-    // Update policy to disable hot wallet
+  it("should return pending_approval when autoSign is false", async () => {
+    // Update policy to disable auto-sign
     const existing = await EndpointPolicy.findOne({
       userId,
       endpointPattern: "https://api.example.com",
     });
     await EndpointPolicy.findByIdAndUpdate(existing!._id, {
-      $set: { payFromHotWallet: false },
+      $set: { autoSign: false },
     });
 
     mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
@@ -201,8 +221,8 @@ describe("E2E: Full Payment Flow", () => {
 
     expect(result.success).toBe(false);
     expect(result.status).toBe("pending_approval");
-    expect(result.signingStrategy).toBe("walletconnect");
-    expect(result.amount).toBe(0.05);
+    expect(result.signingStrategy).toBe("manual_approval");
+    expect(result.amountRaw).toBe("50000");
     expect(result.paymentRequirements).toBeDefined();
 
     // Verify no transaction was created (pending, not completed)

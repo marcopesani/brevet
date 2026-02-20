@@ -74,13 +74,17 @@ import PendingPaymentCard, {
 } from "@/components/pending-payment-card";
 
 // ── Helpers ─────────────────────────────────────────────────────────
+const BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+// V2-style so getRequirementAmount returns amount (0.1 USDC)
 const BASE_PAYMENT_REQUIREMENTS = JSON.stringify({
   accepts: [
     {
       scheme: "exact",
       network: "eip155:8453",
       amount: "100000",
+      asset: BASE_USDC_ADDRESS,
       payTo: "0x1234567890123456789012345678901234567890",
+      maxTimeoutSeconds: 3600,
     },
   ],
 });
@@ -91,7 +95,50 @@ const ARB_PAYMENT_REQUIREMENTS = JSON.stringify({
       scheme: "exact",
       network: "eip155:42161",
       amount: "100000",
+      asset: BASE_USDC_ADDRESS,
       payTo: "0x1234567890123456789012345678901234567890",
+      maxTimeoutSeconds: 3600,
+    },
+  ],
+});
+
+// Plain chain name (e.g. Zapper returns "base" instead of "eip155:8453"); V2-style
+const BASE_PLAIN_NETWORK_REQUIREMENTS = JSON.stringify({
+  accepts: [
+    {
+      scheme: "exact",
+      network: "base",
+      amount: "1100",
+      asset: BASE_USDC_ADDRESS,
+      payTo: "0x43a2a720cd0911690c248075f4a29a5e7716f758",
+      maxTimeoutSeconds: 3600,
+    },
+  ],
+});
+
+// V1 format: maxAmountRequired instead of amount (e.g. Zapper); full V1 shape for getRequirementAmount
+const BASE_V1_MAX_AMOUNT_REQUIREMENTS = JSON.stringify({
+  accepts: [
+    {
+      scheme: "exact",
+      network: "base",
+      maxAmountRequired: "1100",
+      resource: "https://api.example.com/resource",
+      description: "Test resource",
+      payTo: "0x43a2a720cd0911690c248075f4a29a5e7716f758",
+      maxTimeoutSeconds: 3600,
+      asset: BASE_USDC_ADDRESS,
+    },
+  ],
+});
+
+// Requirement with no amount — approve must show error and not sign
+const BASE_NO_AMOUNT_REQUIREMENTS = JSON.stringify({
+  accepts: [
+    {
+      scheme: "exact",
+      network: "base",
+      payTo: "0x43a2a720cd0911690c248075f4a29a5e7716f758",
     },
   ],
 });
@@ -208,5 +255,91 @@ describe("PendingPaymentCard chain switch guard", () => {
     });
 
     expect(mockSignTypedDataAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("PendingPaymentCard payment requirement network match", () => {
+  it("accepts requirement with plain network name (e.g. base) and proceeds to sign", async () => {
+    const payment = createPayment({
+      chainId: 8453,
+      paymentRequirements: BASE_PLAIN_NETWORK_REQUIREMENTS,
+    });
+
+    mockSignTypedDataAsync.mockResolvedValueOnce("0xsignature");
+
+    renderCard(payment);
+
+    const approveButtons = screen.getAllByRole("button");
+    const approveButton = approveButtons.find((b) => b.textContent?.includes("Approve"));
+    fireEvent.click(approveButton!);
+
+    await waitFor(() => {
+      expect(mockSignTypedDataAsync).toHaveBeenCalled();
+    });
+
+    expect(mockApprovePendingPayment).toHaveBeenCalled();
+    expect(mockToastError).not.toHaveBeenCalledWith("No supported payment requirement found");
+  });
+
+  it("shows error and does not sign when requirement has no amount", async () => {
+    const payment = createPayment({
+      chainId: 8453,
+      paymentRequirements: BASE_NO_AMOUNT_REQUIREMENTS,
+    });
+
+    renderCard(payment);
+
+    const approveButtons = screen.getAllByRole("button");
+    const approveButton = approveButtons.find((b) => b.textContent?.includes("Approve"));
+    fireEvent.click(approveButton!);
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("Payment requirement has no amount; cannot approve");
+    });
+
+    expect(mockSignTypedDataAsync).not.toHaveBeenCalled();
+    expect(mockApprovePendingPayment).not.toHaveBeenCalled();
+  });
+
+  it("displays formatted amount and symbol from requirement", () => {
+    const payment = createPayment({
+      chainId: 8453,
+      paymentRequirements: BASE_PAYMENT_REQUIREMENTS,
+    });
+    renderCard(payment);
+    expect(screen.getByText("0.1 USDC")).toBeInTheDocument();
+  });
+
+  it("accepts V1 requirement with maxAmountRequired and proceeds to sign", async () => {
+    const payment = createPayment({
+      chainId: 8453,
+      paymentRequirements: BASE_V1_MAX_AMOUNT_REQUIREMENTS,
+    });
+
+    mockSignTypedDataAsync.mockResolvedValueOnce("0xsignature");
+
+    renderCard(payment);
+
+    const approveButtons = screen.getAllByRole("button");
+    const approveButton = approveButtons.find((b) => b.textContent?.includes("Approve"));
+    fireEvent.click(approveButton!);
+
+    await waitFor(() => {
+      expect(mockSignTypedDataAsync).toHaveBeenCalled();
+    });
+
+    expect(mockApprovePendingPayment).toHaveBeenCalled();
+    const signMessage = mockSignTypedDataAsync.mock.calls[0][0].message;
+    expect(signMessage.value).toBe(BigInt(1100));
+  });
+
+  it("displays Unknown when requirement has no amount", () => {
+    const payment = createPayment({
+      chainId: 8453,
+      amount: 0,
+      paymentRequirements: BASE_NO_AMOUNT_REQUIREMENTS,
+    });
+    renderCard(payment);
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
   });
 });

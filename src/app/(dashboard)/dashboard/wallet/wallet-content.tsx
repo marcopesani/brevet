@@ -1,52 +1,107 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import WalletBalance from "@/components/wallet-balance";
-import FundWalletForm from "@/components/fund-wallet-form";
-import WithdrawWalletForm from "@/components/withdraw-wallet-form";
+import NoAccountCard from "./no-account-card";
+import PendingGrantSection from "./pending-grant-section";
+import ActiveWalletSection from "./active-wallet-section";
 import { useWalletBalance } from "@/hooks/use-wallet-balance";
 import { useChain } from "@/contexts/chain-context";
-import { ensureHotWallet } from "@/app/actions/wallet";
+import {
+  setupSmartAccount,
+  getSmartAccountForChain,
+  getAllSmartAccountsAction,
+} from "@/app/actions/smart-account";
 
-interface WalletContentProps {
-  userId: string;
+export interface WalletInitialData {
+  smartAccount: Awaited<ReturnType<typeof getSmartAccountForChain>>;
+  allAccounts: Awaited<ReturnType<typeof getAllSmartAccountsAction>>;
+  balance: Awaited<ReturnType<typeof import("@/app/actions/smart-account").getSmartAccountBalanceAction>>;
 }
 
-export default function WalletContent({ userId }: WalletContentProps) {
+interface WalletContentProps {
+  initialData: WalletInitialData;
+  initialChainId: number;
+}
+
+export default function WalletContent({
+  initialData,
+  initialChainId,
+}: WalletContentProps) {
   const { activeChain } = useChain();
   const chainId = activeChain.chain.id;
+  const queryClient = useQueryClient();
+  const isInitialChain = chainId === initialChainId;
 
-  const { data: walletData, isLoading: walletLoading } = useQuery({
-    queryKey: ["hot-wallet", chainId],
-    queryFn: () => ensureHotWallet(chainId),
+  const {
+    data: smartAccount,
+    isLoading: accountLoading,
+  } = useQuery({
+    queryKey: ["smart-account", chainId],
+    queryFn: () => getSmartAccountForChain(chainId),
+    initialData: isInitialChain ? initialData.smartAccount : undefined,
   });
 
-  const hotWalletAddress = walletData?.address ?? null;
+  const { data: allAccounts } = useQuery({
+    queryKey: ["smart-accounts-all"],
+    queryFn: () => getAllSmartAccountsAction(),
+    initialData: initialData.allAccounts,
+  });
+
+  const { mutate: doSetup, isPending: setupPending } = useMutation({
+    mutationFn: (cId: number) => setupSmartAccount(cId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["smart-account", chainId] });
+      queryClient.invalidateQueries({ queryKey: ["smart-accounts-all"] });
+    },
+  });
+
+  const smartAccountAddress = smartAccount?.smartAccountAddress;
 
   const {
     balance: liveBalance,
     isLoading: balanceLoading,
     error: balanceError,
-  } = useWalletBalance(!!hotWalletAddress, undefined, chainId);
+  } = useWalletBalance(
+    !!smartAccountAddress,
+    isInitialChain && initialData.balance ? initialData.balance : undefined,
+    chainId,
+  );
 
-  const balance = liveBalance;
+  const sessionKeyStatus = smartAccount?.sessionKeyStatus;
+
+  if (!accountLoading && !smartAccount) {
+    return (
+      <NoAccountCard
+        chainId={chainId}
+        chainName={activeChain.chain.name}
+        hasAnyAccounts={(allAccounts?.length ?? 0) > 0}
+        onSetup={doSetup}
+        setupPending={setupPending}
+      />
+    );
+  }
+
+  if (sessionKeyStatus === "pending_grant") {
+    return (
+      <PendingGrantSection
+        smartAccountAddress={smartAccountAddress}
+        sessionKeyAddress={smartAccount?.sessionKeyAddress}
+        chainId={chainId}
+      />
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-6">
-      <WalletBalance
-        hotWalletAddress={hotWalletAddress}
-        userId={userId}
-        balance={balance}
-        balanceLoading={walletLoading || balanceLoading}
-        balanceError={balanceError}
-        chainName={activeChain.chain.name}
-        explorerUrl={activeChain.explorerUrl}
-      />
-
-      <div className="grid gap-6 md:grid-cols-2">
-        <FundWalletForm hotWalletAddress={hotWalletAddress} chainId={chainId} />
-        <WithdrawWalletForm balance={balance} chainId={chainId} />
-      </div>
-    </div>
+    <ActiveWalletSection
+      smartAccountAddress={smartAccountAddress}
+      balance={liveBalance}
+      balanceLoading={accountLoading || balanceLoading}
+      balanceError={balanceError}
+      chainName={activeChain.chain.name}
+      explorerUrl={activeChain.explorerUrl}
+      sessionKeyStatus={sessionKeyStatus}
+      chainId={chainId}
+    />
   );
 }

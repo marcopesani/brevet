@@ -14,9 +14,13 @@ import {
 } from "@/lib/data/payments";
 import { createTransaction } from "@/lib/data/transactions";
 import { buildPaymentHeaders, extractSettleResponse, extractTxHashFromResponse } from "@/lib/x402/headers";
+import { formatAmountForDisplay } from "@/lib/x402/display";
+import { getRequirementAmount } from "@/lib/x402/requirements";
+import { CHAIN_CONFIGS, getNetworkIdentifiers } from "@/lib/chain-config";
 import { logger } from "@/lib/logger";
+import { safeFetch } from "@/lib/safe-fetch";
 import type { Hex } from "viem";
-import { PaymentPayload } from "@x402/core/types";
+import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 
 export async function getPendingPayments() {
   const auth = await getAuthenticatedUser();
@@ -49,8 +53,6 @@ export async function approvePendingPayment(
   if (!payment) throw new Error("Pending payment not found");
   if (payment.status !== "pending") throw new Error(`Payment is already ${payment.status}`);
 
-  logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: payment.amount });
-
   if (new Date() > payment.expiresAt) {
     logger.warn("Payment expired during approval", { userId: auth.userId, paymentId, action: "payment_expired" });
     await _expirePendingPayment(paymentId, auth.userId);
@@ -61,15 +63,38 @@ export async function approvePendingPayment(
 
   // Backward compat: old records stored just the accepts array, new records store full PaymentRequired
   const isFullFormat = !Array.isArray(storedPaymentRequired) && storedPaymentRequired.accepts;
+  const accepts = isFullFormat
+    ? storedPaymentRequired.accepts
+    : Array.isArray(storedPaymentRequired)
+      ? storedPaymentRequired
+      : [storedPaymentRequired];
+
+  // Resolve the requirement that matches the payment's chainId (same logic as the card)
+  const chainId = payment.chainId ?? 8453;
+  const chainConfig = CHAIN_CONFIGS[chainId];
+  const acceptedNetworks = chainConfig ? getNetworkIdentifiers(chainConfig) : [];
+  const acceptedRequirement =
+    accepts.find(
+      (r: { scheme?: string; network?: string }) =>
+        r.scheme === "exact" && r.network != null && acceptedNetworks.includes(r.network),
+    ) ?? accepts[0];
+
+  const amountRaw =
+    (acceptedRequirement && getRequirementAmount(acceptedRequirement as PaymentRequirements)) ??
+    payment.amountRaw;
+  const { displayAmount } = formatAmountForDisplay(
+    amountRaw,
+    acceptedRequirement?.asset ?? payment.asset,
+    chainId,
+  );
+  const amountForTx = parseFloat(displayAmount) || 0;
+  logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: amountForTx });
 
   const x402Version = isFullFormat ? (storedPaymentRequired.x402Version ?? 1) : 1;
   const resource = isFullFormat
     ? storedPaymentRequired.resource
     : { url: payment.url, description: "", mimeType: "" };
   const extensions = isFullFormat ? storedPaymentRequired.extensions : undefined;
-  const acceptedRequirement = isFullFormat
-    ? storedPaymentRequired.accepts[0]
-    : (Array.isArray(storedPaymentRequired) ? storedPaymentRequired[0] : storedPaymentRequired);
 
   const paymentPayload: PaymentPayload = {
     x402Version,
@@ -97,7 +122,7 @@ export async function approvePendingPayment(
     : {};
 
   try {
-    const paidResponse = await fetch(payment.url, {
+    const paidResponse = await safeFetch(payment.url, {
       method: payment.method,
       headers: {
         ...storedHeaders,
@@ -128,9 +153,9 @@ export async function approvePendingPayment(
     const txStatus = paidResponse.ok ? "completed" : "failed";
 
     await createTransaction({
-      amount: payment.amount,
+      amount: amountForTx,
       endpoint: payment.url,
-      network: acceptedRequirement.network ?? "base",
+      network: acceptedRequirement?.network ?? "base",
       status: txStatus,
       userId: payment.userId,
       txHash: txHash ?? undefined,
@@ -190,9 +215,9 @@ export async function approvePendingPayment(
     });
 
     await createTransaction({
-      amount: payment.amount,
+      amount: amountForTx,
       endpoint: payment.url,
-      network: acceptedRequirement.network ?? "base",
+      network: acceptedRequirement?.network ?? "base",
       status: "failed",
       userId: payment.userId,
       errorMessage: `Network error: ${errorMsg}`,

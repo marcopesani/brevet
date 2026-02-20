@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 const securityFeatures = [
   {
     title: "AES-256 Encrypted Keys",
-    description: "Hot wallet private keys are encrypted at rest with AES-256.",
+    description: "Smart account private keys are encrypted at rest with AES-256.",
     icon: Lock,
   },
   {

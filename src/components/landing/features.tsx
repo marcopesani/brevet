@@ -18,7 +18,7 @@ const features = [
   {
     title: "Automatic Payments",
     description:
-      "Hot wallet auto-signs small payments so your agents never stall on a 402 response.",
+      "Smart account auto-signs small payments so your agents never stall on a 402 response.",
     icon: Zap,
   },
   {

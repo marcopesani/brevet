@@ -17,6 +17,7 @@ import {
   SUPPORTED_CHAINS,
   type ChainConfig,
 } from "@/lib/chain-config";
+import { CHAIN_COOKIE_NAME } from "@/lib/chain-cookie";
 
 interface ChainContextType {
   activeChain: ChainConfig;
@@ -27,23 +28,22 @@ interface ChainContextType {
 
 const ChainContext = createContext<ChainContextType | undefined>(undefined);
 
-function updateLocalStorage(chainId: number) {
+function setChainCookie(chainId: number) {
   if (typeof window !== "undefined") {
-    localStorage.setItem("brevet-active-chain", String(chainId));
+    document.cookie = `${CHAIN_COOKIE_NAME}=${chainId}; path=/; max-age=31536000; SameSite=Lax; Secure`;
   }
 }
 
-export function ChainProvider({ children }: { children: ReactNode }) {
-  const [activeChainId, setActiveChainIdState] = useState<number>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("brevet-active-chain");
-      if (saved) {
-        const parsed = parseInt(saved, 10);
-        if (getChainConfig(parsed)) return parsed;
-      }
-    }
-    return getDefaultChainConfig().chain.id;
-  });
+export function ChainProvider({
+  children,
+  initialChainId,
+}: {
+  children: ReactNode;
+  initialChainId?: number;
+}) {
+  const [activeChainId, setActiveChainIdState] = useState<number>(
+    () => initialChainId ?? getDefaultChainConfig().chain.id,
+  );
 
   const { chainId: walletChainId, isConnected } = useAccount();
   const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain();
@@ -58,7 +58,7 @@ export function ChainProvider({ children }: { children: ReactNode }) {
     // Only sync if the wallet's chain is one we support
     if (!getChainConfig(walletChainId)) return;
     setActiveChainIdState(walletChainId);
-    updateLocalStorage(walletChainId);
+    setChainCookie(walletChainId);
   }, [walletChainId, isConnected, activeChainId]);
 
   const setActiveChainId = useCallback(
@@ -71,16 +71,16 @@ export function ChainProvider({ children }: { children: ReactNode }) {
         try {
           await switchChainAsync({ chainId });
           setActiveChainIdState(chainId);
-          updateLocalStorage(chainId);
+          setChainCookie(chainId);
         } catch {
           toast.error("Failed to switch network");
         } finally {
           isSwitchingRef.current = false;
         }
       } else {
-        // No wallet: update local state + localStorage immediately
+        // No wallet: update local state + cookie immediately
         setActiveChainIdState(chainId);
-        updateLocalStorage(chainId);
+        setChainCookie(chainId);
       }
     },
     [isConnected, switchChainAsync],

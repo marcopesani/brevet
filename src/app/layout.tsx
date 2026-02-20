@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
+import { getInitialChainIdFromCookie } from "@/lib/chain-cookie";
 import Providers from "./providers";
 import "./globals.css";
 
@@ -26,13 +27,16 @@ export default async function RootLayout({
 }>) {
   const headersObj = await headers();
   const cookies = headersObj.get("cookie");
+  const initialChainId = getInitialChainIdFromCookie(cookies);
 
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Providers cookies={cookies}>{children}</Providers>
+        <Providers cookies={cookies} initialChainId={initialChainId}>
+          {children}
+        </Providers>
       </body>
     </html>
   );

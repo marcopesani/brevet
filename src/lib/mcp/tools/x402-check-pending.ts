@@ -5,6 +5,7 @@ import {
   expirePendingPayment,
 } from "@/lib/data/payments";
 import { CHAIN_CONFIGS } from "@/lib/chain-config";
+import { formatAmountForDisplay } from "@/lib/x402/display";
 import { textContent, jsonContent, toolError } from "../shared";
 
 export function registerX402CheckPending(
@@ -82,16 +83,21 @@ export function registerX402CheckPending(
           ),
         );
 
-        const paymentChainId = (payment as unknown as Record<string, unknown>)
-          .chainId as number | undefined;
+        const paymentChainId = payment.chainId;
         const paymentChainConfig = paymentChainId
           ? CHAIN_CONFIGS[paymentChainId]
           : undefined;
+        const amountRaw = payment.amountRaw;
+        const asset = payment.asset;
+        const chainIdForDisplay = paymentChainId ?? 8453;
+        const { displayAmount, symbol } = formatAmountForDisplay(amountRaw, asset, chainIdForDisplay);
 
         return jsonContent({
           id: payment.id,
           status: payment.status,
-          amount: payment.amount,
+          amountRaw: amountRaw ?? null,
+          asset: asset ?? null,
+          amountDisplay: displayAmount !== "—" ? `${displayAmount} ${symbol}` : null,
           url: payment.url,
           ...(paymentChainId !== undefined && {
             chainId: paymentChainId,

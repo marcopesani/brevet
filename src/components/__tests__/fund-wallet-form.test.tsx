@@ -56,7 +56,7 @@ function renderForm(chainId?: number) {
   return render(
     <QueryClientProvider client={queryClient}>
       <FundWalletForm
-        hotWalletAddress="0x1234567890123456789012345678901234567890"
+        accountAddress="0x1234567890123456789012345678901234567890"
         chainId={chainId}
       />
     </QueryClientProvider>,
@@ -84,7 +84,7 @@ describe("FundWalletForm chain switch guard", () => {
     fireEvent.change(amountInput, { target: { value: "10" } });
 
     const fundButton = screen.getByRole("button", {
-      name: /Fund Wallet/i,
+      name: /Fund Account/i,
     });
     fireEvent.click(fundButton);
 
@@ -106,7 +106,7 @@ describe("FundWalletForm chain switch guard", () => {
     fireEvent.change(amountInput, { target: { value: "10" } });
 
     const fundButton = screen.getByRole("button", {
-      name: /Fund Wallet/i,
+      name: /Fund Account/i,
     });
     fireEvent.click(fundButton);
 
@@ -127,7 +127,7 @@ describe("FundWalletForm chain switch guard", () => {
     fireEvent.change(amountInput, { target: { value: "10" } });
 
     const fundButton = screen.getByRole("button", {
-      name: /Fund Wallet/i,
+      name: /Fund Account/i,
     });
     fireEvent.click(fundButton);
 
@@ -152,7 +152,7 @@ describe("FundWalletForm chain switch guard", () => {
     fireEvent.change(amountInput, { target: { value: "5" } });
 
     const fundButton = screen.getByRole("button", {
-      name: /Fund Wallet/i,
+      name: /Fund Account/i,
     });
     fireEvent.click(fundButton);
 

@@ -12,7 +12,7 @@ const steps = [
     step: 1,
     title: "Connect & Fund",
     description:
-      "Connect your wallet and fund your hot wallet with USDC on Base. Your hot wallet handles small payments automatically.",
+      "Connect your wallet and fund your smart account with USDC on Base. Your smart account handles small payments automatically.",
     icon: Wallet,
   },
   {

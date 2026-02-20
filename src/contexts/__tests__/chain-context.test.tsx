@@ -42,13 +42,21 @@ function wrapper({ children }: { children: ReactNode }) {
   return <ChainProvider>{children}</ChainProvider>;
 }
 
+function wrapperWithInitialChain(initialChainId: number) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <ChainProvider initialChainId={initialChainId}>{children}</ChainProvider>
+    );
+  };
+}
+
 // ── Setup ───────────────────────────────────────────────────────────
 beforeEach(() => {
   vi.clearAllMocks();
   mockState.walletChainId = undefined;
   mockState.isConnected = false;
   mockState.isPending = false;
-  localStorage.clear();
+  document.cookie = "";
 });
 
 describe("ChainContext", () => {
@@ -88,20 +96,6 @@ describe("ChainContext", () => {
       expect(mockToastError).toHaveBeenCalledWith("Failed to switch network");
     });
 
-    it("does not update localStorage on failed switch", async () => {
-      mockState.isConnected = true;
-      mockState.walletChainId = 8453;
-      localStorage.setItem("brevet-active-chain", "8453");
-      mockSwitchChainAsync.mockRejectedValueOnce(new Error("rejected"));
-
-      const { result } = renderHook(() => useChain(), { wrapper });
-
-      await act(async () => {
-        await result.current.setActiveChainId(42161);
-      });
-
-      expect(localStorage.getItem("brevet-active-chain")).toBe("8453");
-    });
   });
 
   describe("when wallet is not connected", () => {
@@ -118,7 +112,7 @@ describe("ChainContext", () => {
       expect(result.current.activeChain.chain.id).toBe(42161);
     });
 
-    it("updates localStorage when no wallet is connected", async () => {
+    it("sets cookie when chain changes and no wallet", async () => {
       mockState.isConnected = false;
 
       const { result } = renderHook(() => useChain(), { wrapper });
@@ -127,7 +121,48 @@ describe("ChainContext", () => {
         await result.current.setActiveChainId(42161);
       });
 
-      expect(localStorage.getItem("brevet-active-chain")).toBe("42161");
+      expect(document.cookie).toContain("brevet-active-chain=42161");
+    });
+
+    it("sets cookie with Secure attribute", async () => {
+      mockState.isConnected = false;
+
+      // JSDOM strips cookie attributes from reads, so spy on the setter to capture full string.
+      const setCalls: string[] = [];
+      const desc = Object.getOwnPropertyDescriptor(document, "cookie")
+        ?? Object.getOwnPropertyDescriptor(Object.getPrototypeOf(document), "cookie");
+      const originalSetter = desc?.set;
+      Object.defineProperty(document, "cookie", {
+        get: desc?.get?.bind(document) ?? (() => ""),
+        set(value: string) {
+          setCalls.push(value);
+          originalSetter?.call(document, value);
+        },
+        configurable: true,
+      });
+
+      const { result } = renderHook(() => useChain(), { wrapper });
+
+      await act(async () => {
+        await result.current.setActiveChainId(42161);
+      });
+
+      const chainCookieCall = setCalls.find((s) => s.includes("brevet-active-chain=42161"));
+      expect(chainCookieCall).toBeDefined();
+      expect(chainCookieCall).toContain("Secure");
+
+      // Restore
+      if (desc) Object.defineProperty(document, "cookie", desc);
+    });
+  });
+
+  describe("initialChainId", () => {
+    it("uses initialChainId when provided", () => {
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithInitialChain(42161),
+      });
+
+      expect(result.current.activeChain.chain.id).toBe(42161);
     });
   });
 

@@ -5,12 +5,16 @@ const globalForDb = globalThis as unknown as {
 };
 
 function getConnectionConfig() {
+  const uri = process.env.MONGODB_URI;
+  if (!uri || uri.trim() === "")
+    throw new Error("Missing required env var: MONGODB_URI");
+
   const raw = process.env.DATABASE_POOL_SIZE;
   const parsed = raw ? parseInt(raw, 10) : NaN;
   const maxPoolSize = Number.isFinite(parsed) && parsed > 0 ? parsed : 20;
 
   return {
-    uri: process.env.MONGODB_URI!,
+    uri,
     maxPoolSize,
   };
 }

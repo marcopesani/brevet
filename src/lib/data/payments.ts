@@ -57,12 +57,15 @@ export async function getPendingPayment(paymentId: string, userId: string) {
 
 /**
  * Create a new pending payment record.
+ * Store raw amount and asset from the 402 requirement; amount (number) is optional for legacy.
  */
 export async function createPendingPayment(data: {
   userId: string;
   url: string;
   method?: string;
-  amount: number;
+  amount?: number;
+  amountRaw?: string;
+  asset?: string;
   chainId?: number;
   paymentRequirements: string;
   expiresAt?: Date;
@@ -74,7 +77,9 @@ export async function createPendingPayment(data: {
     userId: new Types.ObjectId(data.userId),
     url: data.url,
     method: data.method ?? "GET",
-    amount: data.amount,
+    amount: data.amount ?? 0,
+    ...(data.amountRaw !== undefined && data.amountRaw !== "" && { amountRaw: data.amountRaw }),
+    ...(data.asset !== undefined && data.asset !== "" && { asset: data.asset }),
     ...(data.chainId !== undefined && { chainId: data.chainId }),
     paymentRequirements: data.paymentRequirements,
     expiresAt: data.expiresAt ?? new Date(Date.now() + 30 * 60 * 1000),

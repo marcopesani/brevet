@@ -7,7 +7,9 @@ export interface IPendingPayment {
   userId: Types.ObjectId;
   url: string;
   method: string;
-  amount: number;
+  amount?: number;
+  amountRaw: string | null;
+  asset: string | null;
   chainId: number;
   paymentRequirements: string;
   status: string;
@@ -31,7 +33,9 @@ const pendingPaymentSchema = new Schema<IPendingPaymentDocument>(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     url: { type: String, required: true },
     method: { type: String, default: "GET" },
-    amount: { type: Number, required: true },
+    amount: { type: Number, default: 0 },
+    amountRaw: { type: String, default: null },
+    asset: { type: String, default: null },
     chainId: { type: Number, default: defaultChainId, index: true },
     paymentRequirements: { type: String, required: true },
     status: { type: String, default: "pending" },

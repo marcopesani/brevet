@@ -62,7 +62,7 @@ export async function createPolicy(
   userId: string,
   data: {
     endpointPattern: string;
-    payFromHotWallet?: boolean;
+    autoSign?: boolean;
     status?: string;
     chainId?: number;
   },
@@ -92,7 +92,7 @@ export async function createPolicy(
   const doc = await EndpointPolicy.create({
     userId: userObjectId,
     endpointPattern: data.endpointPattern,
-    ...(data.payFromHotWallet !== undefined && { payFromHotWallet: data.payFromHotWallet }),
+    ...(data.autoSign !== undefined && { autoSign: data.autoSign }),
     ...(data.status !== undefined && { status: data.status }),
     ...(data.chainId !== undefined && { chainId: data.chainId }),
   });
@@ -110,7 +110,7 @@ export async function updatePolicy(
   userId: string,
   data: {
     endpointPattern?: string;
-    payFromHotWallet?: boolean;
+    autoSign?: boolean;
     status?: string;
   },
 ) {
@@ -131,7 +131,7 @@ export async function updatePolicy(
 
   const updateData: Record<string, unknown> = {};
   if (data.endpointPattern !== undefined) updateData.endpointPattern = data.endpointPattern;
-  if (data.payFromHotWallet !== undefined) updateData.payFromHotWallet = data.payFromHotWallet;
+  if (data.autoSign !== undefined) updateData.autoSign = data.autoSign;
   if (data.status !== undefined) updateData.status = data.status;
 
   const doc = await EndpointPolicy.findByIdAndUpdate(
@@ -157,14 +157,14 @@ export async function activatePolicy(policyId: string, userId: string) {
 }
 
 /**
- * Toggle the payFromHotWallet flag on a policy.
+ * Toggle the autoSign flag on a policy.
  * Requires userId for defense-in-depth ownership verification.
  */
-export async function toggleHotWallet(policyId: string, userId: string, payFromHotWallet: boolean) {
+export async function toggleAutoSign(policyId: string, userId: string, autoSign: boolean) {
   await connectDB();
   const doc = await EndpointPolicy.findOneAndUpdate(
     { _id: policyId, userId: new Types.ObjectId(userId) },
-    { $set: { payFromHotWallet } },
+    { $set: { autoSign } },
     { returnDocument: "after" },
   ).lean();
   return doc ? withId(doc) : null;

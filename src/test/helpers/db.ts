@@ -1,10 +1,12 @@
 import mongoose from "mongoose";
 import { User } from "@/lib/models/user";
 import { HotWallet } from "@/lib/models/hot-wallet";
+import { SmartAccount } from "@/lib/models/smart-account";
 import { EndpointPolicy } from "@/lib/models/endpoint-policy";
 import {
   createTestUser,
   createTestHotWallet,
+  createTestSmartAccount,
   createTestEndpointPolicy,
 } from "./fixtures";
 
@@ -20,7 +22,7 @@ export async function resetTestDb(): Promise<void> {
 }
 
 /**
- * Seed a test user with associated hot wallet and endpoint policy.
+ * Seed a test user with associated hot wallet, smart account, and endpoint policy.
  * Returns all created records.
  */
 export async function seedTestUser(
@@ -32,10 +34,13 @@ export async function seedTestUser(
   const hotWalletData = createTestHotWallet(user.id);
   const hotWallet = await HotWallet.create(hotWalletData);
 
+  const smartAccountData = createTestSmartAccount(user.id);
+  const smartAccount = await SmartAccount.create(smartAccountData);
+
   const policyData = createTestEndpointPolicy(user.id);
   const policy = await EndpointPolicy.create(policyData);
 
-  return { user, hotWallet, policy };
+  return { user, hotWallet, smartAccount, policy };
 }
 
 /**

@@ -12,7 +12,7 @@ import {
 import { resetTestDb, seedTestUser } from "../../test/helpers/db";
 import { User } from "../models/user";
 import { HotWallet as HotWalletModel } from "../models/hot-wallet";
-import { Transaction } from "../models/transaction";
+import { Transaction } from "@/lib/models/transaction";
 import mongoose from "mongoose";
 import { createTestHotWallet } from "../../test/helpers/fixtures";
 

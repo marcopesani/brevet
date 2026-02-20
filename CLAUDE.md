@@ -41,6 +41,16 @@ The core logic lives in `src/lib/x402/payment.ts`:
 
 URL validation rejects localhost, private IPs, and internal hostnames (SSRF protection).
 
+### Multi-version protocol (x402 V1/V2)
+
+When supporting multiple protocol versions, enforce these rules:
+
+- **Version at the edge only.** Detect and parse V1 vs V2 at the single protocol boundary (e.g. 402 response). Downstream code consumes one normalized representation; no `if (v1) ... else (v2)` in business logic.
+- **One pipeline.** Policy, signing, retry, and storage run in a single version-agnostic path. Version-specific code lives only in adapters (parsers, header builders); core never branches on version.
+- **Normalize before branching.** Convert version-specific payloads to internal types at parse time. Any version-specific field (e.g. `amount` vs `maxAmountRequired`) is handled in the adapter or one narrow helper, not scattered.
+- **Test both versions explicitly.** Every behavior that differs by version has tests for V1 and V2. When both can appear (e.g. header + body), test precedence once and document it.
+- **No version in persistence by default.** Do not store protocol version in the DB unless required for audit, replay, or compliance. Schema is version-agnostic; version is an input concern.
+
 ### MCP Server
 
 Endpoint: `POST /api/mcp/[userId]` using Streamable HTTP transport. Stateless — fresh server instance per request.
@@ -95,6 +105,15 @@ These rules prevent regression to the old polling-heavy architecture:
 
 MongoDB with Mongoose. Five collections: `users`, `hotwallets`, `endpointpolicies`, `transactions`, `pendingpayments`. Models defined in `src/lib/models/`.
 
+**Monetary values (MongoDB):**
+- Store amounts in **smallest unit as integer** (e.g. USDC 6 decimals); never float.
+- Store **currency/asset** on same document as amount; never amount-only.
+- **One module** for all add/subtract/compare; no ad-hoc money math elsewhere.
+- **Conditional updates** for balance changes (read → compute → update with current-value check); no blind decrements.
+- **Append-only audit** for every monetary change (what, when, ref); log is canonical.
+- **Indexes** for every query pattern on money data; enforce uniqueness in schema where needed.
+- **Migrations**: backward-compatible reads, write new format, backfill separately; have rollback.
+
 ### Chain Configuration
 
 `NEXT_PUBLIC_CHAIN_ID` env var toggles between Base mainnet (8453) and Base Sepolia testnet (84532). Singleton config exported from `src/lib/chain-config.ts`.
@@ -112,14 +131,18 @@ MongoDB with Mongoose. Five collections: `users`, `hotwallets`, `endpointpolicie
 - Server Actions: `src/app/actions/` for authenticated mutations with revalidation
 - React Query hooks: `src/hooks/` for client-side data that needs polling or cache invalidation
 - Rate limiting: in-memory sliding window (`src/lib/rate-limit.ts`), applied to `/api/mcp/[userId]` and `/api/payments/pending`
+- No magic numbers: configurable limits and defaults (spending caps, expiry durations, retry counts) must come from environment variables parsed at startup. Protocol constants (USDC decimals, chain IDs, contract addresses) can remain in code. Startup must fail if required env vars are missing or invalid.
 
 ## Environment Setup
 
 Copy `.env.example` to `.env.local`. Required variables:
 - `MONGODB_URI` — MongoDB connection string (default: `mongodb://localhost:27017/brevet`)
-- `HOT_WALLET_ENCRYPTION_KEY` — 64-char hex (generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
+- `PIMLICO_API_KEY` — Pimlico bundler/paymaster key for smart account operations (from https://dashboard.pimlico.io)
 - `NEXTAUTH_SECRET` — session encryption key
 - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` — from https://dashboard.reown.com
+
+Optional:
+- `HOT_WALLET_ENCRYPTION_KEY` — 64-char hex, only needed for legacy hot wallet migration
 
 ### Local Development with Docker
 

@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSignTypedData, useAccount, useSwitchChain } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { authorizationTypes } from "@x402/evm";
 import type { PaymentRequirements } from "@x402/core/types";
 import { useChain } from "@/contexts/chain-context";
-import { CHAIN_CONFIGS } from "@/lib/chain-config";
+import { CHAIN_CONFIGS, getNetworkIdentifiers } from "@/lib/chain-config";
+import { formatAmountForDisplay } from "@/lib/x402/display";
+import { getRequirementAmount, getRequirementAmountFromLike } from "@/lib/x402/requirements";
 import type { Hex } from "viem";
 import { toast } from "sonner";
 import {
@@ -30,7 +32,9 @@ import { Clock, Check, X, Loader2 } from "lucide-react";
 export interface PendingPayment {
   id: string;
   url: string;
-  amount: number;
+  amount?: number;
+  amountRaw?: string;
+  asset?: string;
   chainId?: number;
   paymentRequirements: string;
   status: string;
@@ -106,6 +110,14 @@ export default function PendingPaymentCard({
   const remaining = useCountdown(payment.expiresAt);
   const isExpired = remaining <= 0;
 
+  const parsedRequirements = useMemo(() => {
+    try {
+      return JSON.parse(payment.paymentRequirements);
+    } catch {
+      return null;
+    }
+  }, [payment.paymentRequirements]);
+
   // Use the payment's stored chainId if available, otherwise fall back to active chain
   const paymentChainConfig = payment.chainId !== undefined
     ? CHAIN_CONFIGS[payment.chainId] ?? activeChain
@@ -120,18 +132,29 @@ export default function PendingPaymentCard({
   async function handleApprove() {
     setActionInProgress("approve");
     try {
-      const parsed = JSON.parse(payment.paymentRequirements);
-      const requirements: PaymentRequirements[] = Array.isArray(parsed) ? parsed : parsed.accepts;
+      const requirements: PaymentRequirements[] = parsedRequirements
+        ? (Array.isArray(parsedRequirements) ? parsedRequirements : parsedRequirements.accepts)
+        : [];
+      const acceptedNetworks = getNetworkIdentifiers(paymentChainConfig);
       const requirement = requirements.find(
-        (r) => r.scheme === "exact" && r.network === paymentChainConfig.networkString
+        (r) => r.scheme === "exact" && r.network != null && acceptedNetworks.includes(r.network)
       );
 
       if (!requirement) {
         toast.error("No supported payment requirement found");
         return;
       }
+      if (!requirement.payTo) {
+        toast.error("Payment requirement missing payTo address");
+        return;
+      }
+      const amountStr = getRequirementAmount(requirement) ?? getRequirementAmountFromLike(requirement);
+      if (amountStr == null || amountStr === "") {
+        toast.error("Payment requirement has no amount; cannot approve");
+        return;
+      }
 
-      const amountWei = BigInt(requirement.amount);
+      const amountWei = BigInt(amountStr);
       const nonce = generateNonce();
       const now = BigInt(Math.floor(Date.now() / 1_000));
 
@@ -213,6 +236,32 @@ export default function PendingPaymentCard({
   const urgencyVariant = getUrgencyVariant(remaining);
   const isActioning = actionInProgress !== null;
 
+  // Display amount from requirement (amountRaw + asset) or legacy payment.amount
+  const requirements: PaymentRequirements[] = parsedRequirements
+    ? (Array.isArray(parsedRequirements) ? parsedRequirements : parsedRequirements.accepts ?? [])
+    : [];
+  const acceptedNetworks = getNetworkIdentifiers(paymentChainConfig);
+  const displayRequirement = requirements.find(
+    (r) => r.scheme === "exact" && r.network != null && acceptedNetworks.includes(r.network),
+  );
+  const displayAmountRaw =
+    displayRequirement &&
+    (payment.amountRaw ?? getRequirementAmount(displayRequirement) ?? getRequirementAmountFromLike(displayRequirement));
+  const amountForDisplay =
+    displayAmountRaw != null && displayAmountRaw !== ""
+      ? formatAmountForDisplay(
+          displayAmountRaw,
+          payment.asset ?? displayRequirement?.asset,
+          payment.chainId ?? paymentChainConfig.chain.id,
+        )
+      : payment.amount != null && payment.amount > 0
+        ? { displayAmount: payment.amount.toFixed(6), symbol: "USDC" }
+        : { displayAmount: "—", symbol: "" };
+  const amountLabel =
+    amountForDisplay.displayAmount === "—"
+      ? "Unknown"
+      : `${amountForDisplay.displayAmount} ${amountForDisplay.symbol}`.trim();
+
   return (
     <Card>
       <CardHeader>
@@ -229,7 +278,7 @@ export default function PendingPaymentCard({
       <CardContent className="space-y-2">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <div className="text-muted-foreground">Amount</div>
-          <div className="font-medium">${payment.amount.toFixed(6)} USDC</div>
+          <div className="font-medium">{amountLabel}</div>
           <div className="text-muted-foreground">Chain</div>
           <div>{paymentChainConfig.chain.name}</div>
           <div className="text-muted-foreground">Created</div>

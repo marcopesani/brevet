@@ -26,21 +26,48 @@ export type {
 } from "@x402/evm";
 
 /** Determines which signing method to use based on amount vs policy limits. */
-export type SigningStrategy = "hot_wallet" | "walletconnect" | "rejected";
+export type SigningStrategy = "auto_sign" | "manual_approval" | "rejected";
 
-/** Result of processing an x402 payment. */
-export interface PaymentResult {
-  success: boolean;
-  status: "completed" | "pending_approval" | "rejected";
-  signingStrategy: SigningStrategy;
-  response?: Response;
-  error?: string;
-  /** Included when status is "pending_approval" — JSON-encoded payment requirements for client-side signing. */
-  paymentRequirements?: string;
-  /** Amount in USD for the pending payment. */
-  amount?: number;
-  /** The chain ID selected for this payment (included when status is "pending_approval" or "completed"). */
-  chainId?: number;
-  /** Settlement data from the Payment-Response header (V2) or X-Payment-Response (V1). */
-  settlement?: import("@x402/core/types").SettleResponse;
-}
+/** Result of processing an x402 payment — discriminated union on `status`. */
+export type PaymentResult =
+  | {
+      success: true;
+      status: "completed";
+      signingStrategy: SigningStrategy;
+      response?: Response;
+      chainId?: number;
+      /** Settlement data from the Payment-Response header (V2) or X-Payment-Response (V1). */
+      settlement?: import("@x402/core/types").SettleResponse;
+      error?: undefined;
+      paymentRequirements?: undefined;
+      amountRaw?: undefined;
+      asset?: undefined;
+    }
+  | {
+      success: false;
+      status: "pending_approval";
+      signingStrategy: "manual_approval";
+      /** JSON-encoded payment requirements for client-side signing. */
+      paymentRequirements: string;
+      /** Raw token amount from the selected requirement. */
+      amountRaw?: string;
+      /** Asset contract address from the selected requirement. */
+      asset?: string;
+      /** The chain ID selected for this payment. */
+      chainId?: number;
+      error?: undefined;
+      response?: undefined;
+      settlement?: undefined;
+    }
+  | {
+      success: false;
+      status: "rejected";
+      signingStrategy: SigningStrategy;
+      error: string;
+      chainId?: undefined;
+      response?: Response;
+      settlement?: undefined;
+      paymentRequirements?: undefined;
+      amountRaw?: undefined;
+      asset?: undefined;
+    };

@@ -30,7 +30,7 @@ export function AddPolicyDialog({
   chainId,
 }: AddPolicyDialogProps) {
   const [endpointPattern, setEndpointPattern] = useState("");
-  const [payFromHotWallet, setPayFromHotWallet] = useState(false);
+  const [autoSign, setAutoSign] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,10 +39,10 @@ export function AddPolicyDialog({
     setError(null);
     setSubmitting(true);
     try {
-      await createPolicy({ endpointPattern, payFromHotWallet, chainId });
+      await createPolicy({ endpointPattern, autoSign, chainId });
       toast.success("Policy created");
       setEndpointPattern("");
-      setPayFromHotWallet(false);
+      setAutoSign(false);
       onOpenChange(false);
       onSuccess();
     } catch (err) {
@@ -77,11 +77,11 @@ export function AddPolicyDialog({
 
           <div className="flex items-center gap-3">
             <Switch
-              id="payFromHotWallet"
-              checked={payFromHotWallet}
-              onCheckedChange={setPayFromHotWallet}
+              id="autoSign"
+              checked={autoSign}
+              onCheckedChange={setAutoSign}
             />
-            <Label htmlFor="payFromHotWallet">Pay from hot wallet</Label>
+            <Label htmlFor="autoSign">Auto-sign payments</Label>
           </div>
 
           {error && (

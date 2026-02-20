@@ -74,7 +74,7 @@ describe("E2E: EIP-712 Signing", () => {
     });
 
     it("should use the correct Sepolia USDC domain", () => {
-      expect(getDefaultChainConfig().usdcDomain.name).toBe("USD Coin");
+      expect(getDefaultChainConfig().usdcDomain.name).toBe("USDC");
       expect(getDefaultChainConfig().usdcDomain.version).toBe("2");
       expect(getDefaultChainConfig().usdcDomain.chainId).toBe(84532);
       expect(getDefaultChainConfig().usdcDomain.verifyingContract).toBe(

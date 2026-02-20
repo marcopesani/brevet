@@ -2,15 +2,15 @@ import { connectDB } from "@/lib/db";
 import { EndpointPolicy, IEndpointPolicyDocument } from "@/lib/models/endpoint-policy";
 import { Types } from "mongoose";
 
-export type PolicyAction = "hot_wallet" | "walletconnect" | "rejected";
+export type PolicyAction = "auto_sign" | "manual_approval" | "rejected";
 
 export interface PolicyCheckResult {
   action: PolicyAction;
   reason?: string;
   /** The matched EndpointPolicy id, if any. */
   policyId?: string;
-  /** Whether the policy allows hot wallet signing. */
-  payFromHotWallet?: boolean;
+  /** Whether the policy allows automatic signing. */
+  autoSign?: boolean;
 }
 
 const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
@@ -70,8 +70,8 @@ function extractHost(url: string): string {
  * Flow:
  * 1. Find best-matching EndpointPolicy (longest prefix match, active only)
  * 2. No match → reject + auto-create a draft policy for the endpoint origin
- * 3. payFromHotWallet=true  → "hot_wallet"
- * 4. payFromHotWallet=false → "walletconnect"
+ * 3. autoSign=true  → "auto_sign"
+ * 4. autoSign=false → "manual_approval"
  *
  * Note: Amount-based checks (balance) are handled in executePayment.
  */
@@ -106,12 +106,12 @@ export async function checkPolicy(
 
   const result = {
     policyId: policy._id.toString(),
-    payFromHotWallet: policy.payFromHotWallet,
+    autoSign: policy.autoSign,
   };
 
-  if (!policy.payFromHotWallet) {
-    return { action: "walletconnect", ...result };
+  if (!policy.autoSign) {
+    return { action: "manual_approval", ...result };
   }
 
-  return { action: "hot_wallet", ...result };
+  return { action: "auto_sign", ...result };
 }

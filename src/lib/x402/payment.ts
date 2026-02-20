@@ -1,227 +1,33 @@
-import { type Hex, PrivateKeyAccount } from "viem";
+import { type Hex } from "viem";
 import { formatUnits } from "viem";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { createTransaction } from "@/lib/data/transactions";
-import { getHotWallet, getHotWalletWithKey } from "@/lib/data/wallet";
+import { getSmartAccount, getSmartAccountWithSessionKey, updateSessionKeyStatus } from "@/lib/data/smart-account";
 import { decryptPrivateKey, getUsdcBalance, USDC_DECIMALS } from "@/lib/hot-wallet";
 import { checkPolicy } from "@/lib/policy";
-import { createEvmSigner } from "./eip712";
+import { createSmartAccountSignerFromSerialized, createSmartAccountSigner } from "@/lib/smart-account";
+import { SESSION_KEY_DEFAULT_EXPIRY_DAYS } from "@/lib/smart-account-constants";
 import { parsePaymentRequired, extractTxHashFromResponse, extractSettleResponse } from "./headers";
+import { getRequirementAmount } from "./requirements";
 import type {
-PaymentResult, SigningStrategy } from "./types";
+PaymentResult, SigningStrategy, ClientEvmSigner } from "./types";
 import { getChainConfig, isChainSupported, SUPPORTED_CHAINS } from "../chain-config";
 import { logger } from "../logger";
+import { validateUrl, safeFetch } from "../safe-fetch";
 import { SIWxExtension } from "@x402/extensions";
-import { createSIWxPayload,
-encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
-import { privateKeyToAccount } from "viem/accounts";
 
 /**
- * Check if an IPv4 address (given as four octets) is private, loopback, or internal.
- */
-function isPrivateIpv4(a: number, b: number): boolean {
-  return (
-    a === 127 ||                         // 127.0.0.0/8 (loopback)
-    a === 10 ||                          // 10.0.0.0/8
-    (a === 172 && b >= 16 && b <= 31) || // 172.16.0.0/12
-    (a === 192 && b === 168) ||          // 192.168.0.0/16
-    (a === 169 && b === 254) ||          // 169.254.0.0/16 (link-local)
-    a === 0                              // 0.0.0.0/8
-  );
-}
-
-/**
- * Check an IPv6 hostname for dangerous addresses: loopback (::1), unspecified (::),
- * link-local (fe80::/10), and IPv6-mapped IPv4 (::ffff:x.x.x.x) that embed private IPs.
- * Returns an error string if blocked, or null if safe.
- *
- * Note: Node's URL parser may keep brackets on IPv6 hostnames (e.g., "[::1]") and
- * normalizes dotted IPv4-mapped addresses to hex form (e.g., ::ffff:127.0.0.1 → ::ffff:7f00:1).
- */
-function checkIpv6Address(hostname: string): string | null {
-  // Only process if it looks like an IPv6 address (may have brackets from URL parser)
-  if (!hostname.includes(":")) return null;
-
-  // Strip brackets if present (URL parser keeps them on IPv6 hostnames)
-  const bare = hostname.startsWith("[") && hostname.endsWith("]")
-    ? hostname.slice(1, -1)
-    : hostname;
-  const lower = bare.toLowerCase();
-
-  // Loopback ::1
-  if (lower === "::1") {
-    return "Requests to localhost/loopback addresses are not allowed";
-  }
-
-  // Unspecified address ::
-  if (lower === "::") {
-    return "Requests to unspecified addresses are not allowed";
-  }
-
-  // Link-local fe80::/10
-  if (lower.startsWith("fe80:") || lower.startsWith("fe80%")) {
-    return "Requests to link-local IPv6 addresses are not allowed";
-  }
-
-  // IPv6-mapped IPv4: ::ffff:a.b.c.d (dotted form — may appear in user input or raw URLs)
-  const mappedDottedMatch = lower.match(/^::ffff:(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (mappedDottedMatch) {
-    const [, a, b] = mappedDottedMatch.map(Number);
-    if (isPrivateIpv4(a, b)) {
-      return "Requests to private/internal IP addresses are not allowed";
-    }
-  }
-
-  // IPv6-mapped IPv4 in hex form: ::ffff:7f00:1 (Node's URL parser normalizes to this)
-  const mappedHexMatch = lower.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-  if (mappedHexMatch) {
-    const hi = parseInt(mappedHexMatch[1], 16);
-    const lo = parseInt(mappedHexMatch[2], 16);
-    const a = (hi >> 8) & 0xff;
-    const b = hi & 0xff;
-    if (isPrivateIpv4(a, b)) {
-      return "Requests to private/internal IP addresses are not allowed";
-    }
-    // Also check if the full IP resolves to 0.0.0.0
-    if (hi === 0 && lo === 0) {
-      return "Requests to private/internal IP addresses are not allowed";
-    }
-  }
-
-  return null;
-}
-
-/**
- * Validate a URL before making an HTTP request.
- * Rejects non-http(s) protocols, private/internal IPs, and malformed URLs.
- */
-function validateUrl(url: string): string | null {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return "Invalid URL format";
-  }
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return `Unsupported protocol: ${parsed.protocol} (only http and https are allowed)`;
-  }
-
-  // Allow internal/private network targets during local development.
-  if (process.env.NODE_ENV === "development") {
-    return null;
-  }
-
-  const hostname = parsed.hostname;
-
-  // Reject localhost and loopback
-  if (
-    hostname === "localhost" ||
-    hostname === "::1" ||
-    hostname === "[::1]" ||
-    hostname === "0.0.0.0"
-  ) {
-    return "Requests to localhost/loopback addresses are not allowed";
-  }
-
-  // Reject private/internal IPv4 ranges (includes full 127.0.0.0/8 loopback)
-  const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4Match) {
-    const [, a, b] = ipv4Match.map(Number);
-    if (isPrivateIpv4(a, b)) {
-      return "Requests to private/internal IP addresses are not allowed";
-    }
-  }
-
-  // Reject IPv6 addresses that map to private/loopback IPv4 (H1)
-  // URL parser may keep brackets on IPv6 hostnames — checkIpv6Address handles both forms
-  const ipv6Error = checkIpv6Address(hostname);
-  if (ipv6Error) {
-    return ipv6Error;
-  }
-
-  // Reject common internal hostnames
-  if (
-    hostname.endsWith(".local") ||
-    hostname.endsWith(".internal") ||
-    hostname.endsWith(".localhost")
-  ) {
-    return "Requests to internal hostnames are not allowed";
-  }
-
-  return null;
-}
-
-/**
- * Maximum number of redirects to follow before aborting.
- * Prevents infinite redirect loops and limits redirect-chain SSRF attacks.
- */
-const MAX_REDIRECTS = 5;
-
-/**
- * Fetch a URL with redirect: "manual" and validate each redirect Location
- * through validateUrl() before following it. This prevents redirect-based SSRF
- * where an external URL (e.g., https://evil.com) redirects to an internal IP
- * (e.g., http://169.254.169.254/). Limits redirect depth to MAX_REDIRECTS.
- *
- * NOTE: Production deployments should also use DNS-level rebinding protection
- * (e.g., Cloudflare Gateway, dnsmasq rebind-protection) to defend against DNS
- * rebinding attacks where a domain alternates between public and private IPs (M1).
- */
-/** Timeout for outbound fetch calls in the payment flow (M8). */
-const FETCH_TIMEOUT_MS = 30_000;
-
-async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
-  let currentUrl = url;
-  for (let i = 0; i <= MAX_REDIRECTS; i++) {
-    const response = await fetch(currentUrl, {
-      ...init,
-      redirect: "manual",
-      signal: init?.signal ?? AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-
-    // If not a redirect, return the response as-is
-    if (response.status < 300 || response.status >= 400) {
-      return response;
-    }
-
-    // Handle redirect
-    const location = response.headers.get("location");
-    if (!location) {
-      return response; // No Location header — return the redirect response
-    }
-
-    // Resolve relative redirect URLs against the current URL
-    const resolvedUrl = new URL(location, currentUrl).toString();
-
-    // Validate the redirect target for SSRF (H3)
-    const redirectError = validateUrl(resolvedUrl);
-    if (redirectError) {
-      throw new Error(`Redirect blocked: ${redirectError} (redirected to ${resolvedUrl})`);
-    }
-
-    currentUrl = resolvedUrl;
-  }
-
-  throw new Error(`Too many redirects (max ${MAX_REDIRECTS})`);
-}
-
-/**
- * Create an x402Client configured with EVM schemes for a given private key.
+ * Create an x402Client configured with EVM schemes for a given signer.
  *
  * Registers both V1 and V2 EVM exact schemes (EIP-3009 + Permit2)
  * via `registerExactEvmScheme` which handles wildcard eip155:* matching.
  */
-function createPaymentClient(privateKey: Hex): { client: x402Client; httpClient: x402HTTPClient; account: PrivateKeyAccount } {
-  const account = privateKeyToAccount(privateKey);
- 
-  const signer = createEvmSigner(privateKey);
-  
+function createPaymentClient(signer: ClientEvmSigner): { client: x402Client; httpClient: x402HTTPClient } {
   const client = new x402Client();
   registerExactEvmScheme(client, { signer });
   const httpClient = new x402HTTPClient(client);
-  return { client, httpClient, account };
+  return { client, httpClient };
 }
 
 /**
@@ -251,10 +57,10 @@ function resolveNetworkToChainId(network: string): number | undefined {
 /**
  * Select the best chain from the endpoint's accepted networks.
  *
- * Strategy for hot wallet:
+ * Strategy for smart account:
  * 1. Filter to chains we support
- * 2. For each supported chain, check if user has a hot wallet
- * 3. Pick the chain with the highest USDC balance
+ * 2. For each supported chain, check if user has a smart account with active session key
+ * 3. Pick the chain with the highest USDC balance (among active session key accounts)
  *
  * Returns the selected chainId and the matching accept entry index,
  * or null if no supported chain is found.
@@ -274,16 +80,16 @@ async function selectBestChain(
 
   if (candidates.length === 0) return null;
 
-  // Try to find the best chain where user has a hot wallet with highest balance
+  // Try to find the best chain where user has a smart account with active session key and highest balance
   let bestCandidate: { chainId: number; acceptIndex: number } | null = null;
   let bestBalance = -1;
 
   for (const candidate of candidates) {
-    const wallet = await getHotWallet(userId, candidate.chainId);
-    if (!wallet) continue;
+    const account = await getSmartAccount(userId, candidate.chainId);
+    if (!account || account.sessionKeyStatus !== "active") continue;
 
     try {
-      const balanceStr = await getUsdcBalance(wallet.address, candidate.chainId);
+      const balanceStr = await getUsdcBalance(account.smartAccountAddress, candidate.chainId);
       const balance = parseFloat(balanceStr);
       if (balance > bestBalance) {
         bestBalance = balance;
@@ -295,11 +101,11 @@ async function selectBestChain(
     }
   }
 
-  // If we found a chain with a wallet, use it
+  // If we found a chain with an active smart account, use it
   if (bestCandidate) return bestCandidate;
 
-  // No hot wallet on any supported chain — return first supported chain
-  // (will trigger WalletConnect flow downstream)
+  // No active smart account on any supported chain — return first supported chain
+  // (will trigger manual approval flow downstream)
   return candidates[0];
 }
 
@@ -361,7 +167,7 @@ export interface PaymentRequestOptions {
  * 7. Log transaction to database
  *
  * @param url     The x402-protected endpoint
- * @param userId  The user whose hot wallet and policy to use
+ * @param userId  The user whose smart account and policy to use
  * @param options Optional HTTP method, body, and headers for the request
  * @param chainId Optional explicit chain ID — skips auto-selection if provided
  */
@@ -400,7 +206,7 @@ export async function executePayment(
   if (initialResponse.status !== 402) {
     // Not a paid endpoint — return the response as-is
     logger.info("Non-402 response, returning directly", { userId, url, action: "payment_passthrough", status: initialResponse.status });
-    return { success: true, status: "completed", signingStrategy: "hot_wallet", response: initialResponse };
+    return { success: true, status: "completed", signingStrategy: "auto_sign", response: initialResponse };
   }
 
   // Step 2: Parse payment requirements (SDK handles V1 body + V2 header)
@@ -466,43 +272,46 @@ export async function executePayment(
     acceptIndex = selection.acceptIndex;
   }
 
-  const selectedChainConfig = getChainConfig(selectedChainId)!;
+  // Step 4: Look up the user's smart account for the selected chain (with session key for signing)
+  const smartAccount = await getSmartAccountWithSessionKey(userId, selectedChainId);
 
-  // Step 4: Look up the user's hot wallet for the selected chain (with key for signing)
-  const hotWallet = await getHotWalletWithKey(userId, selectedChainId);
+  // Step 5: Determine the amount from the selected requirement (V1 or V2 via library helper)
+  const selectedRequirement = paymentRequired.accepts[acceptIndex];
+  const amountStr = getRequirementAmount(selectedRequirement) ?? "0";
+  const amountWei = BigInt(amountStr);
+  const amountUsd = parseFloat(formatUnits(amountWei, USDC_DECIMALS));
 
-  if (!hotWallet) {
-    // No hot wallet on this chain — return pending_approval for WalletConnect
-    const selectedRequirement = paymentRequired.accepts[acceptIndex];
-    const amountStr = selectedRequirement.amount
-      ?? (selectedRequirement as unknown as { maxAmountRequired?: string }).maxAmountRequired
-      ?? "0";
-    const amountWei = BigInt(amountStr);
-    const amountUsd = parseFloat(formatUnits(amountWei, USDC_DECIMALS));
+  // Check session key expiry before signing
+  if (smartAccount && smartAccount.sessionKeyStatus === "active" && smartAccount.sessionKeyExpiry) {
+    const expiryDate = new Date(smartAccount.sessionKeyExpiry);
+    if (expiryDate < new Date()) {
+      await updateSessionKeyStatus(userId, selectedChainId, "expired");
+      logger.info("Session key expired, requires re-authorization", { userId, url, action: "session_key_expired", chainId: selectedChainId });
+      return {
+        success: false,
+        status: "rejected",
+        signingStrategy: "auto_sign",
+        error: "Session key has expired. Please re-authorize in the dashboard.",
+      };
+    }
+  }
 
-    logger.info("No hot wallet on selected chain, requires wallet approval", { userId, url, action: "pending_approval", chainId: selectedChainId, amount: amountUsd });
+  // If no smart account on this chain OR session key not active → fall back to manual approval
+  if (!smartAccount || smartAccount.sessionKeyStatus !== "active") {
+    const reason = !smartAccount ? "No smart account on selected chain" : "Session key not active";
+    logger.info(`${reason}, requires manual approval`, { userId, url, action: "pending_approval", chainId: selectedChainId, amount: amountUsd });
     return {
       success: false,
       status: "pending_approval",
-      signingStrategy: "walletconnect",
+      signingStrategy: "manual_approval",
       paymentRequirements: JSON.stringify(paymentRequired),
-      amount: amountUsd,
+      amountRaw: getRequirementAmount(selectedRequirement) ?? "",
+      asset: selectedRequirement.asset,
       chainId: selectedChainId,
     };
   }
 
-  const privateKey = decryptPrivateKey(hotWallet.encryptedPrivateKey) as Hex;
-
-  // Step 5: Determine the amount from the selected requirement
-  // SDK V2 uses `amount`, V1 uses `maxAmountRequired` — check both
-  const selectedRequirement = paymentRequired.accepts[acceptIndex];
-  const amountStr = selectedRequirement.amount
-    ?? (selectedRequirement as unknown as { maxAmountRequired?: string }).maxAmountRequired
-    ?? "0";
-  const amountWei = BigInt(amountStr);
-  const amountUsd = parseFloat(formatUnits(amountWei, USDC_DECIMALS));
-
-  // Step 6: Check spending policy (returns action: hot_wallet | walletconnect | rejected)
+  // Step 6: Check spending policy (returns action: auto_sign | manual_approval | rejected)
   const policyResult = await checkPolicy(amountUsd, url, userId, selectedChainId);
   if (policyResult.action === "rejected") {
     logger.warn("Policy denied payment", { userId, url, action: "policy_denied", reason: policyResult.reason, amount: amountUsd, chainId: selectedChainId });
@@ -517,32 +326,65 @@ export async function executePayment(
   // Step 7: Determine signing strategy
   let signingStrategy: SigningStrategy = policyResult.action;
 
-  // If the policy says hot_wallet, verify the on-chain USDC balance is sufficient.
-  // If balance is too low, fall through to the WalletConnect path instead of failing.
-  if (signingStrategy === "hot_wallet") {
-    const balanceStr = await getUsdcBalance(hotWallet.address, selectedChainId);
+  // If the policy says auto_sign, verify the on-chain USDC balance is sufficient.
+  // If balance is too low, fall through to the manual approval path instead of failing.
+  if (signingStrategy === "auto_sign") {
+    const balanceStr = await getUsdcBalance(smartAccount.smartAccountAddress, selectedChainId);
     const balance = parseFloat(balanceStr);
     if (balance < amountUsd) {
-      logger.info("Insufficient hot wallet balance, falling back to WalletConnect", { userId, url, action: "walletconnect_fallback", amount: amountUsd, chainId: selectedChainId });
-      signingStrategy = "walletconnect";
+      logger.info("Insufficient smart account balance, falling back to manual approval", { userId, url, action: "manual_approval_fallback", amount: amountUsd, chainId: selectedChainId });
+      signingStrategy = "manual_approval";
     }
   }
 
-  // WalletConnect path: return pending_approval for caller to create PendingPayment
-  if (signingStrategy === "walletconnect") {
-    logger.info("Payment requires wallet approval", { userId, url, action: "pending_approval", amount: amountUsd, chainId: selectedChainId });
+  // Manual approval path: return pending_approval for caller to create PendingPayment
+  if (signingStrategy === "manual_approval") {
+    logger.info("Payment requires manual approval", { userId, url, action: "pending_approval", amount: amountUsd, chainId: selectedChainId });
     return {
       success: false,
       status: "pending_approval",
-      signingStrategy: "walletconnect",
+      signingStrategy: "manual_approval",
       paymentRequirements: JSON.stringify(paymentRequired),
-      amount: amountUsd,
+      amountRaw: getRequirementAmount(selectedRequirement) ?? "",
+      asset: selectedRequirement.asset,
       chainId: selectedChainId,
     };
   }
 
-  // Step 8: Create payment payload via SDK (handles EIP-3009 + Permit2)
-  const { client, httpClient, account } = createPaymentClient(privateKey);
+  // Step 8: Create smart account signer and payment payload via SDK
+  const sessionKeyHex = decryptPrivateKey(smartAccount.sessionKeyEncrypted) as Hex;
+  let signer: ClientEvmSigner;
+  try {
+    if (smartAccount.serializedAccount) {
+      // Fast path: deserialize previously-serialized permission account
+      const serialized = decryptPrivateKey(smartAccount.serializedAccount);
+      signer = await createSmartAccountSignerFromSerialized(
+        serialized,
+        sessionKeyHex,
+        selectedChainId,
+      );
+    } else {
+      // Full path: reconstruct from session key
+      const expiryTs = smartAccount.sessionKeyExpiry
+        ? Math.floor(new Date(smartAccount.sessionKeyExpiry).getTime() / 1000)
+        : Math.floor(Date.now() / 1000 + SESSION_KEY_DEFAULT_EXPIRY_DAYS * 24 * 60 * 60);
+      signer = await createSmartAccountSigner(
+        sessionKeyHex,
+        smartAccount.smartAccountAddress as `0x${string}`,
+        selectedChainId,
+        expiryTs,
+      );
+    }
+  } catch (err) {
+    return {
+      success: false,
+      status: "rejected",
+      signingStrategy: "auto_sign",
+      error: `Failed to create smart account signer: ${err instanceof Error ? err.message : "Unknown error"}`,
+    };
+  }
+
+  const { client, httpClient } = createPaymentClient(signer);
   let paymentPayload;
   try {
     paymentPayload = await client.createPaymentPayload(paymentRequired);
@@ -550,7 +392,7 @@ export async function executePayment(
     return {
       success: false,
       status: "rejected",
-      signingStrategy: "hot_wallet",
+      signingStrategy: "auto_sign",
       error: `Failed to create payment: ${err instanceof Error ? err.message : "Unknown error"}`,
     };
   }
@@ -559,29 +401,14 @@ export async function executePayment(
   const siwxExtension = paymentRequired.extensions?.['sign-in-with-x'] as SIWxExtension | undefined;
   let signInWithXHeader: string | undefined;
   if (siwxExtension) {
-    const matchingChain = siwxExtension?.supportedChains?.find(
-      (chain: { chainId: string }) => chain.chainId === selectedChainConfig.networkString
-    );
-
-    if (!matchingChain) {
-      return {
-        success: false,
-        status: "rejected",
-        signingStrategy: "rejected",
-        error: `SIVX failed: chain ${selectedChainConfig.networkString} not supported by server`,
-      };
-    }
-
-    // Build complete info with selected chain
-    const completeInfo = {
-      ...siwxExtension.info,
-      chainId: matchingChain.chainId,
-      type: matchingChain.type,
+    // Smart account signers use ERC-1271 (contract signatures), which are incompatible
+    // with SIWx's personal_sign requirement. Reject early with a clear error.
+    return {
+      success: false,
+      status: "rejected",
+      signingStrategy: "rejected",
+      error: "SIWx is not supported with smart account signers (ERC-1271). Use an EOA wallet for SIWx-enabled endpoints.",
     };
-
-    // Create signed payload
-    const payload = await createSIWxPayload(completeInfo, account);
-    signInWithXHeader = encodeSIWxHeader(payload);
   }
 
   // Step 9: Encode payment into HTTP headers and re-request (preserving original method/body/headers)
@@ -603,7 +430,7 @@ export async function executePayment(
   } catch (err) {
     const message = err instanceof Error ? err.message : "Fetch failed";
     logger.error("Paid request failed", { userId, url, action: "payment_failed", error: message });
-    return { success: false, status: "rejected", signingStrategy: "hot_wallet", error: `Paid request failed: ${message}` };
+    return { success: false, status: "rejected", signingStrategy: "auto_sign", error: `Paid request failed: ${message}` };
   }
 
   // Read response body for storage (without consuming the original response)
@@ -639,12 +466,12 @@ export async function executePayment(
     return {
       success: false,
       status: "rejected",
-      signingStrategy: "hot_wallet",
+      signingStrategy: "auto_sign",
       error: `Payment submitted but server responded with ${paidResponse.status}`,
       response: paidResponse,
     };
   }
 
   logger.info("Payment completed successfully", { userId, url, action: "payment_completed", txHash, amount: amountUsd, chainId: selectedChainId, status: paidResponse.status });
-  return { success: true, status: "completed", signingStrategy: "hot_wallet", response: paidResponse, settlement };
+  return { success: true, status: "completed", signingStrategy: "auto_sign", response: paidResponse, settlement };
 }

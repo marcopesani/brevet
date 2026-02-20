@@ -1,5 +1,6 @@
 import { z } from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { getRequirementAmountFromLike } from "@/lib/x402/requirements";
 import { textContent, jsonContent, toolError } from "../shared";
 
 const DISCOVERY_API_URL =
@@ -31,6 +32,7 @@ export interface DiscoveryResponse {
 
 export function registerX402Discover(
   server: McpServer,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _userId: string,
 ): void {
   server.registerTool(
@@ -117,12 +119,14 @@ export function registerX402Discover(
 
         const endpoints = items.map((item) => {
           const accept = item.accepts[0];
+          const amountRaw = accept ? getRequirementAmountFromLike(accept) : undefined;
           return {
             url: item.resource,
             description: accept?.description ?? "No description",
-            price: accept
-              ? `${(Number(accept.maxAmountRequired) / 1e6).toFixed(6)} USDC`
-              : "Unknown",
+            price:
+              amountRaw != null
+                ? `${(Number(amountRaw) / 1e6).toFixed(6)} USDC`
+                : "Unknown",
             network: accept?.network ?? "Unknown",
             scheme: accept?.scheme ?? "Unknown",
           };

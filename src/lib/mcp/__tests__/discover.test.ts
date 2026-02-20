@@ -9,6 +9,13 @@ vi.mock("@/lib/x402/payment", () => ({
 vi.mock("@/lib/hot-wallet", () => ({
   getUsdcBalance: vi.fn(),
 }));
+vi.mock("@/lib/smart-account", () => ({
+  computeSmartAccountAddress: vi.fn().mockResolvedValue("0x" + "c".repeat(40)),
+  createSessionKey: vi.fn().mockReturnValue({
+    address: "0x" + "d".repeat(40),
+    encryptedPrivateKey: "encrypted-key",
+  }),
+}));
 
 const MOCK_DISCOVERY_RESPONSE: DiscoveryResponse = {
   items: [

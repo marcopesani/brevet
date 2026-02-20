@@ -160,6 +160,16 @@ export function getChainConfig(chainId: number): ChainConfig | undefined {
   return CHAIN_CONFIGS[chainId];
 }
 
+/**
+ * Returns all network identifiers that may appear in a 402 payment requirement
+ * for this chain (e.g. "eip155:8453" and "base"). Use when matching stored
+ * requirements that might use either EIP-155 or plain chain names.
+ */
+export function getNetworkIdentifiers(config: ChainConfig): string[] {
+  const normalizedName = config.chain.name.toLowerCase().replace(/\s+/g, "-");
+  return [config.networkString, normalizedName];
+}
+
 export function isChainSupported(chainId: number): boolean {
   return chainId in CHAIN_CONFIGS;
 }

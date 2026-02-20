@@ -30,6 +30,24 @@ vi.mock("@/lib/hot-wallet", async (importOriginal) => {
   };
 });
 
+// Mock smart-account signer creation to avoid real RPC calls.
+vi.mock("@/lib/smart-account", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/smart-account")>();
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const { TEST_PRIVATE_KEY: key } = await import("@/test/helpers/crypto");
+  const account = privateKeyToAccount(key);
+  const mockSigner = {
+    address: account.address,
+    signTypedData: (args: Parameters<typeof account.signTypedData>[0]) =>
+      account.signTypedData(args),
+  };
+  return {
+    ...actual,
+    createSmartAccountSigner: vi.fn().mockResolvedValue(mockSigner),
+    createSmartAccountSignerFromSerialized: vi.fn().mockResolvedValue(mockSigner),
+  };
+});
+
 // V2-format PaymentRequired for header-based tests
 const V2_REQUIREMENT = {
   scheme: "exact",
@@ -54,6 +72,7 @@ const V1_REQUIREMENT = {
   network: "base-sepolia",
   maxAmountRequired: "50000",
   resource: "https://api.example.com/resource",
+  description: "Payment for API access",
   payTo: ("0x" + "b".repeat(40)) as Hex,
   maxTimeoutSeconds: 3600,
   asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
@@ -446,8 +465,8 @@ describe("E2E: Crypto Operations", () => {
 
       expect(result.success).toBe(false);
       expect(result.status).toBe("pending_approval");
-      expect(result.signingStrategy).toBe("walletconnect");
-      expect(result.amount).toBe(0.05);
+      expect(result.signingStrategy).toBe("manual_approval");
+      expect(result.amountRaw).toBe("50000");
       expect(result.paymentRequirements).toBeDefined();
     });
   });
@@ -580,7 +599,7 @@ describe("E2E: Crypto Operations", () => {
       // With multi-chain support, Polygon is supported so we create a pending payment
       expect(result.success).toBe(false);
       expect(result.status).toBe("pending_approval");
-      expect(result.signingStrategy).toBe("walletconnect");
+      expect(result.signingStrategy).toBe("manual_approval");
     });
 
     it("should reject when no requirement matches any supported chain", async () => {
@@ -614,9 +633,8 @@ describe("E2E: Crypto Operations", () => {
 
   // ─── 8. SIWx Extension Handling ────────────────────────────────────────────
   describe("SIWx Extension Handling", () => {
-    it("should attach SIGN-IN-WITH-X header when extension is present", async () => {
+    it("should reject SIWx with smart account signers (ERC-1271 incompatible)", async () => {
       const { user } = await seedTestUser();
-      const txHash = "0x" + "f".repeat(64);
 
       // Build V2 payment requirements with SIWx extension
       // Nonce must be >=8 alphanumeric characters (SIWE spec)
@@ -651,11 +669,9 @@ describe("E2E: Crypto Operations", () => {
         extensions: { "sign-in-with-x": siwxExtension },
       };
 
-      mockFetch
-        .mockResolvedValueOnce(makeV2_402Response(paymentRequiredWithSiwx))
-        .mockResolvedValueOnce(
-          make200Response({ "X-PAYMENT-TX-HASH": txHash }),
-        );
+      mockFetch.mockResolvedValueOnce(
+        makeV2_402Response(paymentRequiredWithSiwx),
+      );
 
       const { executePayment } = await import("@/lib/x402/payment");
       const result = await executePayment(
@@ -663,15 +679,10 @@ describe("E2E: Crypto Operations", () => {
         user.id,
       );
 
-      expect(result.success).toBe(true);
-      expect(result.status).toBe("completed");
-
-      // Verify the retry request included the SIGN-IN-WITH-X header
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-      const secondCallHeaders = mockFetch.mock.calls[1][1]?.headers;
-      expect(secondCallHeaders).toBeDefined();
-      expect(secondCallHeaders["SIGN-IN-WITH-X"]).toBeDefined();
-      expect(typeof secondCallHeaders["SIGN-IN-WITH-X"]).toBe("string");
+      // Smart account signers use ERC-1271 which is incompatible with SIWx
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("rejected");
+      expect(result.error).toContain("SIWx is not supported with smart account signers");
     });
 
     it("should reject when SIWx extension does not support the configured chain", async () => {
@@ -719,8 +730,7 @@ describe("E2E: Crypto Operations", () => {
 
       expect(result.success).toBe(false);
       expect(result.status).toBe("rejected");
-      expect(result.error).toContain("SIVX failed");
-      expect(result.error).toContain("not supported");
+      expect(result.error).toContain("SIWx is not supported with smart account signers");
     });
   });
 });

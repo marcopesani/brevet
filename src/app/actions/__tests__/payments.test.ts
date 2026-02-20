@@ -46,6 +46,20 @@ const MOCK_PAYMENT_REQUIREMENTS = JSON.stringify([
   },
 ]);
 
+/** Full V1-shaped requirement so getRequirementAmount returns maxAmountRequired (50000 = 0.05 USDC). */
+const FULL_V1_PAYMENT_REQUIREMENTS = JSON.stringify([
+  {
+    scheme: "exact",
+    network: "eip155:84532",
+    maxAmountRequired: "50000",
+    resource: "https://api.example.com/paid-resource",
+    description: "Paid resource",
+    payTo: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    maxTimeoutSeconds: 3600,
+    asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  },
+]);
+
 async function createTestUserForId(userId: string) {
   return User.create({
     _id: new mongoose.Types.ObjectId(userId),
@@ -130,6 +144,46 @@ describe("approvePendingPayment server action", () => {
     expect(transactions[0].txHash).toBe("0xtxhash123");
     expect(transactions[0].responseStatus).toBe(200);
     expect(transactions[0].errorMessage).toBeNull();
+  });
+
+  it("uses V1 requirement maxAmountRequired for amount when approving (transaction amount 0.05)", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: "0x1234",
+    });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response('{"result": "paid"}', {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await createTestUserForId(TEST_USER_ID);
+
+    const future = new Date(Date.now() + 60_000);
+    const payment = await PendingPayment.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      url: "https://api.example.com/paid-resource",
+      method: "POST",
+      amount: 0.05,
+      paymentRequirements: FULL_V1_PAYMENT_REQUIREMENTS,
+      status: "pending",
+      expiresAt: future,
+    });
+
+    const { approvePendingPayment } = await import("../payments");
+    const result = await approvePendingPayment(
+      payment._id.toString(),
+      "0xmocksignature",
+      MOCK_AUTHORIZATION,
+    );
+
+    expect(result.success).toBe(true);
+    const transactions = await Transaction.find({}).lean();
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].amount).toBe(0.05);
   });
 
   it("stores failed response when paid fetch returns non-2xx", async () => {
@@ -410,5 +464,45 @@ describe("approvePendingPayment server action", () => {
     // precondition for failPendingPayment (requires status:"approved") is not met.
     const updated = await PendingPayment.findById(payment._id).lean();
     expect(updated!.status).toBe("pending");
+  });
+
+  it("blocks redirect to private IP via safeFetch (SSRF protection)", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: "0x1234",
+    });
+
+    // Mock fetch to return a redirect to a private IP
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { Location: "http://169.254.169.254/latest/meta-data/" },
+      }),
+    );
+
+    await createTestUserForId(TEST_USER_ID);
+
+    const future = new Date(Date.now() + 60_000);
+    const payment = await PendingPayment.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      url: "https://api.example.com/paid-resource",
+      method: "GET",
+      amount: 0.05,
+      paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
+      status: "pending",
+      expiresAt: future,
+    });
+
+    const { approvePendingPayment } = await import("../payments");
+    const result = await approvePendingPayment(
+      payment._id.toString(),
+      "0xmocksignature",
+      MOCK_AUTHORIZATION,
+    );
+
+    // safeFetch should block the redirect and return a failure
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(0);
   });
 });

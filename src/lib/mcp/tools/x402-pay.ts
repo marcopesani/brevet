@@ -2,6 +2,7 @@ import { z } from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executePayment } from "@/lib/x402/payment";
 import { createPendingPayment } from "@/lib/data/payments";
+import { formatAmountForDisplay } from "@/lib/x402/display";
 import { resolveChainParam, textContent, jsonContent, toolError } from "../shared";
 
 export function registerX402Pay(server: McpServer, userId: string): void {
@@ -9,7 +10,7 @@ export function registerX402Pay(server: McpServer, userId: string): void {
     "x402_pay",
     {
       description:
-        "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's hot wallet and per-endpoint policy, then retry the request with payment proof. Each endpoint has its own policy controlling whether hot wallet or WalletConnect signing is used. Non-402 responses are returned directly. Supports multiple chains (Ethereum, Base, Arbitrum, Optimism, Polygon + testnets). If no chain is specified, the gateway auto-selects the best chain based on the endpoint's accepted networks and the user's balances.",
+        "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's smart account and session key, then retry the request with payment proof. Each endpoint has its own policy controlling whether the session key auto-signs or WalletConnect manual approval is used. Non-402 responses are returned directly. Supports multiple chains (Ethereum, Base, Arbitrum, Optimism, Polygon + testnets). If no chain is specified, the gateway auto-selects the best chain based on the endpoint's accepted networks and the user's balances.",
       inputSchema: {
         url: z.string().max(2048).url().describe("The URL to request"),
         method: z
@@ -54,28 +55,29 @@ export function registerX402Pay(server: McpServer, userId: string): void {
           chainId,
         );
 
-        const resultAny = result as unknown as Record<string, unknown>;
-        if (resultAny.status === "pending_approval") {
-          const pendingResult = resultAny as {
-            status: string;
-            paymentRequirements: string;
-            amount: number;
-            chainId?: number;
-          };
-
+        if (result.status === "pending_approval") {
           const pendingPayment = await createPendingPayment({
             userId,
             url,
             method: method ?? "GET",
-            amount: pendingResult.amount,
-            chainId: pendingResult.chainId,
-            paymentRequirements: pendingResult.paymentRequirements,
+            amountRaw: result.amountRaw,
+            asset: result.asset,
+            chainId: result.chainId,
+            paymentRequirements: result.paymentRequirements,
             body,
             headers,
           });
 
+          const displayChainId = result.chainId ?? 8453;
+          const { displayAmount, symbol } = formatAmountForDisplay(
+            result.amountRaw,
+            result.asset,
+            displayChainId,
+          );
+          const amountLabel = displayAmount !== "—" ? `${displayAmount} ${symbol}` : "unknown amount";
+
           return textContent(
-            `Payment of $${pendingResult.amount.toFixed(6)} requires user approval. Payment ID: ${pendingPayment.id}. The user has been notified and has 30 minutes to approve. Use x402_check_pending to check the status.`,
+            `Payment of ${amountLabel} requires user approval. Payment ID: ${pendingPayment.id}. The user has been notified and has 30 minutes to approve. Use x402_check_pending to check the status.`,
           );
         }
 
