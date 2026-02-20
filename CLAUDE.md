@@ -41,6 +41,16 @@ The core logic lives in `src/lib/x402/payment.ts`:
 
 URL validation rejects localhost, private IPs, and internal hostnames (SSRF protection).
 
+### Multi-version protocol (x402 V1/V2)
+
+When supporting multiple protocol versions, enforce these rules:
+
+- **Version at the edge only.** Detect and parse V1 vs V2 at the single protocol boundary (e.g. 402 response). Downstream code consumes one normalized representation; no `if (v1) ... else (v2)` in business logic.
+- **One pipeline.** Policy, signing, retry, and storage run in a single version-agnostic path. Version-specific code lives only in adapters (parsers, header builders); core never branches on version.
+- **Normalize before branching.** Convert version-specific payloads to internal types at parse time. Any version-specific field (e.g. `amount` vs `maxAmountRequired`) is handled in the adapter or one narrow helper, not scattered.
+- **Test both versions explicitly.** Every behavior that differs by version has tests for V1 and V2. When both can appear (e.g. header + body), test precedence once and document it.
+- **No version in persistence by default.** Do not store protocol version in the DB unless required for audit, replay, or compliance. Schema is version-agnostic; version is an input concern.
+
 ### MCP Server
 
 Endpoint: `POST /api/mcp/[userId]` using Streamable HTTP transport. Stateless — fresh server instance per request.
@@ -94,6 +104,15 @@ These rules prevent regression to the old polling-heavy architecture:
 ### Database
 
 MongoDB with Mongoose. Five collections: `users`, `hotwallets`, `endpointpolicies`, `transactions`, `pendingpayments`. Models defined in `src/lib/models/`.
+
+**Monetary values (MongoDB):**
+- Store amounts in **smallest unit as integer** (e.g. USDC 6 decimals); never float.
+- Store **currency/asset** on same document as amount; never amount-only.
+- **One module** for all add/subtract/compare; no ad-hoc money math elsewhere.
+- **Conditional updates** for balance changes (read → compute → update with current-value check); no blind decrements.
+- **Append-only audit** for every monetary change (what, when, ref); log is canonical.
+- **Indexes** for every query pattern on money data; enforce uniqueness in schema where needed.
+- **Migrations**: backward-compatible reads, write new format, backfill separately; have rollback.
 
 ### Chain Configuration
 

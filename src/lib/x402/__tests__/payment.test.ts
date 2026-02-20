@@ -103,6 +103,7 @@ const DEFAULT_REQUIREMENT = {
   network: "eip155:84532",
   maxAmountRequired: "50000", // 0.05 USDC (6 decimals)
   resource: "https://api.example.com/resource",
+  description: "Test resource",
   payTo: ("0x" + "b".repeat(40)) as `0x${string}`,
   maxTimeoutSeconds: 3600,
   asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",

@@ -8,6 +8,7 @@ import type { PaymentRequirements } from "@x402/core/types";
 import { useChain } from "@/contexts/chain-context";
 import { CHAIN_CONFIGS, getNetworkIdentifiers } from "@/lib/chain-config";
 import { formatAmountForDisplay } from "@/lib/x402/display";
+import { getRequirementAmount, getRequirementAmountFromLike } from "@/lib/x402/requirements";
 import type { Hex } from "viem";
 import { toast } from "sonner";
 import {
@@ -138,12 +139,13 @@ export default function PendingPaymentCard({
         toast.error("Payment requirement missing payTo address");
         return;
       }
-      if (requirement.amount == null || requirement.amount === "") {
+      const amountStr = getRequirementAmount(requirement) ?? getRequirementAmountFromLike(requirement);
+      if (amountStr == null || amountStr === "") {
         toast.error("Payment requirement has no amount; cannot approve");
         return;
       }
 
-      const amountWei = BigInt(requirement.amount);
+      const amountWei = BigInt(amountStr);
       const nonce = generateNonce();
       const now = BigInt(Math.floor(Date.now() / 1_000));
 
@@ -240,11 +242,14 @@ export default function PendingPaymentCard({
   const displayRequirement = requirements.find(
     (r) => r.scheme === "exact" && r.network != null && acceptedNetworks.includes(r.network),
   );
+  const displayAmountRaw =
+    displayRequirement &&
+    (payment.amountRaw ?? getRequirementAmount(displayRequirement) ?? getRequirementAmountFromLike(displayRequirement));
   const amountForDisplay =
-    displayRequirement && (payment.amountRaw != null || displayRequirement.amount)
+    displayAmountRaw != null && displayAmountRaw !== ""
       ? formatAmountForDisplay(
-          payment.amountRaw ?? displayRequirement.amount,
-          payment.asset ?? displayRequirement.asset,
+          displayAmountRaw,
+          payment.asset ?? displayRequirement?.asset,
           payment.chainId ?? paymentChainConfig.chain.id,
         )
       : payment.amount != null && payment.amount > 0

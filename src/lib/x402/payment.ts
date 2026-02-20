@@ -8,6 +8,7 @@ import { decryptPrivateKey, getUsdcBalance, USDC_DECIMALS } from "@/lib/hot-wall
 import { checkPolicy } from "@/lib/policy";
 import { createSmartAccountSignerFromSerialized, createSmartAccountSigner } from "@/lib/smart-account";
 import { parsePaymentRequired, extractTxHashFromResponse, extractSettleResponse } from "./headers";
+import { getRequirementAmount } from "./requirements";
 import type {
 PaymentResult, SigningStrategy, ClientEvmSigner } from "./types";
 import { getChainConfig, isChainSupported, SUPPORTED_CHAINS } from "../chain-config";
@@ -461,12 +462,9 @@ export async function executePayment(
   // Step 4: Look up the user's smart account for the selected chain (with session key for signing)
   const smartAccount = await getSmartAccountWithSessionKey(userId, selectedChainId);
 
-  // Step 5: Determine the amount from the selected requirement
-  // SDK V2 uses `amount`, V1 uses `maxAmountRequired` — check both
+  // Step 5: Determine the amount from the selected requirement (V1 or V2 via library helper)
   const selectedRequirement = paymentRequired.accepts[acceptIndex];
-  const amountStr = selectedRequirement.amount
-    ?? (selectedRequirement as unknown as { maxAmountRequired?: string }).maxAmountRequired
-    ?? "0";
+  const amountStr = getRequirementAmount(selectedRequirement) ?? "0";
   const amountWei = BigInt(amountStr);
   const amountUsd = parseFloat(formatUnits(amountWei, USDC_DECIMALS));
 
@@ -479,7 +477,7 @@ export async function executePayment(
       status: "pending_approval",
       signingStrategy: "manual_approval",
       paymentRequirements: JSON.stringify(paymentRequired),
-      amountRaw: selectedRequirement.amount ?? (selectedRequirement as unknown as { maxAmountRequired?: string }).maxAmountRequired ?? "",
+      amountRaw: getRequirementAmount(selectedRequirement) ?? "",
       asset: selectedRequirement.asset,
       chainId: selectedChainId,
     };
@@ -519,7 +517,7 @@ export async function executePayment(
       status: "pending_approval",
       signingStrategy: "manual_approval",
       paymentRequirements: JSON.stringify(paymentRequired),
-      amountRaw: selectedRequirement.amount ?? (selectedRequirement as unknown as { maxAmountRequired?: string }).maxAmountRequired ?? "",
+      amountRaw: getRequirementAmount(selectedRequirement) ?? "",
       asset: selectedRequirement.asset,
       chainId: selectedChainId,
     };

@@ -15,10 +15,11 @@ import {
 import { createTransaction } from "@/lib/data/transactions";
 import { buildPaymentHeaders, extractSettleResponse, extractTxHashFromResponse } from "@/lib/x402/headers";
 import { formatAmountForDisplay } from "@/lib/x402/display";
+import { getRequirementAmount } from "@/lib/x402/requirements";
 import { CHAIN_CONFIGS, getNetworkIdentifiers } from "@/lib/chain-config";
 import { logger } from "@/lib/logger";
 import type { Hex } from "viem";
-import { PaymentPayload } from "@x402/core/types";
+import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 
 export async function getPendingPayments() {
   const auth = await getAuthenticatedUser();
@@ -77,8 +78,11 @@ export async function approvePendingPayment(
         r.scheme === "exact" && r.network != null && acceptedNetworks.includes(r.network),
     ) ?? accepts[0];
 
+  const amountRaw =
+    (acceptedRequirement && getRequirementAmount(acceptedRequirement as PaymentRequirements)) ??
+    (payment as { amountRaw?: string }).amountRaw;
   const { displayAmount } = formatAmountForDisplay(
-    acceptedRequirement?.amount ?? (payment as { amountRaw?: string }).amountRaw,
+    amountRaw,
     acceptedRequirement?.asset ?? (payment as { asset?: string }).asset,
     chainId,
   );
