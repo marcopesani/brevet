@@ -117,9 +117,12 @@ MongoDB with Mongoose. Five collections: `users`, `hotwallets`, `endpointpolicie
 
 Copy `.env.example` to `.env.local`. Required variables:
 - `MONGODB_URI` — MongoDB connection string (default: `mongodb://localhost:27017/brevet`)
-- `HOT_WALLET_ENCRYPTION_KEY` — 64-char hex (generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`)
+- `PIMLICO_API_KEY` — Pimlico bundler/paymaster key for smart account operations (from https://dashboard.pimlico.io)
 - `NEXTAUTH_SECRET` — session encryption key
 - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` — from https://dashboard.reown.com
+
+Optional:
+- `HOT_WALLET_ENCRYPTION_KEY` — 64-char hex, only needed for legacy hot wallet migration
 
 ### Local Development with Docker
 
