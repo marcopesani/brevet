@@ -11,6 +11,7 @@ import {
   ensureSmartAccount,
   storeSerializedAccount,
   updateSessionKeyStatus,
+  activateSessionKey,
 } from "../smart-account";
 
 vi.mock("@/lib/hot-wallet", () => ({
@@ -266,6 +267,28 @@ describe("ensureSmartAccount", () => {
     expect(count).toBe(1);
   });
 
+  it("handles concurrent duplicate creation gracefully (race condition)", async () => {
+    const user = await User.create({ walletAddress: "0xUser1" });
+    const uid = user._id.toString();
+
+    // Simulate race: both calls pass the findOne check, one succeeds at create,
+    // the other gets a duplicate key error and should re-fetch the existing doc.
+    const [result1, result2] = await Promise.all([
+      ensureSmartAccount(uid, "0xOwner", DEFAULT_CHAIN_ID),
+      ensureSmartAccount(uid, "0xOwner", DEFAULT_CHAIN_ID),
+    ]);
+
+    // Both should return valid records with the same id
+    expect(result1.id).toBe(result2.id);
+
+    // Only one document should exist
+    const count = await SmartAccount.countDocuments({
+      userId: new mongoose.Types.ObjectId(uid),
+      chainId: DEFAULT_CHAIN_ID,
+    });
+    expect(count).toBe(1);
+  });
+
   it("creates separate accounts for different chains", async () => {
     const user = await User.create({ walletAddress: "0xUser1" });
 
@@ -351,6 +374,43 @@ describe("updateSessionKeyStatus", () => {
       nonExistentId(),
       DEFAULT_CHAIN_ID,
       "active",
+    );
+    expect(result).toBeNull();
+  });
+});
+
+describe("activateSessionKey", () => {
+  it("activates session key with all fields", async () => {
+    const { user } = await createUserWithSmartAccount({
+      sessionKeyStatus: "pending_grant",
+    });
+
+    const expiryDate = new Date(Date.now() + 30 * 86400_000);
+    const result = await activateSessionKey(
+      user._id.toString(),
+      DEFAULT_CHAIN_ID,
+      "0xGrantTxHash123",
+      expiryDate,
+      50_000_000,
+      500_000_000,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result!.sessionKeyStatus).toBe("active");
+    expect(result!.sessionKeyGrantTxHash).toBe("0xGrantTxHash123");
+    expect(result!.spendLimitPerTx).toBe(50_000_000);
+    expect(result!.spendLimitDaily).toBe(500_000_000);
+    expect(result!.sessionKeyExpiry).toBeDefined();
+  });
+
+  it("returns null when no smart account exists", async () => {
+    const result = await activateSessionKey(
+      nonExistentId(),
+      DEFAULT_CHAIN_ID,
+      "0xGrantTxHash",
+      new Date(),
+      50_000_000,
+      500_000_000,
     );
     expect(result).toBeNull();
   });

@@ -83,13 +83,12 @@ export function registerX402CheckPending(
           ),
         );
 
-        const paymentChainId = (payment as unknown as Record<string, unknown>)
-          .chainId as number | undefined;
+        const paymentChainId = payment.chainId;
         const paymentChainConfig = paymentChainId
           ? CHAIN_CONFIGS[paymentChainId]
           : undefined;
-        const amountRaw = (payment as unknown as Record<string, unknown>).amountRaw as string | undefined;
-        const asset = (payment as unknown as Record<string, unknown>).asset as string | undefined;
+        const amountRaw = payment.amountRaw;
+        const asset = payment.asset;
         const chainIdForDisplay = paymentChainId ?? 8453;
         const { displayAmount, symbol } = formatAmountForDisplay(amountRaw, asset, chainIdForDisplay);
 

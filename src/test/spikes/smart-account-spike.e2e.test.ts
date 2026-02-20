@@ -105,7 +105,7 @@ describe("Spike: USDC v2.2 ERC-1271 signature acceptance (deployed smart account
         address: entryPoint07Address,
         version: "0.7",
       },
-      index: 0n,
+      index: BigInt(0),
     });
 
     smartAccountAddress = getAddress(kernelAccount.address);
@@ -171,7 +171,7 @@ describe("Spike: USDC v2.2 ERC-1271 signature acceptance (deployed smart account
     expect(typeof eoaUsdc).toBe("bigint");
     expect(typeof saUsdc).toBe("bigint");
 
-    if (eoaEth === 0n) {
+    if (eoaEth === BigInt(0)) {
       console.log("WARNING: EOA has 0 ETH — cannot submit transactions (deploy or transfer).");
     }
   });
@@ -190,7 +190,7 @@ describe("Spike: USDC v2.2 ERC-1271 signature acceptance (deployed smart account
 
       // Check EOA has ETH for gas
       const eoaEth = await publicClient.getBalance({ address: ownerAccount.address });
-      if (eoaEth === 0n) {
+      if (eoaEth === BigInt(0)) {
         console.log("SKIP: EOA has 0 ETH — cannot pay gas for deployment.");
         console.log("Fund the EOA with ~0.01 Base Sepolia ETH first.");
         expect.soft(false).toBe(true);
@@ -270,7 +270,7 @@ describe("Spike: USDC v2.2 ERC-1271 signature acceptance (deployed smart account
         args: [smartAccountAddress],
       });
 
-      if (saBalance > 0n) {
+      if (saBalance > BigInt(0)) {
         console.log(`Smart account already has ${(Number(saBalance) / 1e6).toFixed(6)} USDC. Skipping transfer.`);
         return;
       }
@@ -283,20 +283,20 @@ describe("Spike: USDC v2.2 ERC-1271 signature acceptance (deployed smart account
         args: [ownerAccount.address],
       });
 
-      if (eoaBalance === 0n) {
+      if (eoaBalance === BigInt(0)) {
         console.log("SKIP: EOA has no USDC to transfer to smart account.");
         return;
       }
 
       // Check EOA ETH for gas
       const eoaEth = await publicClient.getBalance({ address: ownerAccount.address });
-      if (eoaEth === 0n) {
+      if (eoaEth === BigInt(0)) {
         console.log("SKIP: EOA has no ETH for gas.");
         return;
       }
 
       // Transfer 1 USDC (1_000_000 raw) to the smart account
-      const transferAmount = 1_000_000n; // 1 USDC
+      const transferAmount = BigInt(1_000_000); // 1 USDC
       const actualAmount = eoaBalance < transferAmount ? eoaBalance : transferAmount;
 
       console.log(`Transferring ${(Number(actualAmount) / 1e6).toFixed(6)} USDC to smart account...`);
@@ -337,8 +337,8 @@ describe("Spike: USDC v2.2 ERC-1271 signature acceptance (deployed smart account
         from,
         to,
         value,
-        validAfter: 0n,
-        validBefore: now + 600n, // 10 minutes
+        validAfter: BigInt(0),
+        validBefore: now + BigInt(600), // 10 minutes
         nonce,
       };
     }
@@ -361,7 +361,7 @@ describe("Spike: USDC v2.2 ERC-1271 signature acceptance (deployed smart account
         console.log("SKIP: Smart account is NOT deployed. Cannot test ERC-1271.");
         console.log("Deploy the smart account first (previous test must pass).");
         // Still produce a signature for logging
-        const auth = buildTransferAuth(smartAccountAddress, RECIPIENT, 1n);
+        const auth = buildTransferAuth(smartAccountAddress, RECIPIENT, BigInt(1));
         const erc1271Sig = await kernelAccount.signTypedData({
           domain: USDC_DOMAIN,
           types: AUTHORIZATION_TYPES,
@@ -373,7 +373,7 @@ describe("Spike: USDC v2.2 ERC-1271 signature acceptance (deployed smart account
         return;
       }
 
-      if (smartBalance === 0n) {
+      if (smartBalance === BigInt(0)) {
         console.log("SKIP: Smart account has no USDC. Fund it first.");
         return;
       }
@@ -382,7 +382,7 @@ describe("Spike: USDC v2.2 ERC-1271 signature acceptance (deployed smart account
       console.log("Bytecode length:", code!.length);
 
       // Attempt the real transfer
-      const transferAmount = 1n; // 0.000001 USDC
+      const transferAmount = BigInt(1); // 0.000001 USDC
       const auth = buildTransferAuth(smartAccountAddress, RECIPIENT, transferAmount);
 
       // Sign with the Kernel smart account (ERC-1271 wrapped signature)
@@ -473,18 +473,18 @@ describe("Spike: USDC v2.2 ERC-1271 signature acceptance (deployed smart account
         args: [ownerAccount.address],
       });
 
-      if (eoaBalance === 0n) {
+      if (eoaBalance === BigInt(0)) {
         console.log("SKIP: EOA has no USDC. Fund it to run the ECDSA control test.");
         return;
       }
 
       const eoaEth = await publicClient.getBalance({ address: ownerAccount.address });
-      if (eoaEth === 0n) {
+      if (eoaEth === BigInt(0)) {
         console.log("SKIP: EOA has no ETH for gas.");
         return;
       }
 
-      const transferAmount = 1n; // 0.000001 USDC
+      const transferAmount = BigInt(1); // 0.000001 USDC
       const auth = buildTransferAuth(ownerAccount.address, RECIPIENT, transferAmount);
 
       const rawSig = await ownerAccount.signTypedData({
@@ -557,9 +557,9 @@ describe("Spike: USDC v2.2 ERC-1271 signature acceptance (deployed smart account
       const auth = {
         from: smartAccountAddress,
         to: RECIPIENT,
-        value: 1n,
-        validAfter: 0n,
-        validBefore: BigInt(Math.floor(Date.now() / 1000)) + 600n,
+        value: BigInt(1),
+        validAfter: BigInt(0),
+        validBefore: BigInt(Math.floor(Date.now() / 1000)) + BigInt(600),
         nonce: `0x${crypto.randomBytes(32).toString("hex")}` as Hex,
       };
 

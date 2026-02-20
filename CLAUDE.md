@@ -131,6 +131,7 @@ MongoDB with Mongoose. Five collections: `users`, `hotwallets`, `endpointpolicie
 - Server Actions: `src/app/actions/` for authenticated mutations with revalidation
 - React Query hooks: `src/hooks/` for client-side data that needs polling or cache invalidation
 - Rate limiting: in-memory sliding window (`src/lib/rate-limit.ts`), applied to `/api/mcp/[userId]` and `/api/payments/pending`
+- No magic numbers: configurable limits and defaults (spending caps, expiry durations, retry counts) must come from environment variables parsed at startup. Protocol constants (USDC decimals, chain IDs, contract addresses) can remain in code. Startup must fail if required env vars are missing or invalid.
 
 ## Environment Setup
 

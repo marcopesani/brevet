@@ -9,6 +9,10 @@ process.env.NEXT_PUBLIC_CHAIN_ID = "84532";
 process.env.HOT_WALLET_ENCRYPTION_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID = "test-project-id";
+process.env.SESSION_KEY_MAX_SPEND_PER_TX = "1000000000000";
+process.env.SESSION_KEY_MAX_SPEND_DAILY = "10000000000000";
+process.env.SESSION_KEY_MAX_EXPIRY_DAYS = "365";
+process.env.SESSION_KEY_DEFAULT_EXPIRY_DAYS = "30";
 
 // Mock @/lib/db globally so no test needs a real MongoDB connection.
 // Tests connect via MongoMemoryServer directly in beforeAll below.

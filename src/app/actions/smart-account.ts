@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createPublicClient, http, type Hex } from "viem";
+import { z } from "zod/v4";
 import { getAuthenticatedUser } from "@/lib/auth";
 import {
   ensureSmartAccount,
@@ -10,9 +11,15 @@ import {
   getSmartAccountBalance,
   getAllSmartAccounts,
   storeSerializedAccount,
+  activateSessionKey,
 } from "@/lib/data/smart-account";
 import { decryptPrivateKey, encryptPrivateKey } from "@/lib/hot-wallet";
 import { getChainConfig } from "@/lib/chain-config";
+import {
+  SESSION_KEY_MAX_SPEND_PER_TX,
+  SESSION_KEY_MAX_SPEND_DAILY,
+  SESSION_KEY_MAX_EXPIRY_DAYS,
+} from "@/lib/smart-account-constants";
 
 export async function setupSmartAccount(chainId: number) {
   const auth = await getAuthenticatedUser();
@@ -108,6 +115,21 @@ export async function sendBundlerRequest(
     throw new Error(`Method not allowed: ${method}`);
   }
 
+  // Validate that eth_sendUserOperation sender matches user's smart account
+  if (method === "eth_sendUserOperation" && Array.isArray(params) && params.length > 0) {
+    const userOp = params[0] as Record<string, unknown> | undefined;
+    const sender = userOp?.sender;
+    if (typeof sender === "string") {
+      const account = await getSmartAccount(auth.userId, chainId);
+      if (!account) {
+        throw new Error("No smart account found for this chain");
+      }
+      if (sender.toLowerCase() !== account.smartAccountAddress.toLowerCase()) {
+        throw new Error("UserOperation sender does not match your smart account");
+      }
+    }
+  }
+
   const apiKey = process.env.PIMLICO_API_KEY;
   if (!apiKey) throw new Error("PIMLICO_API_KEY is not set");
   const bundlerUrl = `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${apiKey}`;
@@ -123,9 +145,20 @@ export async function sendBundlerRequest(
   return json.result;
 }
 
+const finalizeSessionKeySchema = z.object({
+  chainId: z.number().int().positive(),
+  grantTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+  serializedAccount: z.string().min(1),
+  spendLimitPerTx: z.number().int().positive().max(SESSION_KEY_MAX_SPEND_PER_TX),
+  spendLimitDaily: z.number().int().positive().max(SESSION_KEY_MAX_SPEND_DAILY),
+  expiryDays: z.number().int().min(1).max(SESSION_KEY_MAX_EXPIRY_DAYS),
+});
+
 /**
  * Step 3: Finalize after the client-side UserOp is confirmed on-chain.
  * Verifies the grant tx, stores the serialized account, and activates the session key.
+ *
+ * spendLimitPerTx and spendLimitDaily are in USDC micro-units (multiply USDC by 10^6).
  */
 export async function finalizeSessionKey(
   chainId: number,
@@ -138,9 +171,22 @@ export async function finalizeSessionKey(
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
 
+  // Validate inputs
+  const parsed = finalizeSessionKeySchema.safeParse({
+    chainId,
+    grantTxHash,
+    serializedAccount,
+    spendLimitPerTx,
+    spendLimitDaily,
+    expiryDays,
+  });
+  if (!parsed.success) {
+    return { success: false as const, error: `Invalid input: ${parsed.error.issues.map(i => i.message).join(", ")}` };
+  }
+
   // Verify the grant transaction on-chain
   const config = getChainConfig(chainId);
-  if (!config) throw new Error(`Unsupported chain: ${chainId}`);
+  if (!config) return { success: false as const, error: `Unsupported chain: ${chainId}` };
 
   const publicClient = createPublicClient({
     chain: config.chain,
@@ -150,7 +196,7 @@ export async function finalizeSessionKey(
     hash: grantTxHash as Hex,
   });
   if (receipt.status !== "success") {
-    throw new Error("Grant transaction failed");
+    return { success: false as const, error: "Grant transaction failed" };
   }
 
   // Encrypt and store the serialized permission account
@@ -161,26 +207,21 @@ export async function finalizeSessionKey(
   const expiryDate = new Date();
   expiryDate.setDate(expiryDate.getDate() + expiryDays);
 
-  // Update SmartAccount record
-  const { SmartAccount } = await import("@/lib/models/smart-account");
-  await SmartAccount.findOneAndUpdate(
-    { userId: auth.userId, chainId },
-    {
-      $set: {
-        sessionKeyStatus: "active",
-        sessionKeyGrantTxHash: grantTxHash,
-        sessionKeyExpiry: expiryDate,
-        spendLimitPerTx,
-        spendLimitDaily,
-      },
-    },
+  // Activate session key via data layer
+  await activateSessionKey(
+    auth.userId,
+    chainId,
+    grantTxHash,
+    expiryDate,
+    spendLimitPerTx,
+    spendLimitDaily,
   );
 
   revalidatePath("/dashboard/wallet");
   revalidatePath("/dashboard");
 
   return {
-    success: true,
+    success: true as const,
     grantTxHash,
     sessionKeyStatus: "active" as const,
   };

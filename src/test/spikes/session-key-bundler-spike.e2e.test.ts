@@ -114,8 +114,8 @@ function buildTransferAuth(from: Address, to: Address, value: bigint) {
     from,
     to,
     value,
-    validAfter: 0n,
-    validBefore: now + 600n, // 10 minutes
+    validAfter: BigInt(0),
+    validBefore: now + BigInt(600), // 10 minutes
     nonce,
   };
 }
@@ -151,7 +151,7 @@ describe.skipIf(!process.env.PIMLICO_API_KEY)("Spike 3: Session key permission v
     console.log("Session key EOA:", sessionKeyAccount.address);
     console.log("Deployed smart account:", DEPLOYED_SA_ADDRESS);
     console.log("USDC address:", USDC_ADDRESS);
-    console.log("Bundler URL:", BUNDLER_URL.replace(PIMLICO_API_KEY, "***"));
+    console.log("Bundler URL:", BUNDLER_URL.replace(PIMLICO_API_KEY ?? "", "***"));
     console.log("");
 
     // Check balances
@@ -176,7 +176,7 @@ describe.skipIf(!process.env.PIMLICO_API_KEY)("Spike 3: Session key permission v
     if (!isDeployed) {
       console.log("ERROR: Smart account not deployed! Run spike 1 first.");
     }
-    if (saUsdc === 0n) {
+    if (saUsdc === BigInt(0)) {
       console.log("WARNING: Smart account has no USDC for transfer tests.");
     }
   });
@@ -202,7 +202,7 @@ describe.skipIf(!process.env.PIMLICO_API_KEY)("Spike 3: Session key permission v
         standard: gasPrice.standard.maxFeePerGas.toString(),
         fast: gasPrice.fast.maxFeePerGas.toString(),
       });
-      expect(gasPrice.standard.maxFeePerGas).toBeGreaterThan(0n);
+      expect(gasPrice.standard.maxFeePerGas).toBeGreaterThan(BigInt(0));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.log("Bundler connection error:", msg);
@@ -312,7 +312,7 @@ describe.skipIf(!process.env.PIMLICO_API_KEY)("Spike 3: Session key permission v
           callData: await kernelAccount.encodeCalls([
             {
               to: zeroAddress,
-              value: 0n,
+              value: BigInt(0),
               data: "0x",
             },
           ]),
@@ -373,7 +373,7 @@ describe.skipIf(!process.env.PIMLICO_API_KEY)("Spike 3: Session key permission v
             callData: await kernelAccount.encodeCalls([
               {
                 to: zeroAddress,
-                value: 0n,
+                value: BigInt(0),
                 data: "0x",
               },
             ]),
@@ -423,7 +423,7 @@ describe.skipIf(!process.env.PIMLICO_API_KEY)("Spike 3: Session key permission v
         console.log("SKIP: Smart account not deployed.");
         return;
       }
-      if (saBalance === 0n) {
+      if (saBalance === BigInt(0)) {
         console.log("SKIP: Smart account has no USDC.");
         return;
       }
@@ -470,7 +470,7 @@ describe.skipIf(!process.env.PIMLICO_API_KEY)("Spike 3: Session key permission v
       });
 
       // Build the transfer authorization
-      const transferAmount = 1n; // 0.000001 USDC
+      const transferAmount = BigInt(1); // 0.000001 USDC
       const auth = buildTransferAuth(
         DEPLOYED_SA_ADDRESS,
         RECIPIENT,

@@ -182,8 +182,8 @@ describe("upsertUser", () => {
 });
 
 describe("authOptions callbacks", () => {
-  const jwtCallback = authOptions.callbacks!.jwt as (params: { token: Record<string, unknown>; user?: { id: string; address: string; chainId: number } }) => Record<string, unknown>;
-  const sessionCallback = authOptions.callbacks!.session as (params: { session: Record<string, unknown>; token: Record<string, unknown> }) => Record<string, unknown>;
+  const jwtCallback = authOptions.callbacks!.jwt as unknown as (params: { token: Record<string, unknown>; user?: { id: string; address: string; chainId: number } }) => Record<string, unknown>;
+  const sessionCallback = authOptions.callbacks!.session as unknown as (params: { session: Record<string, unknown>; token: Record<string, unknown> }) => Record<string, unknown>;
 
   describe("jwt callback", () => {
     it("sets userId, address, chainId on token when user is provided", () => {

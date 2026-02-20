@@ -55,33 +55,24 @@ export function registerX402Pay(server: McpServer, userId: string): void {
           chainId,
         );
 
-        const resultAny = result as unknown as Record<string, unknown>;
-        if (resultAny.status === "pending_approval") {
-          const pendingResult = resultAny as {
-            status: string;
-            paymentRequirements: string;
-            amountRaw?: string;
-            asset?: string;
-            chainId?: number;
-          };
-
+        if (result.status === "pending_approval") {
           const pendingPayment = await createPendingPayment({
             userId,
             url,
             method: method ?? "GET",
-            amountRaw: pendingResult.amountRaw,
-            asset: pendingResult.asset,
-            chainId: pendingResult.chainId,
-            paymentRequirements: pendingResult.paymentRequirements,
+            amountRaw: result.amountRaw,
+            asset: result.asset,
+            chainId: result.chainId,
+            paymentRequirements: result.paymentRequirements,
             body,
             headers,
           });
 
-          const chainId = pendingResult.chainId ?? 8453;
+          const displayChainId = result.chainId ?? 8453;
           const { displayAmount, symbol } = formatAmountForDisplay(
-            pendingResult.amountRaw,
-            pendingResult.asset,
-            chainId,
+            result.amountRaw,
+            result.asset,
+            displayChainId,
           );
           const amountLabel = displayAmount !== "—" ? `${displayAmount} ${symbol}` : "unknown amount";
 

@@ -140,6 +140,8 @@ export function createTestTransaction(
     _id: overrides?.id
       ? new mongoose.Types.ObjectId(overrides.id)
       : new mongoose.Types.ObjectId(),
+    // NOTE: This uses a float (0.05 USDC) for test convenience. Production code
+    // stores amounts as integers in smallest unit (e.g. 50000 for 0.05 USDC).
     amount: overrides?.amount ?? 0.05,
     endpoint: overrides?.endpoint ?? "https://api.example.com/resource",
     txHash: overrides?.txHash ?? "0x" + "a".repeat(64),
@@ -165,6 +167,7 @@ export function createTestPendingPayment(
     status?: string;
     signature?: string | null;
     expiresAt?: Date;
+    chainId?: number;
   },
 ) {
   return {
@@ -173,6 +176,8 @@ export function createTestPendingPayment(
       : new mongoose.Types.ObjectId(),
     url: overrides?.url ?? "https://api.example.com/paid-resource",
     method: overrides?.method ?? "GET",
+    // NOTE: This uses a float (0.05 USDC) for test convenience. Production code
+    // stores amounts as integers in smallest unit (e.g. 50000 for 0.05 USDC).
     amount: overrides?.amount ?? 0.05,
     paymentRequirements:
       overrides?.paymentRequirements ??
@@ -190,5 +195,6 @@ export function createTestPendingPayment(
     signature: overrides?.signature ?? null,
     expiresAt: overrides?.expiresAt ?? new Date(Date.now() + 3600_000),
     userId: new mongoose.Types.ObjectId(userId),
+    chainId: overrides?.chainId ?? DEFAULT_CHAIN_ID,
   };
 }

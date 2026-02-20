@@ -252,6 +252,58 @@ describe("executePayment", () => {
     expect(result.chainId).toBe(84532);
   });
 
+  it("rejects with expired session key and updates status to expired", async () => {
+    // Set session key as active but expired (expiry in the past)
+    const pastDate = new Date(Date.now() - 86400_000); // 1 day ago
+    await SmartAccount.findOneAndUpdate(
+      { userId: new mongoose.Types.ObjectId(userId) },
+      {
+        $set: {
+          sessionKeyStatus: "active",
+          sessionKeyExpiry: pastDate,
+        },
+      },
+    );
+
+    mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+
+    const result = await executePayment("https://api.example.com/resource", userId);
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe("rejected");
+    expect(result.error).toContain("Session key has expired");
+
+    // Verify the status was updated to expired in the DB
+    const account = await SmartAccount.findOne({
+      userId: new mongoose.Types.ObjectId(userId),
+    }).lean();
+    expect(account?.sessionKeyStatus).toBe("expired");
+  });
+
+  it("allows payment when session key has future expiry", async () => {
+    const futureDate = new Date(Date.now() + 86400_000 * 30); // 30 days from now
+    await SmartAccount.findOneAndUpdate(
+      { userId: new mongoose.Types.ObjectId(userId) },
+      {
+        $set: {
+          sessionKeyStatus: "active",
+          sessionKeyExpiry: futureDate,
+        },
+      },
+    );
+
+    const txHash = "0x" + "b".repeat(64);
+    mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+    mockFetch.mockResolvedValueOnce(
+      make200Response({ success: true }, { "X-PAYMENT-TX-HASH": txHash }),
+    );
+
+    const result = await executePayment("https://api.example.com/resource", userId);
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe("completed");
+  });
+
   it("rejects when policy denies the payment (no active policy)", async () => {
     await EndpointPolicy.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
 
@@ -568,6 +620,45 @@ describe("executePayment", () => {
       }).lean();
       expect(tx).not.toBeNull();
       expect(tx!.chainId).toBe(84532);
+    });
+  });
+
+  describe("SIWx guard", () => {
+    it("rejects SIWx with smart account signer (ERC-1271 incompatible)", async () => {
+      const siwxRequirement = {
+        ...DEFAULT_REQUIREMENT,
+      };
+      const body = {
+        x402Version: 1,
+        error: "Payment Required",
+        accepts: [siwxRequirement],
+        extensions: {
+          "sign-in-with-x": {
+            info: {
+              domain: "example.com",
+              uri: "https://example.com",
+              statement: "Sign in",
+            },
+            supportedChains: [
+              { chainId: "eip155:84532", type: "evm" },
+            ],
+          },
+        },
+      };
+      mockFetch.mockResolvedValueOnce(
+        new Response(JSON.stringify(body), {
+          status: 402,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+
+      const result = await executePayment("https://api.example.com/resource", userId);
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("rejected");
+      expect(result.error).toContain("SIWx is not supported with smart account signers");
+      // Should only have made the initial 402 fetch, not the paid retry
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 

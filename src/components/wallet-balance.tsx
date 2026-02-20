@@ -13,8 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 interface WalletBalanceProps {
-  hotWalletAddress: string | null;
-  userId: string;
+  accountAddress: string | null;
   balance: string | null;
   balanceLoading: boolean;
   balanceError: Error | null;
@@ -24,7 +23,7 @@ interface WalletBalanceProps {
 }
 
 export default function WalletBalance({
-  hotWalletAddress,
+  accountAddress,
   balance,
   balanceLoading,
   balanceError,
@@ -35,13 +34,13 @@ export default function WalletBalance({
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    if (!hotWalletAddress) return;
-    await navigator.clipboard.writeText(hotWalletAddress);
+    if (!accountAddress) return;
+    await navigator.clipboard.writeText(accountAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
 
-  if (!hotWalletAddress) {
+  if (!accountAddress) {
     return (
       <Card>
         <CardHeader>
@@ -61,7 +60,7 @@ export default function WalletBalance({
     );
   }
 
-  const truncatedAddress = `${hotWalletAddress.slice(0, 6)}...${hotWalletAddress.slice(-4)}`;
+  const truncatedAddress = `${accountAddress.slice(0, 6)}...${accountAddress.slice(-4)}`;
 
   return (
     <Card>
@@ -72,7 +71,7 @@ export default function WalletBalance({
         </CardTitle>
         <CardDescription className="flex items-center gap-2">
           <a
-            href={`${explorerUrl}/address/${hotWalletAddress}`}
+            href={`${explorerUrl}/address/${accountAddress}`}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 font-mono text-xs hover:underline"

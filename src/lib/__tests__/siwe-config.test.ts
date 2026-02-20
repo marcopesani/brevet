@@ -57,6 +57,8 @@ describe("createSiweMessage", () => {
       address: "0xAbC123" as `0x${string}`,
       nonce: "abc",
       chainId: 1,
+      domain: "localhost",
+      uri: "http://localhost",
       version: "1" as const,
       iat: "now",
     };
@@ -64,7 +66,7 @@ describe("createSiweMessage", () => {
     const result = createSiweMessage(args);
 
     expect(mockFormatMessage).toHaveBeenCalledWith(
-      { nonce: "abc", chainId: 1, version: "1", iat: "now" },
+      { nonce: "abc", chainId: 1, domain: "localhost", uri: "http://localhost", version: "1", iat: "now" },
       "0xAbC123",
     );
     expect(result).toBe("formatted:0xAbC123");

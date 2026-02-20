@@ -30,7 +30,7 @@ const ChainContext = createContext<ChainContextType | undefined>(undefined);
 
 function setChainCookie(chainId: number) {
   if (typeof window !== "undefined") {
-    document.cookie = `${CHAIN_COOKIE_NAME}=${chainId}; path=/; max-age=31536000; SameSite=Lax`;
+    document.cookie = `${CHAIN_COOKIE_NAME}=${chainId}; path=/; max-age=31536000; SameSite=Lax; Secure`;
   }
 }
 

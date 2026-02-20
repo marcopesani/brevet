@@ -69,7 +69,9 @@ vi.mock("@zerodev/permissions/signers", () => ({
 
 // Mock @zerodev/permissions/policies
 vi.mock("@zerodev/permissions/policies", () => ({
-  toSudoPolicy: vi.fn(() => ({})),
+  toCallPolicy: vi.fn(() => ({})),
+  CallPolicyVersion: { V0_0_4: "0.0.4" },
+  toTimestampPolicy: vi.fn(() => ({})),
 }));
 
 // Mock viem to avoid real RPC calls (publicClient creation)
@@ -87,6 +89,11 @@ vi.mock("viem", async (importOriginal) => {
 
 // ---------------------------------------------------------------------------
 // Tests
+//
+// These are wiring tests that verify mock integration — they confirm our code
+// calls the ZeroDev/permissionless SDK correctly and returns the expected
+// shapes, but do NOT perform real crypto operations or RPC calls. Real crypto
+// is tested in the E2E suite (src/test/e2e/).
 // ---------------------------------------------------------------------------
 
 describe("smart-account", () => {
@@ -165,6 +172,7 @@ describe("smart-account", () => {
         TEST_PRIVATE_KEY,
         MOCK_SA_ADDRESS,
         84532,
+        Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
       );
       expect(signer.address).toBe(MOCK_SA_ADDRESS);
     });
@@ -174,6 +182,7 @@ describe("smart-account", () => {
         TEST_PRIVATE_KEY,
         MOCK_SA_ADDRESS,
         84532,
+        Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
       );
       expect(typeof signer.signTypedData).toBe("function");
     });
@@ -183,6 +192,7 @@ describe("smart-account", () => {
         TEST_PRIVATE_KEY,
         MOCK_SA_ADDRESS,
         84532,
+        Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
       );
 
       const sig = await signer.signTypedData({
@@ -197,7 +207,7 @@ describe("smart-account", () => {
 
     it("should throw for unsupported chain", async () => {
       await expect(
-        createSmartAccountSigner(TEST_PRIVATE_KEY, MOCK_SA_ADDRESS, 99999),
+        createSmartAccountSigner(TEST_PRIVATE_KEY, MOCK_SA_ADDRESS, 99999, Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60),
       ).rejects.toThrow("Unsupported chain: 99999");
     });
   });

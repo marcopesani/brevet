@@ -27,6 +27,7 @@ interface WalletContentProps {
   userId: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default function WalletContent({ userId }: WalletContentProps) {
   const { activeChain } = useChain();
   const chainId = activeChain.chain.id;
@@ -119,7 +120,7 @@ export default function WalletContent({ userId }: WalletContentProps) {
 
         {/* Show fund form so user can pre-fund while waiting for authorization */}
         <div className="grid gap-6 md:grid-cols-2">
-          <FundWalletForm hotWalletAddress={smartAccountAddress} chainId={chainId} />
+          <FundWalletForm accountAddress={smartAccountAddress} chainId={chainId} />
         </div>
       </div>
     );
@@ -129,8 +130,7 @@ export default function WalletContent({ userId }: WalletContentProps) {
   return (
     <div className="flex flex-col gap-6">
       <WalletBalance
-        hotWalletAddress={smartAccountAddress}
-        userId={userId}
+        accountAddress={smartAccountAddress}
         balance={liveBalance}
         balanceLoading={accountLoading || balanceLoading}
         balanceError={balanceError}
@@ -140,7 +140,7 @@ export default function WalletContent({ userId }: WalletContentProps) {
       />
 
       <div className="grid gap-6 md:grid-cols-2">
-        <FundWalletForm hotWalletAddress={smartAccountAddress} chainId={chainId} />
+        <FundWalletForm accountAddress={smartAccountAddress} chainId={chainId} />
         <WithdrawWalletForm balance={liveBalance} chainId={chainId} />
       </div>
     </div>

@@ -82,6 +82,7 @@ const DEFAULT_REQUIREMENT = {
   network: "base-sepolia",
   maxAmountRequired: "50000", // 0.05 USDC
   resource: "https://api.example.com/resource",
+  description: "Payment for API access",
   payTo: ("0x" + "b".repeat(40)) as `0x${string}`,
   maxTimeoutSeconds: 3600,
   asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",

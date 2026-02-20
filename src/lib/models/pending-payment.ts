@@ -8,8 +8,8 @@ export interface IPendingPayment {
   url: string;
   method: string;
   amount?: number;
-  amountRaw?: string;
-  asset?: string;
+  amountRaw: string | null;
+  asset: string | null;
   chainId: number;
   paymentRequirements: string;
   status: string;

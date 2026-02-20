@@ -465,4 +465,44 @@ describe("approvePendingPayment server action", () => {
     const updated = await PendingPayment.findById(payment._id).lean();
     expect(updated!.status).toBe("pending");
   });
+
+  it("blocks redirect to private IP via safeFetch (SSRF protection)", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: "0x1234",
+    });
+
+    // Mock fetch to return a redirect to a private IP
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { Location: "http://169.254.169.254/latest/meta-data/" },
+      }),
+    );
+
+    await createTestUserForId(TEST_USER_ID);
+
+    const future = new Date(Date.now() + 60_000);
+    const payment = await PendingPayment.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      url: "https://api.example.com/paid-resource",
+      method: "GET",
+      amount: 0.05,
+      paymentRequirements: MOCK_PAYMENT_REQUIREMENTS,
+      status: "pending",
+      expiresAt: future,
+    });
+
+    const { approvePendingPayment } = await import("../payments");
+    const result = await approvePendingPayment(
+      payment._id.toString(),
+      "0xmocksignature",
+      MOCK_AUTHORIZATION,
+    );
+
+    // safeFetch should block the redirect and return a failure
+    expect(result.success).toBe(false);
+    expect(result.status).toBe(0);
+  });
 });

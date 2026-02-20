@@ -319,7 +319,7 @@ describe("finalizeSessionKey server action", () => {
     ).rejects.toThrow("Unauthorized");
   });
 
-  it("throws for failed grant transaction", async () => {
+  it("returns error for failed grant transaction", async () => {
     mockGetTransactionReceipt.mockResolvedValue({ status: "reverted" });
 
     const { getAuthenticatedUser } = await import("@/lib/auth");
@@ -329,9 +329,9 @@ describe("finalizeSessionKey server action", () => {
     });
 
     const { finalizeSessionKey } = await import("../smart-account");
-    await expect(
-      finalizeSessionKey(84532, "0x" + "ab".repeat(32), "data", 50, 500, 30),
-    ).rejects.toThrow("Grant transaction failed");
+    const result = await finalizeSessionKey(84532, "0x" + "ab".repeat(32), "data", 50, 500, 30);
+    expect(result.success).toBe(false);
+    expect("error" in result && result.error).toContain("Grant transaction failed");
   });
 
   it("calls revalidatePath after finalizing", async () => {
@@ -365,5 +365,158 @@ describe("finalizeSessionKey server action", () => {
 
     expect(revalidatePath).toHaveBeenCalledWith("/dashboard/wallet");
     expect(revalidatePath).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("rejects invalid grantTxHash format", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: TEST_WALLET,
+    });
+
+    const { finalizeSessionKey } = await import("../smart-account");
+    const result = await finalizeSessionKey(
+      84532,
+      "not-a-valid-hash",
+      "serialized-data",
+      50_000_000,
+      500_000_000,
+      30,
+    );
+
+    expect(result.success).toBe(false);
+    expect("error" in result && result.error).toContain("Invalid input");
+  });
+
+  it("rejects negative spendLimitPerTx", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: TEST_WALLET,
+    });
+
+    const { finalizeSessionKey } = await import("../smart-account");
+    const result = await finalizeSessionKey(
+      84532,
+      "0x" + "ab".repeat(32),
+      "serialized-data",
+      -100,
+      500_000_000,
+      30,
+    );
+
+    expect(result.success).toBe(false);
+    expect("error" in result && result.error).toContain("Invalid input");
+  });
+
+  it("rejects expiryDays out of range", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: TEST_WALLET,
+    });
+
+    const { finalizeSessionKey } = await import("../smart-account");
+    const result = await finalizeSessionKey(
+      84532,
+      "0x" + "ab".repeat(32),
+      "serialized-data",
+      50_000_000,
+      500_000_000,
+      999,
+    );
+
+    expect(result.success).toBe(false);
+    expect("error" in result && result.error).toContain("Invalid input");
+  });
+
+  it("rejects empty serializedAccount", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: TEST_WALLET,
+    });
+
+    const { finalizeSessionKey } = await import("../smart-account");
+    const result = await finalizeSessionKey(
+      84532,
+      "0x" + "ab".repeat(32),
+      "",
+      50_000_000,
+      500_000_000,
+      30,
+    );
+
+    expect(result.success).toBe(false);
+    expect("error" in result && result.error).toContain("Invalid input");
+  });
+
+  it("rejects non-integer spendLimitPerTx", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: TEST_WALLET,
+    });
+
+    const { finalizeSessionKey } = await import("../smart-account");
+    const result = await finalizeSessionKey(
+      84532,
+      "0x" + "ab".repeat(32),
+      "serialized-data",
+      50.5,
+      500_000_000,
+      30,
+    );
+
+    expect(result.success).toBe(false);
+    expect("error" in result && result.error).toContain("Invalid input");
+  });
+});
+
+describe("sendBundlerRequest sender validation", () => {
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    await resetTestDb();
+  });
+
+  it("rejects eth_sendUserOperation with mismatched sender", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: TEST_WALLET,
+    });
+
+    // Create smart account with known address
+    await SmartAccount.create({
+      userId: new mongoose.Types.ObjectId(TEST_USER_ID),
+      ownerAddress: TEST_WALLET,
+      chainId: 84532,
+      smartAccountAddress: "0x" + "cc".repeat(20),
+      sessionKeyAddress: "0x" + "dd".repeat(20),
+      sessionKeyEncrypted: "encrypted-key",
+      sessionKeyStatus: "active",
+    });
+
+    const { sendBundlerRequest } = await import("../smart-account");
+    await expect(
+      sendBundlerRequest(84532, "eth_sendUserOperation", [
+        { sender: "0x" + "ee".repeat(20) }, // wrong sender
+      ]),
+    ).rejects.toThrow("UserOperation sender does not match your smart account");
+  });
+
+  it("rejects eth_sendUserOperation when no smart account exists", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: TEST_WALLET,
+    });
+
+    const { sendBundlerRequest } = await import("../smart-account");
+    await expect(
+      sendBundlerRequest(84532, "eth_sendUserOperation", [
+        { sender: "0x" + "cc".repeat(20) },
+      ]),
+    ).rejects.toThrow("No smart account found for this chain");
   });
 });

@@ -7,13 +7,12 @@ import { toast } from "sonner";
 import { useWalletClient } from "wagmi";
 import { createPublicClient, http, custom, zeroAddress, type Hex, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { entryPoint07Address } from "viem/account-abstraction";
 import { createKernelAccount, createKernelAccountClient } from "@zerodev/sdk";
 import { signerToEcdsaValidator } from "@zerodev/ecdsa-validator";
 import { toPermissionValidator, serializePermissionAccount } from "@zerodev/permissions";
 import { toECDSASigner } from "@zerodev/permissions/signers";
-import { toSudoPolicy } from "@zerodev/permissions/policies";
 import { createPimlicoClient } from "permissionless/clients/pimlico";
+import { ENTRY_POINT, KERNEL_VERSION, buildSessionKeyPolicies } from "@/lib/smart-account-constants";
 import {
   Card,
   CardHeader,
@@ -44,13 +43,6 @@ interface SessionKeyAuthCardProps {
   sessionKeyAddress?: string;
   chainId: number;
 }
-
-const ENTRY_POINT = {
-  address: entryPoint07Address,
-  version: "0.7" as const,
-};
-
-const KERNEL_VERSION = "0.3.3" as const;
 
 const EXPIRY_OPTIONS = [
   { value: "7", label: "7 days" },
@@ -127,9 +119,13 @@ export default function SessionKeyAuthCard({
       const sessionKeyAccount = privateKeyToAccount(sessionKeyHex as Hex);
       const ecdsaSigner = await toECDSASigner({ signer: sessionKeyAccount });
 
+      const expiryTimestamp = Math.floor(
+        Date.now() / 1000 + parseInt(expiryDays, 10) * 24 * 60 * 60,
+      );
+
       const permissionValidator = await toPermissionValidator(publicClient, {
         signer: ecdsaSigner,
-        policies: [toSudoPolicy({})],
+        policies: buildSessionKeyPolicies(config.usdcAddress as Address, expiryTimestamp),
         entryPoint: ENTRY_POINT,
         kernelVersion: KERNEL_VERSION,
       });
@@ -201,8 +197,8 @@ export default function SessionKeyAuthCard({
         chainId,
         grantTxHash,
         serialized,
-        parseFloat(spendLimitPerTx) || 50,
-        parseFloat(spendLimitDaily) || 500,
+        Math.round((parseFloat(spendLimitPerTx) || 50) * 1e6),
+        Math.round((parseFloat(spendLimitDaily) || 500) * 1e6),
         parseInt(expiryDays, 10) || 30,
       );
 

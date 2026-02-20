@@ -18,6 +18,7 @@ import { formatAmountForDisplay } from "@/lib/x402/display";
 import { getRequirementAmount } from "@/lib/x402/requirements";
 import { CHAIN_CONFIGS, getNetworkIdentifiers } from "@/lib/chain-config";
 import { logger } from "@/lib/logger";
+import { safeFetch } from "@/lib/safe-fetch";
 import type { Hex } from "viem";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 
@@ -80,10 +81,10 @@ export async function approvePendingPayment(
 
   const amountRaw =
     (acceptedRequirement && getRequirementAmount(acceptedRequirement as PaymentRequirements)) ??
-    (payment as { amountRaw?: string }).amountRaw;
+    payment.amountRaw;
   const { displayAmount } = formatAmountForDisplay(
     amountRaw,
-    acceptedRequirement?.asset ?? (payment as { asset?: string }).asset,
+    acceptedRequirement?.asset ?? payment.asset,
     chainId,
   );
   const amountForTx = parseFloat(displayAmount) || 0;
@@ -121,7 +122,7 @@ export async function approvePendingPayment(
     : {};
 
   try {
-    const paidResponse = await fetch(payment.url, {
+    const paidResponse = await safeFetch(payment.url, {
       method: payment.method,
       headers: {
         ...storedHeaders,

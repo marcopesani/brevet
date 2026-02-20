@@ -88,8 +88,8 @@ function buildTransferAuth(from: Address, to: Address, value: bigint) {
     from,
     to,
     value,
-    validAfter: 0n,
-    validBefore: now + 600n, // 10 minutes
+    validAfter: BigInt(0),
+    validBefore: now + BigInt(600), // 10 minutes
     nonce,
   };
 }
@@ -114,7 +114,7 @@ describe("E2E: Smart Account Payment Pipeline", () => {
   const sessionKeyPrivateKey = generatePrivateKey();
 
   let isDeployed = false;
-  let saUsdcBalance = 0n;
+  let saUsdcBalance = BigInt(0);
 
   beforeAll(async () => {
     console.log("=== E2E: Smart Account Payment Pipeline ===");
@@ -152,6 +152,7 @@ describe("E2E: Smart Account Payment Pipeline", () => {
       sessionKeyPrivateKey,
       DEPLOYED_SA_ADDRESS,
       BASE_SEPOLIA_CHAIN_ID,
+      Math.floor(Date.now() / 1000) + 86400,
     );
 
     // Verify the signer has the correct address
@@ -169,9 +170,10 @@ describe("E2E: Smart Account Payment Pipeline", () => {
       sessionKeyPrivateKey,
       DEPLOYED_SA_ADDRESS,
       BASE_SEPOLIA_CHAIN_ID,
+      Math.floor(Date.now() / 1000) + 86400,
     );
 
-    const auth = buildTransferAuth(DEPLOYED_SA_ADDRESS, RECIPIENT, 1n);
+    const auth = buildTransferAuth(DEPLOYED_SA_ADDRESS, RECIPIENT, BigInt(1));
 
     const signature = await signer.signTypedData({
       domain: USDC_DOMAIN as Record<string, unknown>,
@@ -208,14 +210,14 @@ describe("E2E: Smart Account Payment Pipeline", () => {
         console.log("SKIP: Smart account not deployed on Base Sepolia.");
         return;
       }
-      if (saUsdcBalance === 0n) {
+      if (saUsdcBalance === BigInt(0)) {
         console.log("SKIP: Smart account has no USDC. Fund it first.");
         return;
       }
 
       // Check EOA has ETH for gas (needed to submit the transfer tx)
       const eoaEth = await publicClient.getBalance({ address: ownerAccount.address });
-      if (eoaEth === 0n) {
+      if (eoaEth === BigInt(0)) {
         console.log("SKIP: EOA has no ETH for gas.");
         return;
       }
@@ -229,13 +231,13 @@ describe("E2E: Smart Account Payment Pipeline", () => {
           address: entryPoint07Address,
           version: "0.7",
         },
-        index: 0n,
+        index: BigInt(0),
       });
 
       expect(kernelAccount.address.toLowerCase()).toBe(DEPLOYED_SA_ADDRESS.toLowerCase());
 
       // Step 2: Build and sign the transfer authorization
-      const transferAmount = 1n; // 0.000001 USDC
+      const transferAmount = BigInt(1); // 0.000001 USDC
       const auth = buildTransferAuth(DEPLOYED_SA_ADDRESS, RECIPIENT, transferAmount);
 
       const erc1271Sig = await kernelAccount.signTypedData({
@@ -329,6 +331,7 @@ describe("E2E: Smart Account Payment Pipeline", () => {
       sessionKeyPrivateKey,
       DEPLOYED_SA_ADDRESS,
       BASE_SEPOLIA_CHAIN_ID,
+      Math.floor(Date.now() / 1000) + 86400,
     );
 
     // Create x402 client with the smart account signer
@@ -342,7 +345,7 @@ describe("E2E: Smart Account Payment Pipeline", () => {
       resource: { url: "https://api.example.com/resource" },
       accepts: [
         {
-          scheme: "exact" as const,
+          scheme: "exact",
           network: "eip155:84532",
           asset: USDC_ADDRESS,
           amount: "1000", // 0.001 USDC
@@ -351,7 +354,7 @@ describe("E2E: Smart Account Payment Pipeline", () => {
           extra: { name: "USDC", version: "2" },
         },
       ],
-    };
+    } as unknown as import("@x402/core/types").PaymentRequired;
 
     // Create a payment payload — this exercises the full SDK signing path
     const payload = await client.createPaymentPayload(paymentRequired);
@@ -361,6 +364,6 @@ describe("E2E: Smart Account Payment Pipeline", () => {
 
     console.log("x402 SDK payment payload created successfully:");
     console.log(`  Version: ${payload.x402Version}`);
-    console.log(`  Scheme: ${payload.scheme}`);
+    console.log(`  Scheme: ${(payload as Record<string, unknown>).scheme ?? (payload as Record<string, unknown>).accepted}`);
   });
 });

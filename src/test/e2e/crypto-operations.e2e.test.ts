@@ -72,6 +72,7 @@ const V1_REQUIREMENT = {
   network: "base-sepolia",
   maxAmountRequired: "50000",
   resource: "https://api.example.com/resource",
+  description: "Payment for API access",
   payTo: ("0x" + "b".repeat(40)) as Hex,
   maxTimeoutSeconds: 3600,
   asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
@@ -632,9 +633,8 @@ describe("E2E: Crypto Operations", () => {
 
   // ─── 8. SIWx Extension Handling ────────────────────────────────────────────
   describe("SIWx Extension Handling", () => {
-    it("should attach SIGN-IN-WITH-X header when extension is present", async () => {
+    it("should reject SIWx with smart account signers (ERC-1271 incompatible)", async () => {
       const { user } = await seedTestUser();
-      const txHash = "0x" + "f".repeat(64);
 
       // Build V2 payment requirements with SIWx extension
       // Nonce must be >=8 alphanumeric characters (SIWE spec)
@@ -669,11 +669,9 @@ describe("E2E: Crypto Operations", () => {
         extensions: { "sign-in-with-x": siwxExtension },
       };
 
-      mockFetch
-        .mockResolvedValueOnce(makeV2_402Response(paymentRequiredWithSiwx))
-        .mockResolvedValueOnce(
-          make200Response({ "X-PAYMENT-TX-HASH": txHash }),
-        );
+      mockFetch.mockResolvedValueOnce(
+        makeV2_402Response(paymentRequiredWithSiwx),
+      );
 
       const { executePayment } = await import("@/lib/x402/payment");
       const result = await executePayment(
@@ -681,15 +679,10 @@ describe("E2E: Crypto Operations", () => {
         user.id,
       );
 
-      expect(result.success).toBe(true);
-      expect(result.status).toBe("completed");
-
-      // Verify the retry request included the SIGN-IN-WITH-X header
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-      const secondCallHeaders = mockFetch.mock.calls[1][1]?.headers;
-      expect(secondCallHeaders).toBeDefined();
-      expect(secondCallHeaders["SIGN-IN-WITH-X"]).toBeDefined();
-      expect(typeof secondCallHeaders["SIGN-IN-WITH-X"]).toBe("string");
+      // Smart account signers use ERC-1271 which is incompatible with SIWx
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("rejected");
+      expect(result.error).toContain("SIWx is not supported with smart account signers");
     });
 
     it("should reject when SIWx extension does not support the configured chain", async () => {
@@ -737,8 +730,7 @@ describe("E2E: Crypto Operations", () => {
 
       expect(result.success).toBe(false);
       expect(result.status).toBe("rejected");
-      expect(result.error).toContain("SIVX failed");
-      expect(result.error).toContain("not supported");
+      expect(result.error).toContain("SIWx is not supported with smart account signers");
     });
   });
 });

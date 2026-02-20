@@ -123,6 +123,37 @@ describe("ChainContext", () => {
 
       expect(document.cookie).toContain("brevet-active-chain=42161");
     });
+
+    it("sets cookie with Secure attribute", async () => {
+      mockState.isConnected = false;
+
+      // JSDOM strips cookie attributes from reads, so spy on the setter to capture full string.
+      const setCalls: string[] = [];
+      const desc = Object.getOwnPropertyDescriptor(document, "cookie")
+        ?? Object.getOwnPropertyDescriptor(Object.getPrototypeOf(document), "cookie");
+      const originalSetter = desc?.set;
+      Object.defineProperty(document, "cookie", {
+        get: desc?.get?.bind(document) ?? (() => ""),
+        set(value: string) {
+          setCalls.push(value);
+          originalSetter?.call(document, value);
+        },
+        configurable: true,
+      });
+
+      const { result } = renderHook(() => useChain(), { wrapper });
+
+      await act(async () => {
+        await result.current.setActiveChainId(42161);
+      });
+
+      const chainCookieCall = setCalls.find((s) => s.includes("brevet-active-chain=42161"));
+      expect(chainCookieCall).toBeDefined();
+      expect(chainCookieCall).toContain("Secure");
+
+      // Restore
+      if (desc) Object.defineProperty(document, "cookie", desc);
+    });
   });
 
   describe("initialChainId", () => {

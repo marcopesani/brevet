@@ -44,8 +44,3 @@ export function createExactEvmScheme(privateKey: Hex): ExactEvmScheme {
 export { ExactEvmScheme };
 export { authorizationTypes } from "@x402/evm";
 
-// Re-export smart account signer functions
-export {
-  createSmartAccountSigner,
-  createSmartAccountSignerFromSerialized,
-} from "@/lib/smart-account";

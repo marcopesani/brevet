@@ -107,8 +107,8 @@ function buildTransferAuth(from: Address, to: Address, value: bigint) {
     from,
     to,
     value,
-    validAfter: 0n,
-    validBefore: now + 600n, // 10 minutes
+    validAfter: BigInt(0),
+    validBefore: now + BigInt(600), // 10 minutes
     nonce,
   };
 }
@@ -296,7 +296,7 @@ describe("Spike 2: Session key permission validator + transferWithAuthorization"
         address: DEPLOYED_SA_ADDRESS,
       });
 
-      const auth = buildTransferAuth(DEPLOYED_SA_ADDRESS, RECIPIENT, 1n);
+      const auth = buildTransferAuth(DEPLOYED_SA_ADDRESS, RECIPIENT, BigInt(1));
 
       // Sign with session key via permission validator
       const sessionKeySig = await sessionKeyKernelAccount.signTypedData({
@@ -325,7 +325,7 @@ describe("Spike 2: Session key permission validator + transferWithAuthorization"
           address: entryPoint07Address,
           version: "0.7",
         },
-        index: 0n,
+        index: BigInt(0),
       });
 
       const ownerSig = await ownerKernelAccount.signTypedData({
@@ -393,7 +393,7 @@ describe("Spike 2: Session key permission validator + transferWithAuthorization"
           console.log("SKIP: Smart account not deployed.");
           return;
         }
-        if (saBalance === 0n) {
+        if (saBalance === BigInt(0)) {
           console.log("SKIP: Smart account has no USDC.");
           return;
         }
@@ -451,7 +451,7 @@ describe("Spike 2: Session key permission validator + transferWithAuthorization"
           console.log("Attempting to sign and submit anyway to document the exact failure...");
         }
 
-        const transferAmount = 1n; // 0.000001 USDC
+        const transferAmount = BigInt(1); // 0.000001 USDC
         const auth = buildTransferAuth(
           DEPLOYED_SA_ADDRESS,
           RECIPIENT,
@@ -541,7 +541,7 @@ describe("Spike 2: Session key permission validator + transferWithAuthorization"
         const eoaEth = await publicClient.getBalance({
           address: ownerAccount.address,
         });
-        if (eoaEth === 0n) {
+        if (eoaEth === BigInt(0)) {
           console.log("SKIP: Owner EOA has no ETH for gas.");
           return;
         }
@@ -671,7 +671,7 @@ describe("Spike 2: Session key permission validator + transferWithAuthorization"
           args: [DEPLOYED_SA_ADDRESS],
         });
 
-        if (saBalance === 0n) {
+        if (saBalance === BigInt(0)) {
           console.log("SKIP: Smart account has no USDC.");
           return;
         }
@@ -693,7 +693,7 @@ describe("Spike 2: Session key permission validator + transferWithAuthorization"
           // This will compute a DIFFERENT counterfactual address than the
           // deployed one, since the owner is different. But we force the
           // address to the deployed one.
-          index: 0n,
+          index: BigInt(0),
         });
 
         console.log("Session key kernel account address:", sessionKernelAccount.address);
@@ -749,7 +749,7 @@ describe("Spike 2: Session key permission validator + transferWithAuthorization"
           args: [DEPLOYED_SA_ADDRESS],
         });
 
-        if (saBalance === 0n) {
+        if (saBalance === BigInt(0)) {
           console.log("SKIP: Smart account has no USDC.");
           return;
         }
@@ -791,7 +791,7 @@ describe("Spike 2: Session key permission validator + transferWithAuthorization"
         );
 
         // Sign the transferWithAuthorization
-        const transferAmount = 1n;
+        const transferAmount = BigInt(1);
         const auth = buildTransferAuth(
           DEPLOYED_SA_ADDRESS,
           RECIPIENT,
@@ -878,7 +878,7 @@ describe("Spike 2: Session key permission validator + transferWithAuthorization"
           address: entryPoint07Address,
           version: "0.7",
         },
-        index: 0n,
+        index: BigInt(0),
       });
 
       // Session key via permission validator
@@ -908,7 +908,7 @@ describe("Spike 2: Session key permission validator + transferWithAuthorization"
         address: DEPLOYED_SA_ADDRESS,
       });
 
-      const auth = buildTransferAuth(DEPLOYED_SA_ADDRESS, RECIPIENT, 1n);
+      const auth = buildTransferAuth(DEPLOYED_SA_ADDRESS, RECIPIENT, BigInt(1));
 
       const ownerSig = await ownerKernelAccount.signTypedData({
         domain: USDC_DOMAIN,

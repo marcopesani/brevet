@@ -3,9 +3,9 @@ import {
   getRequirementAmount,
   getRequirementAmountFromLike,
 } from "../requirements";
-import type { PaymentRequirementsV1, PaymentRequirementsV2 } from "@x402/core/schemas";
+import type { PaymentRequirements } from "@x402/core/types";
 
-const V1_REQUIREMENT: PaymentRequirementsV1 = {
+const V1_REQUIREMENT = {
   scheme: "exact",
   network: "eip155:84532",
   maxAmountRequired: "1100",
@@ -14,16 +14,16 @@ const V1_REQUIREMENT: PaymentRequirementsV1 = {
   payTo: "0x" + "b".repeat(40),
   maxTimeoutSeconds: 3600,
   asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-};
+} as unknown as PaymentRequirements;
 
-const V2_REQUIREMENT: PaymentRequirementsV2 = {
+const V2_REQUIREMENT = {
   scheme: "exact",
   network: "eip155:84532",
   amount: "50000",
   asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   payTo: "0x" + "b".repeat(40),
   maxTimeoutSeconds: 3600,
-};
+} as unknown as PaymentRequirements;
 
 describe("getRequirementAmount", () => {
   it("returns maxAmountRequired for V1 requirement", () => {

@@ -56,7 +56,7 @@ function renderForm(chainId?: number) {
   return render(
     <QueryClientProvider client={queryClient}>
       <FundWalletForm
-        hotWalletAddress="0x1234567890123456789012345678901234567890"
+        accountAddress="0x1234567890123456789012345678901234567890"
         chainId={chainId}
       />
     </QueryClientProvider>,

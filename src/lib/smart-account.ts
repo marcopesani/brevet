@@ -1,25 +1,17 @@
 import { createPublicClient, http, type Hex, type Address } from "viem";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { toKernelSmartAccount } from "permissionless/accounts";
-import { entryPoint07Address } from "viem/account-abstraction";
 import {
   createKernelAccount,
   addressToEmptyAccount,
 } from "@zerodev/sdk";
 import { toPermissionValidator } from "@zerodev/permissions";
 import { toECDSASigner } from "@zerodev/permissions/signers";
-import { toSudoPolicy } from "@zerodev/permissions/policies";
 import { deserializePermissionAccount } from "@zerodev/permissions";
 import { encryptPrivateKey } from "@/lib/hot-wallet";
 import { getChainConfig } from "@/lib/chain-config";
+import { ENTRY_POINT, KERNEL_VERSION, buildSessionKeyPolicies } from "@/lib/smart-account-constants";
 import type { ClientEvmSigner } from "@/lib/x402/types";
-
-const ENTRY_POINT = {
-  address: entryPoint07Address,
-  version: "0.7" as const,
-};
-
-const KERNEL_VERSION = "0.3.3" as const;
 
 /**
  * Compute the deterministic CREATE2 address for a Kernel v3.3 smart account
@@ -82,6 +74,7 @@ export async function createSmartAccountSigner(
   sessionKeyHex: Hex,
   smartAccountAddress: Address,
   chainId: number,
+  expiryTimestamp: number,
 ): Promise<ClientEvmSigner> {
   const config = getChainConfig(chainId);
   if (!config) {
@@ -101,7 +94,7 @@ export async function createSmartAccountSigner(
 
   const permissionValidator = await toPermissionValidator(publicClient, {
     signer: ecdsaSigner,
-    policies: [toSudoPolicy({})],
+    policies: buildSessionKeyPolicies(config.usdcAddress, expiryTimestamp),
     entryPoint: ENTRY_POINT,
     kernelVersion: KERNEL_VERSION,
   });

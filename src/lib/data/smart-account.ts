@@ -137,17 +137,36 @@ export async function ensureSmartAccount(
   const { address: sessionKeyAddress, encryptedPrivateKey: sessionKeyEncrypted } =
     createSessionKey();
 
-  const doc = await SmartAccount.create({
-    userId: userObjectId,
-    ownerAddress,
-    chainId,
-    smartAccountAddress,
-    sessionKeyAddress,
-    sessionKeyEncrypted,
-    sessionKeyStatus: "pending_grant",
-  });
-  const lean = doc.toObject();
-  return serialize(lean);
+  try {
+    const doc = await SmartAccount.create({
+      userId: userObjectId,
+      ownerAddress,
+      chainId,
+      smartAccountAddress,
+      sessionKeyAddress,
+      sessionKeyEncrypted,
+      sessionKeyStatus: "pending_grant",
+    });
+    const lean = doc.toObject();
+    return serialize(lean);
+  } catch (err: unknown) {
+    // Handle race condition: a concurrent request may have created the record between
+    // our findOne and create. Re-fetch and return the existing document.
+    const isDuplicateKeyError =
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      (err as { code: number }).code === 11000;
+    if (!isDuplicateKeyError) {
+      throw err;
+    }
+    const existing = await SmartAccount.findOne({
+      userId: userObjectId,
+      chainId,
+    }).lean();
+    if (!existing) throw err; // Should not happen, but be safe
+    return serialize(existing);
+  }
 }
 
 /**
@@ -163,6 +182,37 @@ export async function storeSerializedAccount(
   const doc = await SmartAccount.findOneAndUpdate(
     { userId: new Types.ObjectId(userId), chainId },
     { $set: { serializedAccount: serializedEncrypted } },
+    { returnDocument: "after" },
+  ).lean();
+  if (!doc) return null;
+  return serialize(doc);
+}
+
+/**
+ * Activate a session key: sets status to "active", stores grant tx hash,
+ * expiry date, and spend limits. Used by finalizeSessionKey server action.
+ * Returns the updated record or null if not found.
+ */
+export async function activateSessionKey(
+  userId: string,
+  chainId: number,
+  grantTxHash: string,
+  expiryDate: Date,
+  spendLimitPerTx: number,
+  spendLimitDaily: number,
+) {
+  await connectDB();
+  const doc = await SmartAccount.findOneAndUpdate(
+    { userId: new Types.ObjectId(userId), chainId },
+    {
+      $set: {
+        sessionKeyStatus: "active",
+        sessionKeyGrantTxHash: grantTxHash,
+        sessionKeyExpiry: expiryDate,
+        spendLimitPerTx,
+        spendLimitDaily,
+      },
+    },
     { returnDocument: "after" },
   ).lean();
   if (!doc) return null;
