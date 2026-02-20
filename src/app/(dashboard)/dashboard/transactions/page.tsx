@@ -1,5 +1,7 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { getInitialChainIdFromCookie } from "@/lib/chain-cookie";
 import { getTransactions } from "@/lib/data/transactions";
 import { TransactionTable } from "@/components/transaction-table";
 import { TransactionsHeader } from "@/components/transactions-header";
@@ -10,7 +12,11 @@ export default async function TransactionsPage() {
     redirect("/login");
   }
 
-  const transactions = await getTransactions(user.userId);
+  const headersList = await headers();
+  const cookieHeader = headersList.get("cookie");
+  const initialChainId = getInitialChainIdFromCookie(cookieHeader);
+
+  const transactions = await getTransactions(user.userId, { chainId: initialChainId });
 
   return (
     <div className="flex flex-col gap-6">
