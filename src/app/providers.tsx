@@ -51,9 +51,11 @@ OptionsController.subscribeKey("siwx", (currentSiwx) => {
 export default function Providers({
   children,
   cookies,
+  initialChainId,
 }: {
   children: ReactNode;
   cookies: string | null;
+  initialChainId?: number;
 }) {
   const initialState = cookieToInitialState(
     wagmiAdapter.wagmiConfig as Config,
@@ -67,7 +69,9 @@ export default function Providers({
         initialState={initialState}
       >
         <QueryClientProvider client={queryClient}>
-          <ChainProvider>{children}</ChainProvider>
+          <ChainProvider initialChainId={initialChainId}>
+            {children}
+          </ChainProvider>
         </QueryClientProvider>
       </WagmiProvider>
     </SessionProvider>

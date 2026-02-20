@@ -42,13 +42,21 @@ function wrapper({ children }: { children: ReactNode }) {
   return <ChainProvider>{children}</ChainProvider>;
 }
 
+function wrapperWithInitialChain(initialChainId: number) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <ChainProvider initialChainId={initialChainId}>{children}</ChainProvider>
+    );
+  };
+}
+
 // ── Setup ───────────────────────────────────────────────────────────
 beforeEach(() => {
   vi.clearAllMocks();
   mockState.walletChainId = undefined;
   mockState.isConnected = false;
   mockState.isPending = false;
-  localStorage.clear();
+  document.cookie = "";
 });
 
 describe("ChainContext", () => {
@@ -88,20 +96,6 @@ describe("ChainContext", () => {
       expect(mockToastError).toHaveBeenCalledWith("Failed to switch network");
     });
 
-    it("does not update localStorage on failed switch", async () => {
-      mockState.isConnected = true;
-      mockState.walletChainId = 8453;
-      localStorage.setItem("brevet-active-chain", "8453");
-      mockSwitchChainAsync.mockRejectedValueOnce(new Error("rejected"));
-
-      const { result } = renderHook(() => useChain(), { wrapper });
-
-      await act(async () => {
-        await result.current.setActiveChainId(42161);
-      });
-
-      expect(localStorage.getItem("brevet-active-chain")).toBe("8453");
-    });
   });
 
   describe("when wallet is not connected", () => {
@@ -118,7 +112,7 @@ describe("ChainContext", () => {
       expect(result.current.activeChain.chain.id).toBe(42161);
     });
 
-    it("updates localStorage when no wallet is connected", async () => {
+    it("sets cookie when chain changes and no wallet", async () => {
       mockState.isConnected = false;
 
       const { result } = renderHook(() => useChain(), { wrapper });
@@ -127,7 +121,17 @@ describe("ChainContext", () => {
         await result.current.setActiveChainId(42161);
       });
 
-      expect(localStorage.getItem("brevet-active-chain")).toBe("42161");
+      expect(document.cookie).toContain("brevet-active-chain=42161");
+    });
+  });
+
+  describe("initialChainId", () => {
+    it("uses initialChainId when provided", () => {
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithInitialChain(42161),
+      });
+
+      expect(result.current.activeChain.chain.id).toBe(42161);
     });
   });
 
