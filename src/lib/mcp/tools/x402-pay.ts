@@ -9,7 +9,7 @@ export function registerX402Pay(server: McpServer, userId: string): void {
     "x402_pay",
     {
       description:
-        "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's hot wallet and per-endpoint policy, then retry the request with payment proof. Each endpoint has its own policy controlling whether hot wallet or WalletConnect signing is used. Non-402 responses are returned directly. Supports multiple chains (Ethereum, Base, Arbitrum, Optimism, Polygon + testnets). If no chain is specified, the gateway auto-selects the best chain based on the endpoint's accepted networks and the user's balances.",
+        "Make an HTTP request to an x402-protected URL. If the server responds with HTTP 402 (Payment Required), automatically handle the payment flow using the user's smart account and session key, then retry the request with payment proof. Each endpoint has its own policy controlling whether the session key auto-signs or WalletConnect manual approval is used. Non-402 responses are returned directly. Supports multiple chains (Ethereum, Base, Arbitrum, Optimism, Polygon + testnets). If no chain is specified, the gateway auto-selects the best chain based on the endpoint's accepted networks and the user's balances.",
       inputSchema: {
         url: z.string().max(2048).url().describe("The URL to request"),
         method: z

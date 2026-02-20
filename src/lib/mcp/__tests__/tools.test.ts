@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { resetTestDb } from "@/test/helpers/db";
 import { PendingPayment } from "@/lib/models/pending-payment";
-import { HotWallet } from "@/lib/models/hot-wallet";
+import { SmartAccount } from "@/lib/models/smart-account";
 import { Transaction } from "@/lib/models/transaction";
 import { User } from "@/lib/models/user";
 import mongoose from "mongoose";
@@ -13,6 +13,13 @@ vi.mock("@/lib/x402/payment", () => ({
 }));
 vi.mock("@/lib/hot-wallet", () => ({
   getUsdcBalance: vi.fn(),
+}));
+vi.mock("@/lib/smart-account", () => ({
+  computeSmartAccountAddress: vi.fn().mockResolvedValue("0x" + "c".repeat(40)),
+  createSessionKey: vi.fn().mockReturnValue({
+    address: "0x" + "d".repeat(40),
+    encryptedPrivateKey: "encrypted-key",
+  }),
 }));
 
 // Helper to call a registered MCP tool by name
@@ -520,18 +527,24 @@ describe("x402_check_balance tool — multi-chain", () => {
   it("returns balances across all chains when no chain specified", async () => {
     const { getUsdcBalance } = await import("@/lib/hot-wallet");
 
-    // Create wallets on two chains
-    await HotWallet.create({
-      address: "0x" + "a".repeat(40),
-      encryptedPrivateKey: "enc1",
+    // Create smart accounts on two chains
+    await SmartAccount.create({
       userId,
+      ownerAddress: "0x" + "a".repeat(40),
       chainId: 8453,
+      smartAccountAddress: "0x" + "b".repeat(40),
+      sessionKeyAddress: "0x" + "c".repeat(40),
+      sessionKeyEncrypted: "enc1",
+      sessionKeyStatus: "active",
     });
-    await HotWallet.create({
-      address: "0x" + "a".repeat(40),
-      encryptedPrivateKey: "enc2",
+    await SmartAccount.create({
       userId,
+      ownerAddress: "0x" + "a".repeat(40),
       chainId: 42161,
+      smartAccountAddress: "0x" + "d".repeat(40),
+      sessionKeyAddress: "0x" + "e".repeat(40),
+      sessionKeyEncrypted: "enc2",
+      sessionKeyStatus: "active",
     });
 
     (getUsdcBalance as ReturnType<typeof vi.fn>)
@@ -554,11 +567,14 @@ describe("x402_check_balance tool — multi-chain", () => {
   it("returns single chain balance when chain name specified", async () => {
     const { getUsdcBalance } = await import("@/lib/hot-wallet");
 
-    await HotWallet.create({
-      address: "0x" + "b".repeat(40),
-      encryptedPrivateKey: "enc1",
+    await SmartAccount.create({
       userId,
+      ownerAddress: "0x" + "a".repeat(40),
       chainId: 42161,
+      smartAccountAddress: "0x" + "b".repeat(40),
+      sessionKeyAddress: "0x" + "c".repeat(40),
+      sessionKeyEncrypted: "enc1",
+      sessionKeyStatus: "active",
     });
 
     (getUsdcBalance as ReturnType<typeof vi.fn>).mockResolvedValue("25.5");
@@ -574,19 +590,19 @@ describe("x402_check_balance tool — multi-chain", () => {
     expect(result.isError).toBeUndefined();
   });
 
-  it("returns message when no wallets exist on any chain", async () => {
+  it("returns message when no smart accounts exist on any chain", async () => {
     const result = (await callTool(server, "x402_check_balance", {})) as ToolResult;
 
-    expect(result.content[0].text).toContain("No hot wallets found");
+    expect(result.content[0].text).toContain("No smart accounts found");
     expect(result.isError).toBeUndefined();
   });
 
-  it("returns message when no wallet on specified chain", async () => {
+  it("returns message when no smart account on specified chain", async () => {
     const result = (await callTool(server, "x402_check_balance", {
       chain: "optimism",
     })) as ToolResult;
 
-    expect(result.content[0].text).toContain("No hot wallet found");
+    expect(result.content[0].text).toContain("No smart account found");
     expect(result.isError).toBeUndefined();
   });
 
