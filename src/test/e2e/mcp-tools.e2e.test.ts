@@ -143,11 +143,11 @@ describe("E2E: MCP Tool Pipeline", () => {
       expect(transactions[0].txHash).toBe(txHash);
     });
 
-    it("should return pending_approval when payFromHotWallet is false", async () => {
-      // Update the seeded policy to use WalletConnect (payFromHotWallet = false)
+    it("should return pending_approval when autoSign is false", async () => {
+      // Update the seeded policy to use manual approval (autoSign = false)
       const existing = await EndpointPolicy.findOne({ userId }).lean();
       await EndpointPolicy.findByIdAndUpdate(existing!._id, {
-        $set: { payFromHotWallet: false },
+        $set: { autoSign: false },
       });
 
       mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
@@ -223,7 +223,7 @@ describe("E2E: MCP Tool Pipeline", () => {
       expect(singleParsed.endpointPolicies).toBeDefined();
       expect(singleParsed.endpointPolicies).toHaveLength(1);
       expect(singleParsed.endpointPolicies[0].endpointPattern).toBe("https://api.example.com");
-      expect(singleParsed.endpointPolicies[0].payFromHotWallet).toBe(true);
+      expect(singleParsed.endpointPolicies[0].autoSign).toBe(true);
       expect(singleParsed.endpointPolicies[0].status).toBe("active");
     });
 
@@ -231,7 +231,7 @@ describe("E2E: MCP Tool Pipeline", () => {
       // Create a second endpoint policy
       await EndpointPolicy.create({
         endpointPattern: "https://api.other.com",
-        payFromHotWallet: true,
+        autoSign: true,
         status: "active",
         userId,
       });

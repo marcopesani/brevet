@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resetTestDb, seedTestUser } from "../../../test/helpers/db";
 import { executePayment, sanitizeHeaders } from "../payment";
-import { Transaction } from "../../models/transaction";
+import { Transaction } from "@/lib/models/transaction";
 import { HotWallet } from "../../models/hot-wallet";
 import { EndpointPolicy } from "../../models/endpoint-policy";
 import { createTestHotWallet, createTestEndpointPolicy } from "../../../test/helpers/fixtures";
@@ -339,10 +339,10 @@ describe("executePayment", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("returns walletconnect when payFromHotWallet is false", async () => {
+  it("returns walletconnect when autoSign is false", async () => {
     await EndpointPolicy.findOneAndUpdate(
       { userId: new mongoose.Types.ObjectId(userId), endpointPattern: "https://api.example.com" },
-      { $set: { payFromHotWallet: false } },
+      { $set: { autoSign: false } },
     );
 
     mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));

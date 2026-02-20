@@ -7,7 +7,7 @@ import { PolicyTable } from "@/components/policy-table";
 interface Policy {
   id: string;
   endpointPattern: string;
-  payFromHotWallet: boolean;
+  autoSign: boolean;
   status: string;
   archivedAt: string | Date | null;
   createdAt: string | Date;

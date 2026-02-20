@@ -7,7 +7,7 @@ import {
   createPolicy,
   updatePolicy,
   activatePolicy,
-  toggleHotWallet,
+  toggleAutoSign,
   archivePolicy,
   validateEndpointPattern,
 } from "../policies";
@@ -78,11 +78,11 @@ describe("createPolicy", () => {
 describe("updatePolicy", () => {
   it("updates policy fields", async () => {
     const userId = uid();
-    const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", payFromHotWallet: false });
+    const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", autoSign: false });
 
-    const updated = await updatePolicy(created._id.toString(), userId, { payFromHotWallet: true });
+    const updated = await updatePolicy(created._id.toString(), userId, { autoSign: true });
     expect(updated).not.toBeNull();
-    expect(updated!.payFromHotWallet).toBe(true);
+    expect(updated!.autoSign).toBe(true);
   });
 
   it("returns null if endpointPattern conflicts", async () => {
@@ -118,26 +118,26 @@ describe("activatePolicy", () => {
   });
 });
 
-describe("toggleHotWallet", () => {
-  it("toggles payFromHotWallet", async () => {
+describe("toggleAutoSign", () => {
+  it("toggles autoSign", async () => {
     const userId = uid();
-    const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", payFromHotWallet: false });
+    const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", autoSign: false });
 
-    const updated = await toggleHotWallet(created._id.toString(), userId, true);
-    expect(updated!.payFromHotWallet).toBe(true);
+    const updated = await toggleAutoSign(created._id.toString(), userId, true);
+    expect(updated!.autoSign).toBe(true);
   });
 
   it("returns null when userId does not match (IDOR protection)", async () => {
     const userId = uid();
     const attackerId = uid();
-    const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", payFromHotWallet: false });
+    const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", autoSign: false });
 
-    const result = await toggleHotWallet(created._id.toString(), attackerId, true);
+    const result = await toggleAutoSign(created._id.toString(), attackerId, true);
     expect(result).toBeNull();
 
     // Verify original was not modified
     const original = await EndpointPolicy.findById(created._id).lean();
-    expect(original!.payFromHotWallet).toBe(false);
+    expect(original!.autoSign).toBe(false);
   });
 });
 

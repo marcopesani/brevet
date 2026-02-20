@@ -22,14 +22,14 @@ import {
 import { AddPolicyDialog } from "@/components/add-policy-dialog";
 import {
   activatePolicy,
-  toggleHotWallet,
+  toggleAutoSign,
   archivePolicy,
 } from "@/app/actions/policies";
 
 interface Policy {
   id: string;
   endpointPattern: string;
-  payFromHotWallet: boolean;
+  autoSign: boolean;
   status: string;
   archivedAt: string | Date | null;
   createdAt: string | Date;
@@ -68,12 +68,12 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
     }
   }
 
-  async function handleToggleHotWallet(policy: Policy) {
+  async function handleToggleAutoSign(policy: Policy) {
     setActionInProgress(policy.id);
     try {
-      await toggleHotWallet(policy.id, !policy.payFromHotWallet);
+      await toggleAutoSign(policy.id, !policy.autoSign);
       toast.success(
-        `Hot wallet ${!policy.payFromHotWallet ? "enabled" : "disabled"}`
+        `Auto-sign ${!policy.autoSign ? "enabled" : "disabled"}`
       );
       startTransition(() => {
         router.refresh();
@@ -193,7 +193,7 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
                   <TableRow>
                     <TableHead>Endpoint Pattern</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Hot Wallet</TableHead>
+                    <TableHead>Auto-Sign</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -212,10 +212,10 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
                         <TableCell>{statusBadge(policy.status)}</TableCell>
                         <TableCell>
                           <Switch
-                            checked={policy.payFromHotWallet}
+                            checked={policy.autoSign}
                             disabled={isArchived || isBusy}
                             onCheckedChange={() =>
-                              handleToggleHotWallet(policy)
+                              handleToggleAutoSign(policy)
                             }
                           />
                         </TableCell>

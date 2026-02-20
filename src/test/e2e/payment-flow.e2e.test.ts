@@ -181,14 +181,14 @@ describe("E2E: Full Payment Flow", () => {
     expect(result.error).toContain("Policy denied");
   });
 
-  it("should return pending_approval when payFromHotWallet is false", async () => {
-    // Update policy to disable hot wallet
+  it("should return pending_approval when autoSign is false", async () => {
+    // Update policy to disable auto-sign
     const existing = await EndpointPolicy.findOne({
       userId,
       endpointPattern: "https://api.example.com",
     });
     await EndpointPolicy.findByIdAndUpdate(existing!._id, {
-      $set: { payFromHotWallet: false },
+      $set: { autoSign: false },
     });
 
     mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));

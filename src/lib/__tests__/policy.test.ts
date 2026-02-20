@@ -20,11 +20,11 @@ describe("checkPolicy", () => {
     await resetTestDb();
   });
 
-  it("returns hot_wallet when payFromHotWallet is true", async () => {
+  it("returns hot_wallet when autoSign is true", async () => {
     const result = await checkPolicy(0.05, "https://api.example.com/resource", userId);
 
     expect(result.action).toBe("hot_wallet");
-    expect(result.payFromHotWallet).toBe(true);
+    expect(result.autoSign).toBe(true);
   });
 
   it("rejects when no matching endpoint policy exists", async () => {
@@ -112,19 +112,19 @@ describe("checkPolicy", () => {
     });
 
     it("prefers the longest matching prefix", async () => {
-      // Create a more specific policy with payFromHotWallet=false
+      // Create a more specific policy with autoSign=false
       await EndpointPolicy.create(
         createTestEndpointPolicy(userId, {
           endpointPattern: "https://api.example.com/expensive",
-          payFromHotWallet: false,
+          autoSign: false,
         }),
       );
 
       const result = await checkPolicy(0.5, "https://api.example.com/expensive/item", userId);
 
-      // Should match the more specific policy (payFromHotWallet=false)
+      // Should match the more specific policy (autoSign=false)
       expect(result.action).toBe("walletconnect");
-      expect(result.payFromHotWallet).toBe(false);
+      expect(result.autoSign).toBe(false);
     });
 
     it("rejects endpoints that don't match any policy prefix", async () => {
@@ -210,11 +210,11 @@ describe("checkPolicy", () => {
     expect(result.reason).toContain("No active policy");
   });
 
-  describe("payFromHotWallet flag", () => {
-    it("returns walletconnect when payFromHotWallet is false", async () => {
+  describe("autoSign flag", () => {
+    it("returns walletconnect when autoSign is false", async () => {
       await EndpointPolicy.findOneAndUpdate(
         { userId: new mongoose.Types.ObjectId(userId), endpointPattern: "https://api.example.com" },
-        { $set: { payFromHotWallet: false } },
+        { $set: { autoSign: false } },
       );
 
       const result = await checkPolicy(0.01, "https://api.example.com/resource", userId);
@@ -222,7 +222,7 @@ describe("checkPolicy", () => {
       expect(result.action).toBe("walletconnect");
     });
 
-    it("returns hot_wallet when payFromHotWallet is true", async () => {
+    it("returns hot_wallet when autoSign is true", async () => {
       const result = await checkPolicy(0.01, "https://api.example.com/resource", userId);
 
       expect(result.action).toBe("hot_wallet");
@@ -273,7 +273,7 @@ describe("checkPolicy", () => {
       await EndpointPolicy.create(
         createTestEndpointPolicy(userId, {
           endpointPattern: "https://api.example.com",
-          payFromHotWallet: false,
+          autoSign: false,
           chainId: 42161,
         }),
       );

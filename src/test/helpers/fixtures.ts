@@ -62,7 +62,7 @@ export function createTestEndpointPolicy(
   overrides?: {
     id?: string;
     endpointPattern?: string;
-    payFromHotWallet?: boolean;
+    autoSign?: boolean;
     status?: string;
     chainId?: number;
   },
@@ -72,7 +72,7 @@ export function createTestEndpointPolicy(
       ? new mongoose.Types.ObjectId(overrides.id)
       : new mongoose.Types.ObjectId(),
     endpointPattern: overrides?.endpointPattern ?? "https://api.example.com",
-    payFromHotWallet: overrides?.payFromHotWallet ?? true,
+    autoSign: overrides?.autoSign ?? true,
     status: overrides?.status ?? "active",
     userId: new mongoose.Types.ObjectId(userId),
     ...(overrides?.chainId !== undefined && { chainId: overrides.chainId }),

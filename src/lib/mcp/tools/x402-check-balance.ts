@@ -57,7 +57,7 @@ export function registerX402CheckBalance(
             endpointPolicies: user.endpointPolicies.map((policy) => ({
               id: policy.id,
               endpointPattern: policy.endpointPattern,
-              payFromHotWallet: policy.payFromHotWallet,
+              autoSign: policy.autoSign,
               status: policy.status,
             })),
           });

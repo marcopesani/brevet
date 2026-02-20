@@ -8,7 +8,7 @@ import {
   createPolicy as _createPolicy,
   updatePolicy as _updatePolicy,
   activatePolicy as _activatePolicy,
-  toggleHotWallet as _toggleHotWallet,
+  toggleAutoSign as _toggleAutoSign,
   archivePolicy as _archivePolicy,
 } from "@/lib/data/policies";
 
@@ -30,7 +30,7 @@ export async function getPolicy(policyId: string) {
 
 export async function createPolicy(data: {
   endpointPattern: string;
-  payFromHotWallet?: boolean;
+  autoSign?: boolean;
   status?: string;
   chainId?: number;
 }) {
@@ -48,7 +48,7 @@ export async function updatePolicy(
   policyId: string,
   data: {
     endpointPattern?: string;
-    payFromHotWallet?: boolean;
+    autoSign?: boolean;
     status?: string;
   },
 ) {
@@ -80,7 +80,7 @@ export async function activatePolicy(policyId: string) {
   return policy;
 }
 
-export async function toggleHotWallet(policyId: string, payFromHotWallet: boolean) {
+export async function toggleAutoSign(policyId: string, autoSign: boolean) {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
 
@@ -88,7 +88,7 @@ export async function toggleHotWallet(policyId: string, payFromHotWallet: boolea
   if (!existing) throw new Error("Policy not found");
   if (existing.userId.toString() !== auth.userId) throw new Error("Forbidden");
 
-  const policy = await _toggleHotWallet(policyId, auth.userId, payFromHotWallet);
+  const policy = await _toggleAutoSign(policyId, auth.userId, autoSign);
 
   revalidatePath("/dashboard/policies");
   return policy;
