@@ -1,6 +1,8 @@
+import { headers } from "next/headers";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getPolicies } from "@/lib/data/policies";
+import { getInitialChainIdFromCookie } from "@/lib/chain-cookie";
 import PoliciesContent from "./policies-content";
 
 export default async function PoliciesPage() {
@@ -9,7 +11,11 @@ export default async function PoliciesPage() {
     redirect("/login");
   }
 
-  const policies = await getPolicies(user.userId);
+  const headersList = await headers();
+  const cookieHeader = headersList.get("cookie");
+  const initialChainId = getInitialChainIdFromCookie(cookieHeader);
+
+  const policies = await getPolicies(user.userId, undefined, { chainId: initialChainId });
 
   return <PoliciesContent allPolicies={policies} />;
 }
