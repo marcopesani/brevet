@@ -4,6 +4,16 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Shield, Key, Clock, DollarSign } from "lucide-react";
 import { toast } from "sonner";
+import { useWalletClient } from "wagmi";
+import { createPublicClient, http, custom, zeroAddress, type Hex, type Address } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { entryPoint07Address } from "viem/account-abstraction";
+import { createKernelAccount, createKernelAccountClient } from "@zerodev/sdk";
+import { signerToEcdsaValidator } from "@zerodev/ecdsa-validator";
+import { toPermissionValidator, serializePermissionAccount } from "@zerodev/permissions";
+import { toECDSASigner } from "@zerodev/permissions/signers";
+import { toSudoPolicy } from "@zerodev/permissions/policies";
+import { createPimlicoClient } from "permissionless/clients/pimlico";
 import {
   Card,
   CardHeader,
@@ -22,13 +32,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { authorizeSessionKey } from "@/app/actions/smart-account";
+import {
+  prepareSessionKeyAuth,
+  sendBundlerRequest,
+  finalizeSessionKey,
+} from "@/app/actions/smart-account";
+import { getChainConfig } from "@/lib/chain-config";
 
 interface SessionKeyAuthCardProps {
   smartAccountAddress: string | null;
   sessionKeyAddress?: string;
   chainId: number;
 }
+
+const ENTRY_POINT = {
+  address: entryPoint07Address,
+  version: "0.7" as const,
+};
+
+const KERNEL_VERSION = "0.3.3" as const;
 
 const EXPIRY_OPTIONS = [
   { value: "7", label: "7 days" },
@@ -38,6 +60,30 @@ const EXPIRY_OPTIONS = [
   { value: "90", label: "90 days" },
 ];
 
+type AuthStatus =
+  | null
+  | "preparing"
+  | "building"
+  | "signing"
+  | "confirming"
+  | "finalizing";
+
+const STATUS_LABELS: Record<NonNullable<AuthStatus>, string> = {
+  preparing: "Preparing...",
+  building: "Building transaction...",
+  signing: "Approve in wallet...",
+  confirming: "Waiting for confirmation...",
+  finalizing: "Finalizing...",
+};
+
+function createBundlerTransport(chainId: number) {
+  return custom({
+    async request({ method, params }: { method: string; params?: unknown }) {
+      return sendBundlerRequest(chainId, method, (params ?? []) as unknown[]);
+    },
+  });
+}
+
 export default function SessionKeyAuthCard({
   smartAccountAddress,
   sessionKeyAddress,
@@ -46,17 +92,124 @@ export default function SessionKeyAuthCard({
   const [spendLimitPerTx, setSpendLimitPerTx] = useState("50");
   const [spendLimitDaily, setSpendLimitDaily] = useState("500");
   const [expiryDays, setExpiryDays] = useState("30");
+  const [status, setStatus] = useState<AuthStatus>(null);
   const queryClient = useQueryClient();
+  const { data: walletClient } = useWalletClient();
 
   const { mutate: doAuthorize, isPending } = useMutation({
-    mutationFn: () =>
-      authorizeSessionKey(
+    mutationFn: async () => {
+      setStatus("preparing");
+
+      // 1. Get session key from server
+      const { sessionKeyHex, smartAccountAddress: saAddress } =
+        await prepareSessionKeyAuth(chainId);
+
+      // 2. Verify wallet is connected
+      if (!walletClient) throw new Error("Wallet not connected");
+
+      setStatus("building");
+
+      // 3. Build validators
+      const config = getChainConfig(chainId);
+      if (!config) throw new Error(`Unsupported chain: ${chainId}`);
+
+      const publicClient = createPublicClient({
+        chain: config.chain,
+        transport: http(),
+      });
+
+      const ecdsaValidator = await signerToEcdsaValidator(publicClient, {
+        signer: walletClient,
+        entryPoint: ENTRY_POINT,
+        kernelVersion: KERNEL_VERSION,
+      });
+
+      const sessionKeyAccount = privateKeyToAccount(sessionKeyHex as Hex);
+      const ecdsaSigner = await toECDSASigner({ signer: sessionKeyAccount });
+
+      const permissionValidator = await toPermissionValidator(publicClient, {
+        signer: ecdsaSigner,
+        policies: [toSudoPolicy({})],
+        entryPoint: ENTRY_POINT,
+        kernelVersion: KERNEL_VERSION,
+      });
+
+      // 4. Build Kernel account
+      const kernelAccount = await createKernelAccount(publicClient, {
+        entryPoint: ENTRY_POINT,
+        kernelVersion: KERNEL_VERSION,
+        plugins: {
+          sudo: ecdsaValidator,
+          regular: permissionValidator,
+        },
+        address: saAddress as Address,
+      });
+
+      // 5. Build kernel client with proxied bundler transport
+      const bundlerTransport = createBundlerTransport(chainId);
+
+      const pimlicoClient = createPimlicoClient({
+        chain: config.chain,
+        transport: bundlerTransport,
+        entryPoint: ENTRY_POINT,
+      });
+
+      const kernelClient = createKernelAccountClient({
+        account: kernelAccount,
+        chain: config.chain,
+        bundlerTransport,
+        client: publicClient,
+        paymaster: {
+          getPaymasterData: pimlicoClient.getPaymasterData,
+          getPaymasterStubData: pimlicoClient.getPaymasterStubData,
+        },
+        userOperation: {
+          estimateFeesPerGas: async () => {
+            const gasPrice = await pimlicoClient.getUserOperationGasPrice();
+            return gasPrice.fast;
+          },
+        },
+      });
+
+      // 6. Send UserOp — triggers WalletConnect popup for owner signature
+      setStatus("signing");
+      const userOpHash = await kernelClient.sendUserOperation({
+        callData: await kernelAccount.encodeCalls([
+          { to: zeroAddress, value: BigInt(0), data: "0x" },
+        ]),
+      });
+
+      // 7. Wait for on-chain confirmation
+      setStatus("confirming");
+      const receipt = await pimlicoClient.waitForUserOperationReceipt({
+        hash: userOpHash,
+        timeout: 120_000,
+      });
+
+      if (!receipt.success) throw new Error("UserOperation failed on-chain");
+
+      // 8. Serialize the permission account (client-side)
+      setStatus("finalizing");
+      const serialized = await serializePermissionAccount(
+        kernelAccount,
+        sessionKeyHex as Hex,
+      );
+
+      // 9. Finalize on server — verify tx, store serialized account, activate
+      const grantTxHash = receipt.receipt.transactionHash;
+      const result = await finalizeSessionKey(
         chainId,
+        grantTxHash,
+        serialized,
         parseFloat(spendLimitPerTx) || 50,
         parseFloat(spendLimitDaily) || 500,
         parseInt(expiryDays, 10) || 30,
-      ),
+      );
+
+      return result;
+    },
     onSuccess: (result) => {
+      setStatus(null);
       toast.success("Session key authorized successfully!");
       queryClient.invalidateQueries({ queryKey: ["smart-account", chainId] });
       queryClient.invalidateQueries({ queryKey: ["smart-accounts-all"] });
@@ -65,6 +218,7 @@ export default function SessionKeyAuthCard({
       }
     },
     onError: (error: Error) => {
+      setStatus(null);
       toast.error(
         error.message.length > 120
           ? error.message.slice(0, 120) + "..."
@@ -72,6 +226,9 @@ export default function SessionKeyAuthCard({
       );
     },
   });
+
+  const buttonText =
+    status !== null ? STATUS_LABELS[status] : "Authorize Session Key";
 
   return (
     <Card className="border-amber-200 dark:border-amber-800">
@@ -169,17 +326,18 @@ export default function SessionKeyAuthCard({
           <p className="text-xs text-amber-800 dark:text-amber-200">
             <Shield className="mr-1 inline h-3 w-3" />
             This will submit a transaction to install the session key permission
-            module on your smart account. Gas is sponsored on testnets.
+            module on your smart account. You will be asked to approve the
+            transaction in your wallet. Gas is sponsored on testnets.
           </p>
         </div>
       </CardContent>
       <CardFooter>
         <Button
           onClick={() => doAuthorize()}
-          disabled={isPending}
+          disabled={isPending || !walletClient}
           className="w-full"
         >
-          {isPending ? "Authorizing..." : "Authorize Session Key"}
+          {buttonText}
         </Button>
       </CardFooter>
     </Card>
