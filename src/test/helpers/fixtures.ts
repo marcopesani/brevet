@@ -54,6 +54,44 @@ export function createTestHotWallet(
   };
 }
 
+/** Test smart account address (deterministic, derived from test wallet). */
+const TEST_SMART_ACCOUNT_ADDRESS = "0x" + "cc".repeat(20);
+
+/** Test session key address. */
+const TEST_SESSION_KEY_ADDRESS = "0x" + "dd".repeat(20);
+
+/**
+ * Create test smart account data for a given user.
+ */
+export function createTestSmartAccount(
+  userId: string,
+  overrides?: {
+    id?: string;
+    ownerAddress?: string;
+    smartAccountAddress?: string;
+    sessionKeyAddress?: string;
+    sessionKeyEncrypted?: string;
+    sessionKeyStatus?: "pending_grant" | "active" | "expired" | "revoked";
+    serializedAccount?: string;
+    chainId?: number;
+  },
+) {
+  return {
+    _id: overrides?.id
+      ? new mongoose.Types.ObjectId(overrides.id)
+      : new mongoose.Types.ObjectId(),
+    ownerAddress: overrides?.ownerAddress ?? TEST_WALLET_ADDRESS,
+    smartAccountAddress: overrides?.smartAccountAddress ?? TEST_SMART_ACCOUNT_ADDRESS,
+    sessionKeyAddress: overrides?.sessionKeyAddress ?? TEST_SESSION_KEY_ADDRESS,
+    sessionKeyEncrypted:
+      overrides?.sessionKeyEncrypted ?? TEST_ENCRYPTED_PRIVATE_KEY,
+    sessionKeyStatus: overrides?.sessionKeyStatus ?? "active",
+    serializedAccount: overrides?.serializedAccount,
+    userId: new mongoose.Types.ObjectId(userId),
+    chainId: overrides?.chainId ?? DEFAULT_CHAIN_ID,
+  };
+}
+
 /**
  * Create test endpoint policy data for a given user.
  */

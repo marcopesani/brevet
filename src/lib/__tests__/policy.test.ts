@@ -20,10 +20,10 @@ describe("checkPolicy", () => {
     await resetTestDb();
   });
 
-  it("returns hot_wallet when autoSign is true", async () => {
+  it("returns auto_sign when autoSign is true", async () => {
     const result = await checkPolicy(0.05, "https://api.example.com/resource", userId);
 
-    expect(result.action).toBe("hot_wallet");
+    expect(result.action).toBe("auto_sign");
     expect(result.autoSign).toBe(true);
   });
 
@@ -108,7 +108,7 @@ describe("checkPolicy", () => {
       // A request to a sub-path should match
       const result = await checkPolicy(0.05, "https://api.example.com/some/deep/path", userId);
 
-      expect(result.action).toBe("hot_wallet");
+      expect(result.action).toBe("auto_sign");
     });
 
     it("prefers the longest matching prefix", async () => {
@@ -123,7 +123,7 @@ describe("checkPolicy", () => {
       const result = await checkPolicy(0.5, "https://api.example.com/expensive/item", userId);
 
       // Should match the more specific policy (autoSign=false)
-      expect(result.action).toBe("walletconnect");
+      expect(result.action).toBe("manual_approval");
       expect(result.autoSign).toBe(false);
     });
 
@@ -153,19 +153,19 @@ describe("checkPolicy", () => {
     it("matches when next char is a query parameter boundary (M11)", async () => {
       const result = await checkPolicy(0.05, "https://api.example.com?query=1", userId);
 
-      expect(result.action).toBe("hot_wallet");
+      expect(result.action).toBe("auto_sign");
     });
 
     it("matches when next char is a fragment boundary (M11)", async () => {
       const result = await checkPolicy(0.05, "https://api.example.com#section", userId);
 
-      expect(result.action).toBe("hot_wallet");
+      expect(result.action).toBe("auto_sign");
     });
 
     it("matches exact endpoint pattern with no trailing path (M11)", async () => {
       const result = await checkPolicy(0.05, "https://api.example.com", userId);
 
-      expect(result.action).toBe("hot_wallet");
+      expect(result.action).toBe("auto_sign");
     });
 
     it("matches when pattern ends with trailing slash (M11)", async () => {
@@ -178,14 +178,14 @@ describe("checkPolicy", () => {
 
       const result = await checkPolicy(0.05, "https://trailing.example.com/resource", userId);
 
-      expect(result.action).toBe("hot_wallet");
+      expect(result.action).toBe("auto_sign");
     });
 
     it("still matches without trailing slash in pattern (M11)", async () => {
       // The seeded policy has pattern "https://api.example.com" (no trailing slash)
       const result = await checkPolicy(0.05, "https://api.example.com/resource", userId);
 
-      expect(result.action).toBe("hot_wallet");
+      expect(result.action).toBe("auto_sign");
     });
 
     it("still rejects cross-domain matches with trailing-slash pattern (M11)", async () => {
@@ -211,7 +211,7 @@ describe("checkPolicy", () => {
   });
 
   describe("autoSign flag", () => {
-    it("returns walletconnect when autoSign is false", async () => {
+    it("returns manual_approval when autoSign is false", async () => {
       await EndpointPolicy.findOneAndUpdate(
         { userId: new mongoose.Types.ObjectId(userId), endpointPattern: "https://api.example.com" },
         { $set: { autoSign: false } },
@@ -219,13 +219,13 @@ describe("checkPolicy", () => {
 
       const result = await checkPolicy(0.01, "https://api.example.com/resource", userId);
 
-      expect(result.action).toBe("walletconnect");
+      expect(result.action).toBe("manual_approval");
     });
 
-    it("returns hot_wallet when autoSign is true", async () => {
+    it("returns auto_sign when autoSign is true", async () => {
       const result = await checkPolicy(0.01, "https://api.example.com/resource", userId);
 
-      expect(result.action).toBe("hot_wallet");
+      expect(result.action).toBe("auto_sign");
     });
   });
 
@@ -265,7 +265,7 @@ describe("checkPolicy", () => {
 
       const result = await checkPolicy(0.05, "https://arb-api.example.com/resource", userId, 42161);
 
-      expect(result.action).toBe("hot_wallet");
+      expect(result.action).toBe("auto_sign");
     });
 
     it("allows same endpoint pattern on different chains", async () => {
@@ -278,13 +278,13 @@ describe("checkPolicy", () => {
         }),
       );
 
-      // Default chain should still match hot_wallet
+      // Default chain should still match auto_sign
       const baseResult = await checkPolicy(0.05, "https://api.example.com/resource", userId);
-      expect(baseResult.action).toBe("hot_wallet");
+      expect(baseResult.action).toBe("auto_sign");
 
-      // Arbitrum chain should match walletconnect
+      // Arbitrum chain should match manual_approval
       const arbResult = await checkPolicy(0.05, "https://api.example.com/resource", userId, 42161);
-      expect(arbResult.action).toBe("walletconnect");
+      expect(arbResult.action).toBe("manual_approval");
     });
   });
 });

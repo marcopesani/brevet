@@ -30,6 +30,24 @@ vi.mock("@/lib/hot-wallet", async (importOriginal) => {
   };
 });
 
+// Mock smart-account signer creation to avoid real RPC calls.
+vi.mock("@/lib/smart-account", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/smart-account")>();
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const { TEST_PRIVATE_KEY: key } = await import("@/test/helpers/crypto");
+  const account = privateKeyToAccount(key);
+  const mockSigner = {
+    address: account.address,
+    signTypedData: (args: Parameters<typeof account.signTypedData>[0]) =>
+      account.signTypedData(args),
+  };
+  return {
+    ...actual,
+    createSmartAccountSigner: vi.fn().mockResolvedValue(mockSigner),
+    createSmartAccountSignerFromSerialized: vi.fn().mockResolvedValue(mockSigner),
+  };
+});
+
 // V2-format PaymentRequired for header-based tests
 const V2_REQUIREMENT = {
   scheme: "exact",
@@ -446,7 +464,7 @@ describe("E2E: Crypto Operations", () => {
 
       expect(result.success).toBe(false);
       expect(result.status).toBe("pending_approval");
-      expect(result.signingStrategy).toBe("walletconnect");
+      expect(result.signingStrategy).toBe("manual_approval");
       expect(result.amount).toBe(0.05);
       expect(result.paymentRequirements).toBeDefined();
     });
@@ -580,7 +598,7 @@ describe("E2E: Crypto Operations", () => {
       // With multi-chain support, Polygon is supported so we create a pending payment
       expect(result.success).toBe(false);
       expect(result.status).toBe("pending_approval");
-      expect(result.signingStrategy).toBe("walletconnect");
+      expect(result.signingStrategy).toBe("manual_approval");
     });
 
     it("should reject when no requirement matches any supported chain", async () => {

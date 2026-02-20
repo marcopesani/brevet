@@ -2,7 +2,7 @@ import { connectDB } from "@/lib/db";
 import { EndpointPolicy, IEndpointPolicyDocument } from "@/lib/models/endpoint-policy";
 import { Types } from "mongoose";
 
-export type PolicyAction = "hot_wallet" | "walletconnect" | "rejected";
+export type PolicyAction = "auto_sign" | "manual_approval" | "rejected";
 
 export interface PolicyCheckResult {
   action: PolicyAction;
@@ -70,8 +70,8 @@ function extractHost(url: string): string {
  * Flow:
  * 1. Find best-matching EndpointPolicy (longest prefix match, active only)
  * 2. No match → reject + auto-create a draft policy for the endpoint origin
- * 3. autoSign=true  → "hot_wallet"
- * 4. autoSign=false → "walletconnect"
+ * 3. autoSign=true  → "auto_sign"
+ * 4. autoSign=false → "manual_approval"
  *
  * Note: Amount-based checks (balance) are handled in executePayment.
  */
@@ -110,8 +110,8 @@ export async function checkPolicy(
   };
 
   if (!policy.autoSign) {
-    return { action: "walletconnect", ...result };
+    return { action: "manual_approval", ...result };
   }
 
-  return { action: "hot_wallet", ...result };
+  return { action: "auto_sign", ...result };
 }

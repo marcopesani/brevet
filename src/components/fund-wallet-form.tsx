@@ -99,7 +99,7 @@ export default function FundWalletForm({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ArrowDownLeft className="h-5 w-5" />
-          Fund Wallet
+          Fund Account
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -165,7 +165,7 @@ export default function FundWalletForm({
               ? "Confirming in wallet..."
               : isConfirming
                 ? "Transaction pending..."
-                : "Fund Wallet"}
+                : "Fund Account"}
           </Button>
         )}
       </CardFooter>

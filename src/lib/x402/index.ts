@@ -9,6 +9,8 @@ export {
   createEvmSigner,
   createExactEvmScheme,
   ExactEvmScheme,
+  createSmartAccountSigner,
+  createSmartAccountSignerFromSerialized,
 } from "./eip712";
 export type {
   PaymentRequired,

@@ -40,12 +40,12 @@ export function SectionCards({ summary, wallet }: SectionCardsProps) {
       description: "Monthly spending",
     },
     {
-      label: "Hot Wallet Balance",
+      label: "Smart Account Balance",
       value: wallet ? `$${wallet.balance}` : "N/A",
       trend: null,
       footer: wallet
         ? `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`
-        : "No wallet found",
+        : "No account found",
       description: "USDC balance",
     },
   ]

@@ -1,6 +1,6 @@
 import { getAuthenticatedUser } from "@/lib/auth";
 import { getAnalytics } from "@/lib/data/analytics";
-import { getWalletBalance } from "@/lib/data/wallet";
+import { getSmartAccountBalance } from "@/lib/data/smart-account";
 import { getPendingCount } from "@/lib/data/payments";
 import { getRecentTransactions } from "@/lib/data/transactions";
 import { SectionCards } from "@/components/section-cards";
@@ -15,7 +15,7 @@ export default async function DashboardPage() {
   const [analytics, wallet, pendingCount, recentTransactions] =
     await Promise.all([
       getAnalytics(user.userId),
-      getWalletBalance(user.userId),
+      getSmartAccountBalance(user.userId),
       getPendingCount(user.userId),
       getRecentTransactions(user.userId, 5),
     ]);

@@ -84,7 +84,7 @@ describe("FundWalletForm chain switch guard", () => {
     fireEvent.change(amountInput, { target: { value: "10" } });
 
     const fundButton = screen.getByRole("button", {
-      name: /Fund Wallet/i,
+      name: /Fund Account/i,
     });
     fireEvent.click(fundButton);
 
@@ -106,7 +106,7 @@ describe("FundWalletForm chain switch guard", () => {
     fireEvent.change(amountInput, { target: { value: "10" } });
 
     const fundButton = screen.getByRole("button", {
-      name: /Fund Wallet/i,
+      name: /Fund Account/i,
     });
     fireEvent.click(fundButton);
 
@@ -127,7 +127,7 @@ describe("FundWalletForm chain switch guard", () => {
     fireEvent.change(amountInput, { target: { value: "10" } });
 
     const fundButton = screen.getByRole("button", {
-      name: /Fund Wallet/i,
+      name: /Fund Account/i,
     });
     fireEvent.click(fundButton);
 
@@ -152,7 +152,7 @@ describe("FundWalletForm chain switch guard", () => {
     fireEvent.change(amountInput, { target: { value: "5" } });
 
     const fundButton = screen.getByRole("button", {
-      name: /Fund Wallet/i,
+      name: /Fund Account/i,
     });
     fireEvent.click(fundButton);
 

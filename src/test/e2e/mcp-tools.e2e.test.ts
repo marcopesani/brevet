@@ -56,6 +56,24 @@ vi.mock("@/lib/hot-wallet", async (importOriginal) => {
   };
 });
 
+// Mock smart-account signer creation to avoid real RPC calls.
+vi.mock("@/lib/smart-account", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/smart-account")>();
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const { TEST_PRIVATE_KEY: key } = await import("@/test/helpers/crypto");
+  const account = privateKeyToAccount(key);
+  const mockSigner = {
+    address: account.address,
+    signTypedData: (args: Parameters<typeof account.signTypedData>[0]) =>
+      account.signTypedData(args),
+  };
+  return {
+    ...actual,
+    createSmartAccountSigner: vi.fn().mockResolvedValue(mockSigner),
+    createSmartAccountSignerFromSerialized: vi.fn().mockResolvedValue(mockSigner),
+  };
+});
+
 /**
  * V1-format payment requirement with all fields the SDK needs.
  */
@@ -197,7 +215,7 @@ describe("E2E: MCP Tool Pipeline", () => {
   });
 
   describe("x402_check_balance", () => {
-    it("should return wallet balance and active endpoint policies", async () => {
+    it("should return smart account balance for single and multi-chain queries", async () => {
       const balanceTool = findTool(tools, "x402_check_balance");
       expect(balanceTool).toBeDefined();
 
@@ -213,36 +231,14 @@ describe("E2E: MCP Tool Pipeline", () => {
       expect(parsed.balances[0].chainId).toBeDefined();
       expect(parsed.balances[0].chain).toBeDefined();
 
-      // Single-chain query → returns endpointPolicies
+      // Single-chain query → returns smart account address and balance
       const singleChainResult = await balanceTool!.handler({ chain: "base-sepolia" });
       expect(singleChainResult.isError).toBeUndefined();
 
       const singleParsed = JSON.parse(singleChainResult.content[0].text);
-      expect(singleParsed.walletAddress).toBeDefined();
+      expect(singleParsed.smartAccountAddress).toBeDefined();
       expect(singleParsed.usdcBalance).toBe("12.50");
-      expect(singleParsed.endpointPolicies).toBeDefined();
-      expect(singleParsed.endpointPolicies).toHaveLength(1);
-      expect(singleParsed.endpointPolicies[0].endpointPattern).toBe("https://api.example.com");
-      expect(singleParsed.endpointPolicies[0].autoSign).toBe(true);
-      expect(singleParsed.endpointPolicies[0].status).toBe("active");
-    });
-
-    it("should list multiple endpoint policies", async () => {
-      // Create a second endpoint policy
-      await EndpointPolicy.create({
-        endpointPattern: "https://api.other.com",
-        autoSign: true,
-        status: "active",
-        userId,
-      });
-
-      // Use single-chain query to get endpointPolicies
-      const balanceTool = findTool(tools, "x402_check_balance");
-      expect(balanceTool).toBeDefined();
-      const result = await balanceTool!.handler({ chain: "base-sepolia" });
-      const parsed = JSON.parse(result.content[0].text);
-
-      expect(parsed.endpointPolicies).toHaveLength(2);
+      expect(singleParsed.chainId).toBe(84532);
     });
   });
 

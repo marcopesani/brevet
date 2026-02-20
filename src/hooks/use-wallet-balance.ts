@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getWalletBalance } from "@/app/actions/wallet";
+import { getSmartAccountBalanceAction } from "@/app/actions/smart-account";
 
 export const WALLET_BALANCE_QUERY_KEY = ["wallet-balance"] as const;
 
@@ -16,7 +16,7 @@ export function useWalletBalance(
 
   const { data, isLoading, error } = useQuery({
     queryKey,
-    queryFn: () => getWalletBalance(chainId),
+    queryFn: () => getSmartAccountBalanceAction(chainId),
     enabled,
     refetchOnWindowFocus: true,
     staleTime: 30_000,

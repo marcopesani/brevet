@@ -7,7 +7,6 @@ import {
 import { createPublicClient, http } from "viem";
 import { connectDB } from "@/lib/db";
 import { User } from "@/lib/models/user";
-import { ensureAllHotWallets } from "@/lib/data/wallet";
 
 declare module "next-auth" {
   interface User {
@@ -65,7 +64,7 @@ export async function verifySignature(
   });
 }
 
-/** Find or create a user by wallet address, ensuring hot wallets exist on all environment chains. */
+/** Find or create a user by wallet address. */
 export async function upsertUser(walletAddress: string) {
   await connectDB();
 
@@ -74,10 +73,6 @@ export async function upsertUser(walletAddress: string) {
   if (!user) {
     user = await User.create({ walletAddress });
   }
-
-  // Create hot wallets for any chains that don't have one yet.
-  // For new users this creates all wallets; for existing users it backfills missing chains.
-  await ensureAllHotWallets(user._id.toString());
 
   return user;
 }

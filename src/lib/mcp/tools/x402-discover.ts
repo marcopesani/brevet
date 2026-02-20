@@ -31,6 +31,7 @@ export interface DiscoveryResponse {
 
 export function registerX402Discover(
   server: McpServer,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _userId: string,
 ): void {
   server.registerTool(

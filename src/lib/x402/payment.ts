@@ -1,21 +1,20 @@
-import { type Hex, PrivateKeyAccount } from "viem";
+import { type Hex } from "viem";
 import { formatUnits } from "viem";
 import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { createTransaction } from "@/lib/data/transactions";
-import { getHotWallet, getHotWalletWithKey } from "@/lib/data/wallet";
+import { getSmartAccount, getSmartAccountWithSessionKey } from "@/lib/data/smart-account";
 import { decryptPrivateKey, getUsdcBalance, USDC_DECIMALS } from "@/lib/hot-wallet";
 import { checkPolicy } from "@/lib/policy";
-import { createEvmSigner } from "./eip712";
+import { createSmartAccountSignerFromSerialized, createSmartAccountSigner } from "@/lib/smart-account";
 import { parsePaymentRequired, extractTxHashFromResponse, extractSettleResponse } from "./headers";
 import type {
-PaymentResult, SigningStrategy } from "./types";
+PaymentResult, SigningStrategy, ClientEvmSigner } from "./types";
 import { getChainConfig, isChainSupported, SUPPORTED_CHAINS } from "../chain-config";
 import { logger } from "../logger";
 import { SIWxExtension } from "@x402/extensions";
 import { createSIWxPayload,
 encodeSIWxHeader } from "@x402/extensions/sign-in-with-x";
-import { privateKeyToAccount } from "viem/accounts";
 
 /**
  * Check if an IPv4 address (given as four octets) is private, loopback, or internal.
@@ -203,20 +202,16 @@ async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
 }
 
 /**
- * Create an x402Client configured with EVM schemes for a given private key.
+ * Create an x402Client configured with EVM schemes for a given signer.
  *
  * Registers both V1 and V2 EVM exact schemes (EIP-3009 + Permit2)
  * via `registerExactEvmScheme` which handles wildcard eip155:* matching.
  */
-function createPaymentClient(privateKey: Hex): { client: x402Client; httpClient: x402HTTPClient; account: PrivateKeyAccount } {
-  const account = privateKeyToAccount(privateKey);
- 
-  const signer = createEvmSigner(privateKey);
-  
+function createPaymentClient(signer: ClientEvmSigner): { client: x402Client; httpClient: x402HTTPClient } {
   const client = new x402Client();
   registerExactEvmScheme(client, { signer });
   const httpClient = new x402HTTPClient(client);
-  return { client, httpClient, account };
+  return { client, httpClient };
 }
 
 /**
@@ -246,10 +241,10 @@ function resolveNetworkToChainId(network: string): number | undefined {
 /**
  * Select the best chain from the endpoint's accepted networks.
  *
- * Strategy for hot wallet:
+ * Strategy for smart account:
  * 1. Filter to chains we support
- * 2. For each supported chain, check if user has a hot wallet
- * 3. Pick the chain with the highest USDC balance
+ * 2. For each supported chain, check if user has a smart account with active session key
+ * 3. Pick the chain with the highest USDC balance (among active session key accounts)
  *
  * Returns the selected chainId and the matching accept entry index,
  * or null if no supported chain is found.
@@ -269,16 +264,16 @@ async function selectBestChain(
 
   if (candidates.length === 0) return null;
 
-  // Try to find the best chain where user has a hot wallet with highest balance
+  // Try to find the best chain where user has a smart account with active session key and highest balance
   let bestCandidate: { chainId: number; acceptIndex: number } | null = null;
   let bestBalance = -1;
 
   for (const candidate of candidates) {
-    const wallet = await getHotWallet(userId, candidate.chainId);
-    if (!wallet) continue;
+    const account = await getSmartAccount(userId, candidate.chainId);
+    if (!account || account.sessionKeyStatus !== "active") continue;
 
     try {
-      const balanceStr = await getUsdcBalance(wallet.address, candidate.chainId);
+      const balanceStr = await getUsdcBalance(account.smartAccountAddress, candidate.chainId);
       const balance = parseFloat(balanceStr);
       if (balance > bestBalance) {
         bestBalance = balance;
@@ -290,11 +285,11 @@ async function selectBestChain(
     }
   }
 
-  // If we found a chain with a wallet, use it
+  // If we found a chain with an active smart account, use it
   if (bestCandidate) return bestCandidate;
 
-  // No hot wallet on any supported chain — return first supported chain
-  // (will trigger WalletConnect flow downstream)
+  // No active smart account on any supported chain — return first supported chain
+  // (will trigger manual approval flow downstream)
   return candidates[0];
 }
 
@@ -356,7 +351,7 @@ export interface PaymentRequestOptions {
  * 7. Log transaction to database
  *
  * @param url     The x402-protected endpoint
- * @param userId  The user whose hot wallet and policy to use
+ * @param userId  The user whose smart account and policy to use
  * @param options Optional HTTP method, body, and headers for the request
  * @param chainId Optional explicit chain ID — skips auto-selection if provided
  */
@@ -395,7 +390,7 @@ export async function executePayment(
   if (initialResponse.status !== 402) {
     // Not a paid endpoint — return the response as-is
     logger.info("Non-402 response, returning directly", { userId, url, action: "payment_passthrough", status: initialResponse.status });
-    return { success: true, status: "completed", signingStrategy: "hot_wallet", response: initialResponse };
+    return { success: true, status: "completed", signingStrategy: "auto_sign", response: initialResponse };
   }
 
   // Step 2: Parse payment requirements (SDK handles V1 body + V2 header)
@@ -463,30 +458,8 @@ export async function executePayment(
 
   const selectedChainConfig = getChainConfig(selectedChainId)!;
 
-  // Step 4: Look up the user's hot wallet for the selected chain (with key for signing)
-  const hotWallet = await getHotWalletWithKey(userId, selectedChainId);
-
-  if (!hotWallet) {
-    // No hot wallet on this chain — return pending_approval for WalletConnect
-    const selectedRequirement = paymentRequired.accepts[acceptIndex];
-    const amountStr = selectedRequirement.amount
-      ?? (selectedRequirement as unknown as { maxAmountRequired?: string }).maxAmountRequired
-      ?? "0";
-    const amountWei = BigInt(amountStr);
-    const amountUsd = parseFloat(formatUnits(amountWei, USDC_DECIMALS));
-
-    logger.info("No hot wallet on selected chain, requires wallet approval", { userId, url, action: "pending_approval", chainId: selectedChainId, amount: amountUsd });
-    return {
-      success: false,
-      status: "pending_approval",
-      signingStrategy: "walletconnect",
-      paymentRequirements: JSON.stringify(paymentRequired),
-      amount: amountUsd,
-      chainId: selectedChainId,
-    };
-  }
-
-  const privateKey = decryptPrivateKey(hotWallet.encryptedPrivateKey) as Hex;
+  // Step 4: Look up the user's smart account for the selected chain (with session key for signing)
+  const smartAccount = await getSmartAccountWithSessionKey(userId, selectedChainId);
 
   // Step 5: Determine the amount from the selected requirement
   // SDK V2 uses `amount`, V1 uses `maxAmountRequired` — check both
@@ -497,7 +470,21 @@ export async function executePayment(
   const amountWei = BigInt(amountStr);
   const amountUsd = parseFloat(formatUnits(amountWei, USDC_DECIMALS));
 
-  // Step 6: Check spending policy (returns action: hot_wallet | walletconnect | rejected)
+  // If no smart account on this chain OR session key not active → fall back to manual approval
+  if (!smartAccount || smartAccount.sessionKeyStatus !== "active") {
+    const reason = !smartAccount ? "No smart account on selected chain" : "Session key not active";
+    logger.info(`${reason}, requires manual approval`, { userId, url, action: "pending_approval", chainId: selectedChainId, amount: amountUsd });
+    return {
+      success: false,
+      status: "pending_approval",
+      signingStrategy: "manual_approval",
+      paymentRequirements: JSON.stringify(paymentRequired),
+      amount: amountUsd,
+      chainId: selectedChainId,
+    };
+  }
+
+  // Step 6: Check spending policy (returns action: auto_sign | manual_approval | rejected)
   const policyResult = await checkPolicy(amountUsd, url, userId, selectedChainId);
   if (policyResult.action === "rejected") {
     logger.warn("Policy denied payment", { userId, url, action: "policy_denied", reason: policyResult.reason, amount: amountUsd, chainId: selectedChainId });
@@ -512,32 +499,60 @@ export async function executePayment(
   // Step 7: Determine signing strategy
   let signingStrategy: SigningStrategy = policyResult.action;
 
-  // If the policy says hot_wallet, verify the on-chain USDC balance is sufficient.
-  // If balance is too low, fall through to the WalletConnect path instead of failing.
-  if (signingStrategy === "hot_wallet") {
-    const balanceStr = await getUsdcBalance(hotWallet.address, selectedChainId);
+  // If the policy says auto_sign, verify the on-chain USDC balance is sufficient.
+  // If balance is too low, fall through to the manual approval path instead of failing.
+  if (signingStrategy === "auto_sign") {
+    const balanceStr = await getUsdcBalance(smartAccount.smartAccountAddress, selectedChainId);
     const balance = parseFloat(balanceStr);
     if (balance < amountUsd) {
-      logger.info("Insufficient hot wallet balance, falling back to WalletConnect", { userId, url, action: "walletconnect_fallback", amount: amountUsd, chainId: selectedChainId });
-      signingStrategy = "walletconnect";
+      logger.info("Insufficient smart account balance, falling back to manual approval", { userId, url, action: "manual_approval_fallback", amount: amountUsd, chainId: selectedChainId });
+      signingStrategy = "manual_approval";
     }
   }
 
-  // WalletConnect path: return pending_approval for caller to create PendingPayment
-  if (signingStrategy === "walletconnect") {
-    logger.info("Payment requires wallet approval", { userId, url, action: "pending_approval", amount: amountUsd, chainId: selectedChainId });
+  // Manual approval path: return pending_approval for caller to create PendingPayment
+  if (signingStrategy === "manual_approval") {
+    logger.info("Payment requires manual approval", { userId, url, action: "pending_approval", amount: amountUsd, chainId: selectedChainId });
     return {
       success: false,
       status: "pending_approval",
-      signingStrategy: "walletconnect",
+      signingStrategy: "manual_approval",
       paymentRequirements: JSON.stringify(paymentRequired),
       amount: amountUsd,
       chainId: selectedChainId,
     };
   }
 
-  // Step 8: Create payment payload via SDK (handles EIP-3009 + Permit2)
-  const { client, httpClient, account } = createPaymentClient(privateKey);
+  // Step 8: Create smart account signer and payment payload via SDK
+  const sessionKeyHex = decryptPrivateKey(smartAccount.sessionKeyEncrypted) as Hex;
+  let signer: ClientEvmSigner;
+  try {
+    if (smartAccount.serializedAccount) {
+      // Fast path: deserialize previously-serialized permission account
+      const serialized = decryptPrivateKey(smartAccount.serializedAccount);
+      signer = await createSmartAccountSignerFromSerialized(
+        serialized,
+        sessionKeyHex,
+        selectedChainId,
+      );
+    } else {
+      // Full path: reconstruct from session key
+      signer = await createSmartAccountSigner(
+        sessionKeyHex,
+        smartAccount.smartAccountAddress as `0x${string}`,
+        selectedChainId,
+      );
+    }
+  } catch (err) {
+    return {
+      success: false,
+      status: "rejected",
+      signingStrategy: "auto_sign",
+      error: `Failed to create smart account signer: ${err instanceof Error ? err.message : "Unknown error"}`,
+    };
+  }
+
+  const { client, httpClient } = createPaymentClient(signer);
   let paymentPayload;
   try {
     paymentPayload = await client.createPaymentPayload(paymentRequired);
@@ -545,7 +560,7 @@ export async function executePayment(
     return {
       success: false,
       status: "rejected",
-      signingStrategy: "hot_wallet",
+      signingStrategy: "auto_sign",
       error: `Failed to create payment: ${err instanceof Error ? err.message : "Unknown error"}`,
     };
   }
@@ -574,8 +589,19 @@ export async function executePayment(
       type: matchingChain.type,
     };
 
-    // Create signed payload
-    const payload = await createSIWxPayload(completeInfo, account);
+    // Create signed payload using the smart account signer's address
+    const signerAccount = { address: signer.address, signMessage: async ({ message }: { message: string }) => {
+      // SIWx uses personal_sign — smart account signers use signTypedData.
+      // For now, pass through to signTypedData with EIP-191 wrapping.
+      // This will need to be revisited if SIWx is used in production with smart accounts.
+      return signer.signTypedData({
+        domain: {},
+        types: { EIP712Domain: [] },
+        primaryType: "EIP712Domain",
+        message: { raw: message },
+      });
+    }};
+    const payload = await createSIWxPayload(completeInfo, signerAccount as Parameters<typeof createSIWxPayload>[1]);
     signInWithXHeader = encodeSIWxHeader(payload);
   }
 
@@ -598,7 +624,7 @@ export async function executePayment(
   } catch (err) {
     const message = err instanceof Error ? err.message : "Fetch failed";
     logger.error("Paid request failed", { userId, url, action: "payment_failed", error: message });
-    return { success: false, status: "rejected", signingStrategy: "hot_wallet", error: `Paid request failed: ${message}` };
+    return { success: false, status: "rejected", signingStrategy: "auto_sign", error: `Paid request failed: ${message}` };
   }
 
   // Read response body for storage (without consuming the original response)
@@ -634,12 +660,12 @@ export async function executePayment(
     return {
       success: false,
       status: "rejected",
-      signingStrategy: "hot_wallet",
+      signingStrategy: "auto_sign",
       error: `Payment submitted but server responded with ${paidResponse.status}`,
       response: paidResponse,
     };
   }
 
   logger.info("Payment completed successfully", { userId, url, action: "payment_completed", txHash, amount: amountUsd, chainId: selectedChainId, status: paidResponse.status });
-  return { success: true, status: "completed", signingStrategy: "hot_wallet", response: paidResponse, settlement };
+  return { success: true, status: "completed", signingStrategy: "auto_sign", response: paidResponse, settlement };
 }

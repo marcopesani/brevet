@@ -182,7 +182,7 @@ export async function authorizeSessionKey(
   // 7. Submit UserOp — a no-op call triggers the plugin enable flow
   const userOpHash = await kernelClient.sendUserOperation({
     callData: await kernelAccount.encodeCalls([
-      { to: zeroAddress, value: 0n, data: "0x" },
+      { to: zeroAddress, value: BigInt(0), data: "0x" },
     ]),
   });
 

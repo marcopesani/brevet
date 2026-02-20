@@ -21,6 +21,25 @@ vi.mock("@/lib/hot-wallet", async (importOriginal) => {
   };
 });
 
+// Mock smart-account signer creation to avoid real RPC calls.
+// Returns a simple EOA signer backed by TEST_PRIVATE_KEY so signature verification works.
+vi.mock("@/lib/smart-account", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/smart-account")>();
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const { TEST_PRIVATE_KEY: key } = await import("@/test/helpers/crypto");
+  const account = privateKeyToAccount(key);
+  const mockSigner = {
+    address: account.address,
+    signTypedData: (args: Parameters<typeof account.signTypedData>[0]) =>
+      account.signTypedData(args),
+  };
+  return {
+    ...actual,
+    createSmartAccountSigner: vi.fn().mockResolvedValue(mockSigner),
+    createSmartAccountSignerFromSerialized: vi.fn().mockResolvedValue(mockSigner),
+  };
+});
+
 describe("E2E: Full Payment Flow", () => {
   let userId: string;
 
@@ -35,7 +54,7 @@ describe("E2E: Full Payment Flow", () => {
     payTo: ("0x" + "b".repeat(40)) as Hex,
     maxTimeoutSeconds: 3600,
     asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-    extra: { name: "USD Coin", version: "2" },
+    extra: { name: "USDC", version: "2" },
   };
 
   /**
@@ -93,7 +112,7 @@ describe("E2E: Full Payment Flow", () => {
 
     expect(result.success).toBe(true);
     expect(result.status).toBe("completed");
-    expect(result.signingStrategy).toBe("hot_wallet");
+    expect(result.signingStrategy).toBe("auto_sign");
 
     // Verify that the second fetch call included a payment header
     expect(mockFetch).toHaveBeenCalledTimes(2);
@@ -201,7 +220,7 @@ describe("E2E: Full Payment Flow", () => {
 
     expect(result.success).toBe(false);
     expect(result.status).toBe("pending_approval");
-    expect(result.signingStrategy).toBe("walletconnect");
+    expect(result.signingStrategy).toBe("manual_approval");
     expect(result.amount).toBe(0.05);
     expect(result.paymentRequirements).toBeDefined();
 

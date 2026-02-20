@@ -241,7 +241,7 @@ async function migrateEndpointPolicies(
       await EndpointPolicy.create({
         _id: objectId,
         endpointPattern: row.endpointPattern,
-        payFromHotWallet: row.payFromHotWallet,
+        autoSign: row.payFromHotWallet,
         status: row.status,
         userId,
         archivedAt: row.archivedAt,

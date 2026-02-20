@@ -60,7 +60,7 @@ export function AppSidebar({
       icon: ArrowUpDown,
     },
     {
-      title: "Wallet",
+      title: "Account",
       url: "/dashboard/wallet",
       icon: Wallet,
     },

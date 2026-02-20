@@ -321,7 +321,7 @@ describe("E2E: Smart Account Payment Pipeline", () => {
   // Test 4: x402 SDK integration — signer works with ExactEvmScheme
   // -------------------------------------------------------------------------
   it("should work with x402 SDK ExactEvmScheme for payment payload creation", async () => {
-    const { ExactEvmScheme } = await import("@x402/evm");
+    await import("@x402/evm");
     const { x402Client } = await import("@x402/core/client");
     const { registerExactEvmScheme } = await import("@x402/evm/exact/client");
 

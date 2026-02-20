@@ -2,16 +2,25 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resetTestDb, seedTestUser } from "../../../test/helpers/db";
 import { executePayment, sanitizeHeaders } from "../payment";
 import { Transaction } from "@/lib/models/transaction";
-import { HotWallet } from "../../models/hot-wallet";
+import { SmartAccount } from "../../models/smart-account";
 import { EndpointPolicy } from "../../models/endpoint-policy";
-import { createTestHotWallet, createTestEndpointPolicy } from "../../../test/helpers/fixtures";
+import { createTestSmartAccount, createTestEndpointPolicy } from "../../../test/helpers/fixtures";
 import mongoose from "mongoose";
+
+// Mock @x402/extensions to avoid its siwe→ethers dependency chain
+vi.mock("@x402/extensions", () => ({
+  SIWxExtension: class {},
+}));
+vi.mock("@x402/extensions/sign-in-with-x", () => ({
+  createSIWxPayload: vi.fn(),
+  encodeSIWxHeader: vi.fn(),
+}));
 
 // Mock global fetch to avoid real network calls and bypass URL validation on loopback
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-// Mock getUsdcBalance to avoid real RPC calls during the hot wallet balance check
+// Mock getUsdcBalance to avoid real RPC calls during the smart account balance check
 vi.mock("@/lib/hot-wallet", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/hot-wallet")>();
   return {
@@ -19,6 +28,18 @@ vi.mock("@/lib/hot-wallet", async (importOriginal) => {
     getUsdcBalance: vi.fn().mockResolvedValue("1000.000000"), // Default: plenty of balance
   };
 });
+
+// Mock smart account signer creation to avoid real RPC/ZeroDev calls
+vi.mock("@/lib/smart-account", () => ({
+  createSmartAccountSigner: vi.fn().mockResolvedValue({
+    address: "0x" + "cc".repeat(20),
+    signTypedData: vi.fn().mockResolvedValue("0x" + "ab".repeat(65)),
+  }),
+  createSmartAccountSignerFromSerialized: vi.fn().mockResolvedValue({
+    address: "0x" + "cc".repeat(20),
+    signTypedData: vi.fn().mockResolvedValue("0x" + "ab".repeat(65)),
+  }),
+}));
 
 // Mock registerExactEvmScheme to register a mock V1 handler for eip155:84532.
 // The real SDK registers V1 handlers for plain network names (e.g. "base-sepolia")
@@ -179,7 +200,7 @@ describe("executePayment", () => {
 
     expect(result.success).toBe(true);
     expect(result.status).toBe("completed");
-    expect(result.signingStrategy).toBe("hot_wallet");
+    expect(result.signingStrategy).toBe("auto_sign");
     expect(mockFetch).toHaveBeenCalledTimes(2);
 
     const secondCall = mockFetch.mock.calls[1];
@@ -200,17 +221,33 @@ describe("executePayment", () => {
     expect(tx!.chainId).toBe(84532);
   });
 
-  it("rejects when no hot wallet exists", async () => {
-    await HotWallet.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
+  it("returns pending_approval when no smart account exists", async () => {
+    await SmartAccount.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
 
     mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
 
     const result = await executePayment("https://api.example.com/resource", userId);
 
-    // No hot wallet → returns pending_approval for WalletConnect with chainId
+    // No smart account → returns pending_approval for manual approval with chainId
     expect(result.success).toBe(false);
     expect(result.status).toBe("pending_approval");
-    expect(result.signingStrategy).toBe("walletconnect");
+    expect(result.signingStrategy).toBe("manual_approval");
+    expect(result.chainId).toBe(84532);
+  });
+
+  it("returns pending_approval when session key is not active", async () => {
+    await SmartAccount.findOneAndUpdate(
+      { userId: new mongoose.Types.ObjectId(userId) },
+      { $set: { sessionKeyStatus: "pending_grant" } },
+    );
+
+    mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+
+    const result = await executePayment("https://api.example.com/resource", userId);
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe("pending_approval");
+    expect(result.signingStrategy).toBe("manual_approval");
     expect(result.chainId).toBe(84532);
   });
 
@@ -319,7 +356,7 @@ describe("executePayment", () => {
     expect(init.body).toBeUndefined();
   });
 
-  it("falls back to walletconnect when hot wallet balance is insufficient", async () => {
+  it("falls back to manual approval when smart account balance is insufficient", async () => {
     // Override getUsdcBalance to return a very low balance
     // Called twice: once during selectBestChain, once during balance verification
     const { getUsdcBalance } = await import("@/lib/hot-wallet");
@@ -333,13 +370,13 @@ describe("executePayment", () => {
 
     expect(result.success).toBe(false);
     expect(result.status).toBe("pending_approval");
-    expect(result.signingStrategy).toBe("walletconnect");
+    expect(result.signingStrategy).toBe("manual_approval");
     expect(result.paymentRequirements).toBeDefined();
     expect(result.chainId).toBe(84532);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("returns walletconnect when autoSign is false", async () => {
+  it("returns manual_approval when autoSign is false", async () => {
     await EndpointPolicy.findOneAndUpdate(
       { userId: new mongoose.Types.ObjectId(userId), endpointPattern: "https://api.example.com" },
       { $set: { autoSign: false } },
@@ -351,7 +388,7 @@ describe("executePayment", () => {
 
     expect(result.success).toBe(false);
     expect(result.status).toBe("pending_approval");
-    expect(result.signingStrategy).toBe("walletconnect");
+    expect(result.signingStrategy).toBe("manual_approval");
     expect(result.paymentRequirements).toBeDefined();
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
@@ -360,9 +397,9 @@ describe("executePayment", () => {
     it("selects chain with highest balance when multiple networks offered", async () => {
       const { getUsdcBalance } = await import("@/lib/hot-wallet");
 
-      // Create hot wallet + policy on Arbitrum Sepolia (421614)
-      const arbWalletData = createTestHotWallet(userId, { chainId: 421614 });
-      await HotWallet.create(arbWalletData);
+      // Create smart account + policy on Arbitrum Sepolia (421614)
+      const arbSmartAccountData = createTestSmartAccount(userId, { chainId: 421614 });
+      await SmartAccount.create(arbSmartAccountData);
       await EndpointPolicy.create(
         createTestEndpointPolicy(userId, { chainId: 421614 }),
       );
@@ -400,11 +437,11 @@ describe("executePayment", () => {
       expect(tx!.chainId).toBe(421614);
     });
 
-    it("falls back to WalletConnect when no hot wallet on any accepted chain", async () => {
-      // Delete default hot wallet
-      await HotWallet.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
+    it("falls back to manual approval when no smart account on any accepted chain", async () => {
+      // Delete default smart account
+      await SmartAccount.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
 
-      // Endpoint only accepts Arbitrum Sepolia (421614) — user has no wallet there
+      // Endpoint only accepts Arbitrum Sepolia (421614) — user has no smart account there
       const arbRequirement = {
         ...DEFAULT_REQUIREMENT,
         network: "eip155:421614",
@@ -416,7 +453,7 @@ describe("executePayment", () => {
 
       expect(result.success).toBe(false);
       expect(result.status).toBe("pending_approval");
-      expect(result.signingStrategy).toBe("walletconnect");
+      expect(result.signingStrategy).toBe("manual_approval");
       expect(result.chainId).toBe(421614);
     });
 
@@ -483,6 +520,50 @@ describe("executePayment", () => {
 
       const tx = await Transaction.findOne({
         userId: new mongoose.Types.ObjectId(userId),
+      }).lean();
+      expect(tx).not.toBeNull();
+      expect(tx!.chainId).toBe(84532);
+    });
+
+    it("only considers chains with active session keys for auto-sign selection", async () => {
+      const { getUsdcBalance } = await import("@/lib/hot-wallet");
+
+      // Create smart account on Arbitrum Sepolia with pending_grant (not active)
+      const arbSmartAccountData = createTestSmartAccount(userId, {
+        chainId: 421614,
+        sessionKeyStatus: "pending_grant",
+      });
+      await SmartAccount.create(arbSmartAccountData);
+      await EndpointPolicy.create(
+        createTestEndpointPolicy(userId, { chainId: 421614 }),
+      );
+
+      // Mock balance: Base Sepolia has 10 USDC (active), Arbitrum has 50 USDC (not active)
+      vi.mocked(getUsdcBalance)
+        .mockResolvedValueOnce("10.000000")   // Base Sepolia balance (checked during chain selection)
+        .mockResolvedValueOnce("10.000000");  // Balance re-check in signing flow
+
+      const multiNetworkRequirement421614 = {
+        ...DEFAULT_REQUIREMENT,
+        network: "eip155:421614",
+        asset: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+      };
+
+      mockFetch.mockResolvedValueOnce(
+        make402Response([DEFAULT_REQUIREMENT, multiNetworkRequirement421614]),
+      );
+      mockFetch.mockResolvedValueOnce(
+        make200Response({ success: true }, { "X-PAYMENT-TX-HASH": "0x" + "e".repeat(64) }),
+      );
+
+      const result = await executePayment("https://api.example.com/resource", userId);
+
+      expect(result.success).toBe(true);
+
+      // Should pick Base Sepolia (84532) because Arbitrum's session key is not active
+      const tx = await Transaction.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+        endpoint: "https://api.example.com/resource",
       }).lean();
       expect(tx).not.toBeNull();
       expect(tx!.chainId).toBe(84532);

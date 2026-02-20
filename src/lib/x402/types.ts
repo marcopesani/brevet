@@ -26,7 +26,7 @@ export type {
 } from "@x402/evm";
 
 /** Determines which signing method to use based on amount vs policy limits. */
-export type SigningStrategy = "hot_wallet" | "walletconnect" | "rejected";
+export type SigningStrategy = "auto_sign" | "manual_approval" | "rejected";
 
 /** Result of processing an x402 payment. */
 export interface PaymentResult {

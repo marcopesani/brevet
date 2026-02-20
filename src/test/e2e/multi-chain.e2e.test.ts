@@ -7,10 +7,12 @@ import {
 } from "@/test/helpers/crypto";
 import {
   createTestHotWallet,
+  createTestSmartAccount,
   createTestEndpointPolicy,
   createTestTransaction,
 } from "@/test/helpers/fixtures";
 import { HotWallet } from "@/lib/models/hot-wallet";
+import { SmartAccount } from "@/lib/models/smart-account";
 import { EndpointPolicy } from "@/lib/models/endpoint-policy";
 import { Transaction } from "@/lib/models/transaction";
 import { CHAIN_CONFIGS } from "@/lib/chain-config";
@@ -28,6 +30,24 @@ vi.mock("@/lib/hot-wallet", async (importOriginal) => {
   return {
     ...original,
     getUsdcBalance: vi.fn().mockResolvedValue("0.00"),
+  };
+});
+
+// Mock smart-account signer creation to avoid real RPC calls.
+vi.mock("@/lib/smart-account", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/smart-account")>();
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const { TEST_PRIVATE_KEY: key } = await import("@/test/helpers/crypto");
+  const account = privateKeyToAccount(key);
+  const mockSigner = {
+    address: account.address,
+    signTypedData: (args: Parameters<typeof account.signTypedData>[0]) =>
+      account.signTypedData(args),
+  };
+  return {
+    ...actual,
+    createSmartAccountSigner: vi.fn().mockResolvedValue(mockSigner),
+    createSmartAccountSignerFromSerialized: vi.fn().mockResolvedValue(mockSigner),
   };
 });
 
@@ -374,8 +394,8 @@ describe("E2E: Multi-Chain", () => {
     }
 
     it("should return balances for multiple chains", async () => {
-      // Create a second hot wallet on Arbitrum Sepolia
-      await HotWallet.create(createTestHotWallet(userId, { chainId: 421614 }));
+      // Create a second smart account on Arbitrum Sepolia
+      await SmartAccount.create(createTestSmartAccount(userId, { chainId: 421614 }));
 
       // Mock getUsdcBalance to return different values per chain
       const { getUsdcBalance } = await import("@/lib/hot-wallet");
@@ -428,8 +448,8 @@ describe("E2E: Multi-Chain", () => {
   // ─────────────────────────────────────────────
   describe("Chain auto-selection from 402 payment requirements", () => {
     it("should select the chain with the highest balance", async () => {
-      // Create hot wallet on Arbitrum Sepolia
-      await HotWallet.create(createTestHotWallet(userId, { chainId: 421614 }));
+      // Create smart account on Arbitrum Sepolia (with active session key)
+      await SmartAccount.create(createTestSmartAccount(userId, { chainId: 421614 }));
 
       // Create active policy on Arbitrum Sepolia
       await EndpointPolicy.create(
@@ -498,7 +518,7 @@ describe("E2E: Multi-Chain", () => {
       //    checks all passed for Arbitrum Sepolia before SDK tried to sign
       expect(result.success).toBe(false);
       expect(result.status).toBe("rejected");
-      expect(result.signingStrategy).toBe("hot_wallet");
+      expect(result.signingStrategy).toBe("auto_sign");
       expect((result as { error?: string }).error).toContain("Failed to create payment");
 
       // Verify no draft policy was auto-created — the active policy on chain 421614 was matched
@@ -506,7 +526,9 @@ describe("E2E: Multi-Chain", () => {
       expect(draftPolicies).toHaveLength(0);
 
       // Verify getUsdcBalance was called for chain 421614 (the selected chain's balance check)
-      expect(mockGetUsdcBalance).toHaveBeenCalledWith(TEST_WALLET_ADDRESS, 421614);
+      // Smart account address is used (from createTestSmartAccount fixtures)
+      const TEST_SMART_ACCOUNT_ADDRESS = "0x" + "cc".repeat(20);
+      expect(mockGetUsdcBalance).toHaveBeenCalledWith(TEST_SMART_ACCOUNT_ADDRESS, 421614);
     });
 
     it("should complete payment on base-sepolia when it is the best chain", async () => {

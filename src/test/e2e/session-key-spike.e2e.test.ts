@@ -31,7 +31,6 @@ import {
   formatEther,
   type Hex,
   type Address,
-  encodeFunctionData,
 } from "viem";
 import { baseSepolia } from "viem/chains";
 import {
@@ -81,11 +80,6 @@ const USDC_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
   "function transferWithAuthorization(address from, address to, uint256 value, uint256 validAfter, uint256 validBefore, bytes32 nonce, bytes signature) external",
   "function transfer(address to, uint256 amount) returns (bool)",
-]);
-
-// Kernel v3 ABI for checking module installation
-const KERNEL_ABI = parseAbi([
-  "function currentNonce() view returns (uint32)",
 ]);
 
 // EIP-3009 TransferWithAuthorization typed data

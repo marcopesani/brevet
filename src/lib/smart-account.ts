@@ -1,0 +1,174 @@
+import { createPublicClient, http, type Hex, type Address } from "viem";
+import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
+import { toKernelSmartAccount } from "permissionless/accounts";
+import { entryPoint07Address } from "viem/account-abstraction";
+import {
+  createKernelAccount,
+  addressToEmptyAccount,
+} from "@zerodev/sdk";
+import { toPermissionValidator } from "@zerodev/permissions";
+import { toECDSASigner } from "@zerodev/permissions/signers";
+import { toSudoPolicy } from "@zerodev/permissions/policies";
+import { deserializePermissionAccount } from "@zerodev/permissions";
+import { encryptPrivateKey } from "@/lib/hot-wallet";
+import { getChainConfig } from "@/lib/chain-config";
+import type { ClientEvmSigner } from "@/lib/x402/types";
+
+const ENTRY_POINT = {
+  address: entryPoint07Address,
+  version: "0.7" as const,
+};
+
+const KERNEL_VERSION = "0.3.3" as const;
+
+/**
+ * Compute the deterministic CREATE2 address for a Kernel v3.3 smart account
+ * owned by the given address. No on-chain transaction is needed — uses the
+ * entry point's getSenderAddress to derive the counterfactual address.
+ */
+export async function computeSmartAccountAddress(
+  ownerAddress: Address,
+  chainId: number,
+): Promise<Address> {
+  const config = getChainConfig(chainId);
+  if (!config) {
+    throw new Error(`Unsupported chain: ${chainId}`);
+  }
+
+  const publicClient = createPublicClient({
+    chain: config.chain,
+    transport: http(),
+  });
+
+  // addressToEmptyAccount creates a stub LocalAccount with the given address.
+  // toKernelSmartAccount only uses owner.address (not the private key) for
+  // counterfactual address computation via the entry point factory.
+  const emptyOwner = addressToEmptyAccount(ownerAddress);
+
+  const kernelAccount = await toKernelSmartAccount({
+    client: publicClient,
+    owners: [emptyOwner],
+    version: KERNEL_VERSION,
+    entryPoint: ENTRY_POINT,
+    index: BigInt(0),
+  });
+
+  return kernelAccount.address;
+}
+
+/**
+ * Generate a fresh session key and encrypt it using the same AES-256-GCM
+ * scheme as hot-wallet.ts.
+ */
+export function createSessionKey(): {
+  address: Address;
+  encryptedPrivateKey: string;
+} {
+  const privateKey = generatePrivateKey();
+  const account = privateKeyToAccount(privateKey);
+  const encryptedPrivateKey = encryptPrivateKey(privateKey);
+  return {
+    address: account.address,
+    encryptedPrivateKey,
+  };
+}
+
+/**
+ * Create a ClientEvmSigner backed by a Kernel v3.3 smart account with
+ * a session key permission validator. This is the "full path" that
+ * reconstructs the account from scratch using the session key.
+ */
+export async function createSmartAccountSigner(
+  sessionKeyHex: Hex,
+  smartAccountAddress: Address,
+  chainId: number,
+): Promise<ClientEvmSigner> {
+  const config = getChainConfig(chainId);
+  if (!config) {
+    throw new Error(`Unsupported chain: ${chainId}`);
+  }
+
+  const publicClient = createPublicClient({
+    chain: config.chain,
+    transport: http(),
+  });
+
+  const sessionKeyAccount = privateKeyToAccount(sessionKeyHex);
+
+  const ecdsaSigner = await toECDSASigner({
+    signer: sessionKeyAccount,
+  });
+
+  const permissionValidator = await toPermissionValidator(publicClient, {
+    signer: ecdsaSigner,
+    policies: [toSudoPolicy({})],
+    entryPoint: ENTRY_POINT,
+    kernelVersion: KERNEL_VERSION,
+  });
+
+  const kernelAccount = await createKernelAccount(publicClient, {
+    entryPoint: ENTRY_POINT,
+    kernelVersion: KERNEL_VERSION,
+    plugins: {
+      regular: permissionValidator,
+    },
+    address: smartAccountAddress,
+  });
+
+  return {
+    address: kernelAccount.address,
+    signTypedData: (message) =>
+      kernelAccount.signTypedData({
+        domain: message.domain as Record<string, unknown>,
+        types: message.types as Record<string, Array<{ name: string; type: string }>>,
+        primaryType: message.primaryType,
+        message: message.message,
+      }),
+  };
+}
+
+/**
+ * Create a ClientEvmSigner from a serialized permission account.
+ * This is the "fast path" — it deserializes a previously-serialized
+ * Kernel account without needing to reconstruct validators from scratch.
+ */
+export async function createSmartAccountSignerFromSerialized(
+  serializedAccount: string,
+  sessionKeyHex: Hex,
+  chainId: number,
+): Promise<ClientEvmSigner> {
+  const config = getChainConfig(chainId);
+  if (!config) {
+    throw new Error(`Unsupported chain: ${chainId}`);
+  }
+
+  const publicClient = createPublicClient({
+    chain: config.chain,
+    transport: http(),
+  });
+
+  const sessionKeyAccount = privateKeyToAccount(sessionKeyHex);
+
+  const ecdsaSigner = await toECDSASigner({
+    signer: sessionKeyAccount,
+  });
+
+  const kernelAccount = await deserializePermissionAccount(
+    publicClient,
+    ENTRY_POINT,
+    KERNEL_VERSION,
+    serializedAccount,
+    ecdsaSigner,
+  );
+
+  return {
+    address: kernelAccount.address,
+    signTypedData: (message) =>
+      kernelAccount.signTypedData({
+        domain: message.domain as Record<string, unknown>,
+        types: message.types as Record<string, Array<{ name: string; type: string }>>,
+        primaryType: message.primaryType,
+        message: message.message,
+      }),
+  };
+}
