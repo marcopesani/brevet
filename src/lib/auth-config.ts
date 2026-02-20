@@ -29,7 +29,13 @@ declare module "next-auth/jwt" {
   }
 }
 
-const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!;
+const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+if (!projectId || projectId.trim() === "")
+  throw new Error("Missing required env var: NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID");
+
+const authSecret = process.env.NEXTAUTH_SECRET;
+if (!authSecret || authSecret.trim() === "")
+  throw new Error("Missing required env var: NEXTAUTH_SECRET");
 
 /** Validate and extract message + signature from credentials. */
 export function extractCredentials(credentials: Record<string, string> | undefined): {
@@ -78,7 +84,7 @@ export async function upsertUser(walletAddress: string) {
 }
 
 export const authOptions: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: authSecret,
   pages: {
     signIn: "/login",
   },
