@@ -56,7 +56,7 @@ export default function WalletContent({
     },
   });
 
-  const smartAccountAddress = smartAccount?.smartAccountAddress ?? null;
+  const smartAccountAddress = smartAccount?.smartAccountAddress;
 
   const {
     balance: liveBalance,
@@ -68,7 +68,7 @@ export default function WalletContent({
     chainId,
   );
 
-  const sessionKeyStatus = smartAccount?.sessionKeyStatus ?? null;
+  const sessionKeyStatus = smartAccount?.sessionKeyStatus;
 
   if (!accountLoading && !smartAccount) {
     return (
