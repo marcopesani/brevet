@@ -12,7 +12,7 @@ import { signerToEcdsaValidator } from "@zerodev/ecdsa-validator";
 import { toPermissionValidator, serializePermissionAccount } from "@zerodev/permissions";
 import { toECDSASigner } from "@zerodev/permissions/signers";
 import { createPimlicoClient } from "permissionless/clients/pimlico";
-import { ENTRY_POINT, KERNEL_VERSION, buildSessionKeyPolicies } from "@/lib/smart-account-constants";
+import { ENTRY_POINT, KERNEL_VERSION, buildSessionKeyPolicies } from "@/lib/smart-account-policies";
 import {
   Card,
   CardHeader,
