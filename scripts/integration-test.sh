@@ -58,9 +58,11 @@ if echo "$RESPONSE" | node -e "const d=require('fs').readFileSync('/dev/stdin','
   USER_ID=$(echo "$RESPONSE" | node -e "process.stdin.on('data',d=>console.log(JSON.parse(d).userId))")
   WALLET=$(echo "$RESPONSE" | node -e "process.stdin.on('data',d=>console.log(JSON.parse(d).walletAddress))")
   HOT_WALLET=$(echo "$RESPONSE" | node -e "process.stdin.on('data',d=>console.log(JSON.parse(d).hotWalletAddress))")
+  API_KEY=$(echo "$RESPONSE" | node -e "process.stdin.on('data',d=>console.log(JSON.parse(d).apiKey))")
   pass "Test user created: $USER_ID"
   info "Wallet: $WALLET"
   info "Hot wallet: $HOT_WALLET"
+  info "API key: ${API_KEY:0:8}..."
 else
   fail "Dev login returned error: $RESPONSE"
   exit 1
@@ -104,6 +106,7 @@ echo "Step 6: Testing MCP endpoint..."
 MCP_RESPONSE=$(curl -sf -X POST "$BASE_URL/api/mcp/$USER_ID" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $API_KEY" \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"integration-test","version":"1.0.0"}}}' \
   2>&1) || true
 
