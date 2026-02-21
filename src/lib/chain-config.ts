@@ -21,7 +21,10 @@ export interface ChainConfig {
   explorerUrl: string;
 }
 
-export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
+const TESTNET_ONLY =
+  process.env.NEXT_PUBLIC_TESTNET_ONLY === "true";
+
+const ALL_CHAIN_CONFIGS: Record<number, ChainConfig> = {
   // Ethereum Mainnet
   1: {
     chain: mainnet,
@@ -154,6 +157,14 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
   },
 };
 
+export const CHAIN_CONFIGS: Record<number, ChainConfig> = TESTNET_ONLY
+  ? Object.fromEntries(
+      Object.entries(ALL_CHAIN_CONFIGS).filter(
+        ([, cfg]) => cfg.chain.testnet === true
+      )
+    )
+  : ALL_CHAIN_CONFIGS;
+
 export const SUPPORTED_CHAINS: ChainConfig[] = Object.values(CHAIN_CONFIGS);
 
 export function getChainConfig(chainId: number): ChainConfig | undefined {
@@ -174,13 +185,19 @@ export function isChainSupported(chainId: number): boolean {
   return chainId in CHAIN_CONFIGS;
 }
 
+const DEFAULT_MAINNET_CHAIN_ID = 8453;
+const DEFAULT_TESTNET_CHAIN_ID = 84532;
+
 const defaultChainId = parseInt(
-  process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
+  process.env.NEXT_PUBLIC_CHAIN_ID || String(DEFAULT_MAINNET_CHAIN_ID),
   10
 );
 
 export function getDefaultChainConfig(): ChainConfig {
-  return CHAIN_CONFIGS[defaultChainId] ?? CHAIN_CONFIGS[8453];
+  const fallbackId = TESTNET_ONLY
+    ? DEFAULT_TESTNET_CHAIN_ID
+    : DEFAULT_MAINNET_CHAIN_ID;
+  return CHAIN_CONFIGS[defaultChainId] ?? CHAIN_CONFIGS[fallbackId];
 }
 
 /**

@@ -13,12 +13,12 @@ import {
   polygon,
   polygonAmoy,
 } from "@reown/appkit/networks";
-import { getDefaultChainConfig } from "@/lib/chain-config";
+import { getDefaultChainConfig, CHAIN_CONFIGS } from "@/lib/chain-config";
 
 export const projectId =
   process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
 
-const APPKIT_NETWORKS = {
+const ALL_APPKIT_NETWORKS: Record<number, AppKitNetwork> = {
   [mainnet.id]: mainnet,
   [sepolia.id]: sepolia,
   [base.id]: base,
@@ -29,15 +29,21 @@ const APPKIT_NETWORKS = {
   [optimismSepolia.id]: optimismSepolia,
   [polygon.id]: polygon,
   [polygonAmoy.id]: polygonAmoy,
-} as const;
+};
+
+// Filter to only include networks that exist in CHAIN_CONFIGS (respects NEXT_PUBLIC_TESTNET_ONLY)
+const APPKIT_NETWORKS: Record<number, AppKitNetwork> = Object.fromEntries(
+  Object.entries(ALL_APPKIT_NETWORKS).filter(([id]) => Number(id) in CHAIN_CONFIGS)
+);
 
 const defaultChainId = getDefaultChainConfig().chain.id;
-const defaultNetwork = APPKIT_NETWORKS[defaultChainId as keyof typeof APPKIT_NETWORKS] ?? base;
+const appkitNetworkList = Object.values(APPKIT_NETWORKS);
+const defaultNetwork = APPKIT_NETWORKS[defaultChainId] ?? appkitNetworkList[0];
 
 // Put the default network first so AppKit uses it as the initial selection
 export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [
   defaultNetwork,
-  ...Object.values(APPKIT_NETWORKS).filter((n) => n.id !== defaultNetwork.id),
+  ...appkitNetworkList.filter((n) => n.id !== defaultNetwork.id),
 ];
 
 /**
