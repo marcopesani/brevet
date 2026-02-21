@@ -15,17 +15,17 @@ import { Separator } from "@/components/ui/separator";
 import type { McpToolDescriptor } from "@/lib/mcp/tool-registry";
 
 interface McpServerUrlProps {
-  userId: string;
+  humanHash: string;
   tools: McpToolDescriptor[];
 }
 
-export function McpServerUrl({ userId, tools }: McpServerUrlProps) {
+export function McpServerUrl({ humanHash, tools }: McpServerUrlProps) {
   const [copied, setCopied] = useState(false);
 
   const mcpUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}/api/mcp/${userId}`
-      : `/api/mcp/${userId}`;
+      ? `${window.location.origin}/api/mcp/${humanHash}`
+      : `/api/mcp/${humanHash}`;
 
   const handleCopy = async () => {
     try {

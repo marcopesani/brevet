@@ -3,9 +3,13 @@ import {
   TEST_WALLET_ADDRESS,
   TEST_ENCRYPTED_PRIVATE_KEY,
 } from "./crypto";
+import { humanHash } from "@/lib/human-hash";
 
 /** Deterministic ObjectId for the default test user. */
 export const TEST_USER_ID = new mongoose.Types.ObjectId().toString();
+
+/** Deterministic human hash for the default test user. */
+export const TEST_USER_HUMAN_HASH = humanHash(TEST_USER_ID);
 
 /**
  * Create test user data with sensible defaults.
@@ -16,12 +20,14 @@ export function createTestUser(overrides?: {
   email?: string;
   walletAddress?: string;
 }) {
+  const id = overrides?.id
+    ? new mongoose.Types.ObjectId(overrides.id)
+    : new mongoose.Types.ObjectId(TEST_USER_ID);
   return {
-    _id: overrides?.id
-      ? new mongoose.Types.ObjectId(overrides.id)
-      : new mongoose.Types.ObjectId(TEST_USER_ID),
+    _id: id,
     email: overrides?.email ?? "test@example.com",
     walletAddress: overrides?.walletAddress ?? TEST_WALLET_ADDRESS,
+    humanHash: humanHash(id.toHexString()),
   };
 }
 
