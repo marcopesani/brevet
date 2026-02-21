@@ -24,6 +24,11 @@ vi.mock("@/lib/hot-wallet", () => ({
   })),
 }));
 
+const mockEnsureApiKey = vi.fn().mockResolvedValue({ created: true, rawKey: "brv_testkey1234567890abcdef12345678" });
+vi.mock("@/lib/data/users", () => ({
+  ensureApiKey: (...args: unknown[]) => mockEnsureApiKey(...args),
+}));
+
 import { createPublicClient, http } from "viem";
 import { User } from "@/lib/models/user";
 import { HotWallet } from "@/lib/models/hot-wallet";
@@ -138,6 +143,18 @@ describe("verifySignature", () => {
 describe("upsertUser", () => {
   beforeEach(async () => {
     await resetTestDb();
+    mockEnsureApiKey.mockClear();
+  });
+
+  it("calls ensureApiKey for new user", async () => {
+    const user = await upsertUser("0xapikey");
+    expect(mockEnsureApiKey).toHaveBeenCalledWith(user.id);
+  });
+
+  it("calls ensureApiKey for existing user", async () => {
+    await User.create({ walletAddress: "0xexistingkey" });
+    const user = await upsertUser("0xexistingkey");
+    expect(mockEnsureApiKey).toHaveBeenCalledWith(user.id);
   });
 
   it("returns existing user without creating any wallets", async () => {

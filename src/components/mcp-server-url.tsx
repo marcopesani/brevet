@@ -86,6 +86,21 @@ export function McpServerUrl({ humanHash, tools }: McpServerUrlProps) {
             ))}
           </div>
         </div>
+        <Separator />
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium">Authentication</h4>
+          <p className="text-muted-foreground text-sm">
+            Include your API key in requests using the Authorization header:
+          </p>
+          <div className="bg-muted rounded-md border px-3 py-2">
+            <p className="font-mono text-sm">
+              Authorization: Bearer {"<your-api-key>"}
+            </p>
+          </div>
+          <p className="text-muted-foreground text-sm">
+            Or pass it as a query parameter: <code className="text-xs">?api_key=brv_...</code>
+          </p>
+        </div>
       </CardContent>
     </Card>
   );
