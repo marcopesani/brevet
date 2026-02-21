@@ -4,7 +4,7 @@ import { User } from "@/lib/models/user";
 import { HotWallet } from "@/lib/models/hot-wallet";
 import { EndpointPolicy } from "@/lib/models/endpoint-policy";
 import { getEnvironmentChains } from "@/lib/chain-config";
-import { getWalletBalance, ensureHotWallet, ensureAllHotWallets, getHotWallet, getHotWalletWithKey, getAllHotWallets, getUserWithWalletAndPolicies } from "../wallet";
+import { getWalletBalance, ensureHotWallet, ensureAllHotWallets, getHotWallet, getHotWalletWithKey, getAllHotWallets, getUserWithWalletAndPolicies, withdrawFromWallet } from "../wallet";
 
 vi.mock("@/lib/hot-wallet", () => ({
   getUsdcBalance: vi.fn().mockResolvedValue("100.000000"),
@@ -12,7 +12,11 @@ vi.mock("@/lib/hot-wallet", () => ({
     address: "0xNewWallet",
     encryptedPrivateKey: "encrypted-key",
   }),
-  withdrawFromHotWallet: vi.fn().mockResolvedValue({ txHash: "0xtx" }),
+}));
+
+const mockWithdrawFromSmartAccount = vi.fn().mockResolvedValue({ txHash: "0xtx", userOpHash: "0xop" });
+vi.mock("@/lib/data/smart-account", () => ({
+  withdrawFromSmartAccount: (...args: unknown[]) => mockWithdrawFromSmartAccount(...args),
 }));
 
 const DEFAULT_CHAIN_ID = parseInt(
@@ -344,5 +348,44 @@ describe("getUserWithWalletAndPolicies", () => {
     const arbResult = await getUserWithWalletAndPolicies(user._id.toString(), 42161);
     expect(arbResult).not.toBeNull();
     expect(arbResult!.hotWallet!.address).toBe("0xArbHW");
+  });
+});
+
+describe("withdrawFromWallet", () => {
+  it("delegates to withdrawFromSmartAccount", async () => {
+    const userId = new mongoose.Types.ObjectId().toString();
+    const toAddress = "0x" + "1".repeat(40);
+
+    await withdrawFromWallet(userId, 5.0, toAddress);
+
+    expect(mockWithdrawFromSmartAccount).toHaveBeenCalledWith(
+      userId,
+      5.0,
+      toAddress,
+      undefined,
+    );
+  });
+
+  it("passes chainId through to withdrawFromSmartAccount", async () => {
+    const userId = new mongoose.Types.ObjectId().toString();
+    const toAddress = "0x" + "2".repeat(40);
+
+    await withdrawFromWallet(userId, 2.0, toAddress, 42161);
+
+    expect(mockWithdrawFromSmartAccount).toHaveBeenCalledWith(
+      userId,
+      2.0,
+      toAddress,
+      42161,
+    );
+  });
+
+  it("returns the result from withdrawFromSmartAccount", async () => {
+    const userId = new mongoose.Types.ObjectId().toString();
+    const toAddress = "0x" + "1".repeat(40);
+
+    const result = await withdrawFromWallet(userId, 1.0, toAddress);
+
+    expect(result).toEqual({ txHash: "0xtx", userOpHash: "0xop" });
   });
 });

@@ -1,8 +1,17 @@
 import { Types } from "mongoose";
+import { createPublicClient, http, isAddress, parseUnits, parseAbi, encodeFunctionData, type Hex, type Address } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { createKernelAccountClient } from "@zerodev/sdk";
+import { toECDSASigner } from "@zerodev/permissions/signers";
+import { deserializePermissionAccount } from "@zerodev/permissions";
+import { createPimlicoClient } from "permissionless/clients/pimlico";
 import { SmartAccount } from "@/lib/models/smart-account";
 import { connectDB } from "@/lib/db";
-import { getUsdcBalance } from "@/lib/hot-wallet";
+import { getUsdcBalance, decryptPrivateKey } from "@/lib/hot-wallet";
 import { computeSmartAccountAddress, createSessionKey } from "@/lib/smart-account";
+import { ENTRY_POINT, KERNEL_VERSION } from "@/lib/smart-account-constants";
+import { getChainConfig } from "@/lib/chain-config";
+import { createTransaction } from "@/lib/data/transactions";
 
 const DEFAULT_CHAIN_ID = parseInt(
   process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
@@ -241,4 +250,158 @@ export async function updateSessionKeyStatus(
   ).lean();
   if (!doc) return null;
   return serialize(doc);
+}
+
+const USDC_TRANSFER_ABI = parseAbi([
+  "function transfer(address to, uint256 amount) external returns (bool)",
+]);
+const USDC_DECIMALS = 6;
+
+/**
+ * Withdraw USDC from the user's smart account to a destination address.
+ * Uses the session key to sign and submit a UserOp via Pimlico bundler.
+ */
+export async function withdrawFromSmartAccount(
+  userId: string,
+  amount: number,
+  toAddress: string,
+  chainId?: number,
+): Promise<{ txHash: string; userOpHash: string }> {
+  if (!isAddress(toAddress)) {
+    throw new Error("Invalid destination address");
+  }
+  if (amount <= 0) {
+    throw new Error("Amount must be greater than 0");
+  }
+
+  const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
+  const config = getChainConfig(resolvedChainId);
+  if (!config) {
+    throw new Error(`Unsupported chain: ${resolvedChainId}`);
+  }
+
+  await connectDB();
+
+  // Look up smart account with session key and serialized account
+  const account = await SmartAccount.findOne({
+    userId: new Types.ObjectId(userId),
+    chainId: resolvedChainId,
+  }).lean();
+  if (!account) {
+    throw new Error("No smart account found for this user");
+  }
+
+  // Validate session key is active and not expired
+  if (account.sessionKeyStatus !== "active") {
+    throw new Error(
+      `Session key is not active — current status: ${account.sessionKeyStatus}`,
+    );
+  }
+  if (!account.sessionKeyExpiry || account.sessionKeyExpiry < new Date()) {
+    throw new Error("Session key has expired");
+  }
+  if (!account.serializedAccount) {
+    throw new Error("No serialized account found — session key may not have been fully authorized");
+  }
+
+  // Check USDC balance
+  const balance = await getUsdcBalance(account.smartAccountAddress, resolvedChainId);
+  if (parseFloat(balance) < amount) {
+    throw new Error(
+      `Insufficient balance: ${balance} USDC available, ${amount} requested`,
+    );
+  }
+
+  // Decrypt session key and serialized account
+  const sessionKeyHex = decryptPrivateKey(account.sessionKeyEncrypted) as Hex;
+  const serializedAccount = decryptPrivateKey(account.serializedAccount);
+
+  // Build kernel account from serialized permission account
+  const publicClient = createPublicClient({
+    chain: config.chain,
+    transport: http(),
+  });
+
+  const sessionKeyAccount = privateKeyToAccount(sessionKeyHex);
+  const ecdsaSigner = await toECDSASigner({
+    signer: sessionKeyAccount,
+  });
+
+  const kernelAccount = await deserializePermissionAccount(
+    publicClient,
+    ENTRY_POINT,
+    KERNEL_VERSION,
+    serializedAccount,
+    ecdsaSigner,
+  );
+
+  // Build Pimlico bundler transport (server-side direct fetch)
+  const apiKey = process.env.PIMLICO_API_KEY;
+  if (!apiKey) throw new Error("PIMLICO_API_KEY is not set");
+  const bundlerUrl = `https://api.pimlico.io/v2/${resolvedChainId}/rpc?apikey=${apiKey}`;
+
+  const bundlerTransport = http(bundlerUrl);
+
+  const pimlicoClient = createPimlicoClient({
+    chain: config.chain,
+    transport: bundlerTransport,
+    entryPoint: ENTRY_POINT,
+  });
+
+  const kernelClient = createKernelAccountClient({
+    account: kernelAccount,
+    chain: config.chain,
+    bundlerTransport,
+    client: publicClient,
+    paymaster: {
+      getPaymasterData: pimlicoClient.getPaymasterData,
+      getPaymasterStubData: pimlicoClient.getPaymasterStubData,
+    },
+    userOperation: {
+      estimateFeesPerGas: async () => {
+        const gasPrice = await pimlicoClient.getUserOperationGasPrice();
+        return gasPrice.fast;
+      },
+    },
+  });
+
+  // Encode USDC transfer calldata
+  const calldata = encodeFunctionData({
+    abi: USDC_TRANSFER_ABI,
+    functionName: "transfer",
+    args: [toAddress as Address, parseUnits(String(amount), USDC_DECIMALS)],
+  });
+
+  // Submit UserOp
+  const userOpHash = await kernelClient.sendUserOperation({
+    callData: await kernelAccount.encodeCalls([
+      { to: config.usdcAddress, value: BigInt(0), data: calldata },
+    ]),
+  });
+
+  // Wait for receipt
+  const receipt = await pimlicoClient.waitForUserOperationReceipt({
+    hash: userOpHash,
+    timeout: 120_000,
+  });
+
+  if (!receipt.success) {
+    throw new Error("UserOperation failed on-chain");
+  }
+
+  const txHash = receipt.receipt.transactionHash;
+
+  // Log withdrawal transaction
+  await createTransaction({
+    amount,
+    endpoint: `withdrawal:${toAddress}`,
+    txHash,
+    network: config.networkString,
+    chainId: resolvedChainId,
+    status: "completed",
+    type: "withdrawal",
+    userId,
+  });
+
+  return { txHash, userOpHash };
 }
