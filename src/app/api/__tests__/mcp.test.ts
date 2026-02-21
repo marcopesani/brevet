@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
-import { TEST_USER_HUMAN_HASH } from "@/test/helpers/fixtures";
+import { TEST_USER_HUMAN_HASH, TEST_USER_ID } from "@/test/helpers/fixtures";
 
 // Mock rate-limit to avoid interference
 vi.mock("@/lib/rate-limit", () => ({
   rateLimit: vi.fn().mockReturnValue(null),
   getClientIp: vi.fn().mockReturnValue("127.0.0.1"),
+}));
+
+// Mock getUserByApiKey to authenticate test requests
+vi.mock("@/lib/data/users", () => ({
+  getUserByApiKey: vi.fn().mockResolvedValue({ userId: TEST_USER_ID }),
 }));
 
 // Mock hot-wallet to avoid real RPC calls
@@ -25,9 +30,12 @@ vi.mock("@/lib/x402/payment", () => ({
   }),
 }));
 
+const TEST_API_KEY = "brv_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6";
+
 const MCP_HEADERS = {
   "Content-Type": "application/json",
   Accept: "application/json, text/event-stream",
+  Authorization: `Bearer ${TEST_API_KEY}`,
 };
 
 /**
@@ -142,14 +150,22 @@ describe("MCP API route", () => {
       expect(data.error).toBeDefined();
     });
 
-    it("should return 404 for unknown human hash", async () => {
+    it("should return 401 for invalid API key", async () => {
+      const { getUserByApiKey } = await import("@/lib/data/users");
+      const mockGetUserByApiKey = vi.mocked(getUserByApiKey);
+      mockGetUserByApiKey.mockResolvedValueOnce(null);
+
       const { POST } = await import("@/app/api/mcp/[humanHash]/route");
 
       const request = new Request(
-        `http://localhost/api/mcp/unknown_hash_does_not_exist`,
+        `http://localhost/api/mcp/${TEST_USER_HUMAN_HASH}`,
         {
           method: "POST",
-          headers: MCP_HEADERS,
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json, text/event-stream",
+            Authorization: "Bearer brv_invalid_key_000000000000000000",
+          },
           body: JSON.stringify({
             jsonrpc: "2.0",
             id: 1,
@@ -164,10 +180,10 @@ describe("MCP API route", () => {
       );
 
       const response = await POST(request);
-      expect(response.status).toBe(404);
+      expect(response.status).toBe(401);
 
       const data = await response.json();
-      expect(data.error).toBe("User not found");
+      expect(data.error).toBe("Invalid API key");
     });
   });
 });

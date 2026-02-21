@@ -18,6 +18,7 @@ npm test                 # Unit + integration tests (watch mode)
 npm run test:run         # All tests once (CI mode)
 npm run test:e2e         # E2E tests only (requires Base Sepolia RPC)
 docker compose up -d     # Start MongoDB + app server
+./scripts/test-mcp-auth.sh  # MCP auth integration tests (requires Docker)
 ```
 
 Run a single test file: `npx vitest run src/lib/__tests__/policy.test.ts`
@@ -53,9 +54,49 @@ When supporting multiple protocol versions, enforce these rules:
 
 ### MCP Server
 
-Endpoint: `POST /api/mcp/[userId]` using Streamable HTTP transport. Stateless — fresh server instance per request.
+Endpoint: `POST /api/mcp/[userId]` using Streamable HTTP transport. Stateless — fresh server instance per request. Requires API key authentication via `Authorization: Bearer brv_...` header or `?api_key=brv_...` query parameter.
 
 Six tools defined in `src/lib/mcp/tools/` (one file per tool): `x402_pay`, `x402_check_balance`, `x402_spending_history`, `x402_check_pending`, `x402_get_result`, `x402_discover`. MCP tools import from `src/lib/data/` (shared data layer) — they do not use API routes or inline database queries.
+
+### Testing MCP Endpoints
+
+Use the MCP Inspector CLI (`@modelcontextprotocol/inspector`) to test the MCP endpoint in headless mode without a chat client:
+
+```bash
+# List all tools
+npx @modelcontextprotocol/inspector --cli \
+  http://localhost:3000/api/mcp/{userId} \
+  --transport http \
+  --header "Authorization: Bearer brv_..." \
+  --method tools/list
+
+# Call a specific tool
+npx @modelcontextprotocol/inspector --cli \
+  http://localhost:3000/api/mcp/{userId} \
+  --transport http \
+  --header "Authorization: Bearer brv_..." \
+  --method tools/call \
+  --tool-name x402_check_balance
+
+# Call a tool with arguments
+npx @modelcontextprotocol/inspector --cli \
+  http://localhost:3000/api/mcp/{userId} \
+  --transport http \
+  --header "Authorization: Bearer brv_..." \
+  --method tools/call \
+  --tool-name x402_discover \
+  --tool-arg query=weather
+
+# Alternative: pass API key as query parameter
+npx @modelcontextprotocol/inspector --cli \
+  "http://localhost:3000/api/mcp/{userId}?api_key=brv_..." \
+  --transport http \
+  --method tools/list
+```
+
+Key flags: `--cli` enables headless mode (no web UI), `--transport http` is required because our URL path doesn't end in `/mcp` (the Inspector defaults to SSE otherwise). Output is JSON to stdout; pipe to `jq` for parsing (e.g., `2>/dev/null | jq '.tools[].name'`). Exit code 0 on success, 1 on failure.
+
+The automated test suite in `scripts/test-mcp-auth.sh` exercises all auth scenarios and tool calls against a running Docker Compose environment.
 
 ### Endpoint Policy System
 
@@ -80,7 +121,7 @@ Auto-created on first login. Private key encrypted with AES-256-GCM, stored in `
 
 ### Data Architecture
 
-**Shared Data Layer** (`src/lib/data/`): Five modules — `payments.ts`, `policies.ts`, `transactions.ts`, `analytics.ts`, `wallet.ts`. Pure async functions that take `userId` as first parameter. No `"use server"` directive, no HTTP concerns, no auth checks. This is the single source of truth for all database queries (via Mongoose models) — both MCP tools and the dashboard use these.
+**Shared Data Layer** (`src/lib/data/`): Six modules — `payments.ts`, `policies.ts`, `transactions.ts`, `analytics.ts`, `wallet.ts`, `users.ts`. Pure async functions that take `userId` as first parameter. No `"use server"` directive, no HTTP concerns, no auth checks. This is the single source of truth for all database queries (via Mongoose models) — both MCP tools and the dashboard use these.
 
 **Server Actions** (`src/app/actions/`): Thin wrappers with `"use server"` directive. Each action authenticates via `getAuthenticatedUser()`, calls the data layer, and calls `revalidatePath()` for mutations. Used by dashboard components for mutations (approve, reject, activate, create, etc.).
 
@@ -103,7 +144,7 @@ These rules prevent regression to the old polling-heavy architecture:
 
 ### Database
 
-MongoDB with Mongoose. Five collections: `users`, `hotwallets`, `endpointpolicies`, `transactions`, `pendingpayments`. Models defined in `src/lib/models/`.
+MongoDB with Mongoose. Six collections: `users`, `hotwallets`, `endpointpolicies`, `transactions`, `pendingpayments`, `smartaccounts`. Models defined in `src/lib/models/`.
 
 **Monetary values (MongoDB):**
 - Store amounts in **smallest unit as integer** (e.g. USDC 6 decimals); never float.

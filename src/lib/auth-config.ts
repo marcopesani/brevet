@@ -7,6 +7,7 @@ import {
 import { createPublicClient, http } from "viem";
 import { connectDB } from "@/lib/db";
 import { User } from "@/lib/models/user";
+import { ensureApiKey } from "@/lib/data/users";
 
 declare module "next-auth" {
   interface User {
@@ -79,6 +80,8 @@ export async function upsertUser(walletAddress: string) {
   if (!user) {
     user = await User.create({ walletAddress });
   }
+
+  await ensureApiKey(user.id);
 
   return user;
 }
