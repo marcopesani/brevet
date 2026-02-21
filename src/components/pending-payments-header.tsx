@@ -8,7 +8,7 @@ export function PendingPaymentsHeader() {
   return (
     <div>
       <h2 className="text-xl font-semibold">
-        Pending Payments — {activeChain.chain.name}
+        Pending Payments — {activeChain.displayName}
       </h2>
       <p className="text-sm text-muted-foreground">
         Review and approve payments requested by your MCP agent.

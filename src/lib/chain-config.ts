@@ -10,6 +10,7 @@ import {
   polygon,
   polygonAmoy,
 } from "viem/chains";
+import { formatUnits, parseUnits } from "viem";
 import type { Chain } from "viem";
 import type { TypedDataDomain } from "viem";
 
@@ -19,6 +20,33 @@ export interface ChainConfig {
   usdcDomain: TypedDataDomain;
   networkString: string;
   explorerUrl: string;
+  slug: string;
+  displayName: string;
+  isTestnet: boolean;
+  color: string;
+  aliases: string[];
+}
+
+export interface TokenConfig {
+  symbol: string;
+  decimals: number;
+  displayDecimals: number;
+  formatAmount: (amountSmallestUnit: bigint) => string;
+  parseAmount: (humanReadable: string) => bigint;
+}
+
+function makeTokenConfig(symbol: string, decimals: number, displayDecimals: number): TokenConfig {
+  return {
+    symbol,
+    decimals,
+    displayDecimals,
+    formatAmount(amountSmallestUnit: bigint): string {
+      return formatUnits(amountSmallestUnit, decimals);
+    },
+    parseAmount(humanReadable: string): bigint {
+      return parseUnits(humanReadable, decimals);
+    },
+  };
 }
 
 export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
@@ -34,6 +62,11 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     },
     networkString: "eip155:1",
     explorerUrl: "https://etherscan.io",
+    slug: "ethereum",
+    displayName: "Ethereum",
+    isTestnet: false,
+    color: "bg-gray-500",
+    aliases: ["eth", "mainnet", "eth-mainnet"],
   },
   // Ethereum Sepolia
   11155111: {
@@ -47,6 +80,11 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     },
     networkString: "eip155:11155111",
     explorerUrl: "https://sepolia.etherscan.io",
+    slug: "sepolia",
+    displayName: "Sepolia",
+    isTestnet: true,
+    color: "bg-gray-500",
+    aliases: ["eth-sepolia"],
   },
   // Base Mainnet
   8453: {
@@ -60,6 +98,11 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     },
     networkString: "eip155:8453",
     explorerUrl: "https://basescan.org",
+    slug: "base",
+    displayName: "Base",
+    isTestnet: false,
+    color: "bg-blue-500",
+    aliases: [],
   },
   // Base Sepolia
   84532: {
@@ -73,6 +116,11 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     },
     networkString: "eip155:84532",
     explorerUrl: "https://sepolia.basescan.org",
+    slug: "base-sepolia",
+    displayName: "Base Sepolia",
+    isTestnet: true,
+    color: "bg-blue-500",
+    aliases: [],
   },
   // Arbitrum One
   42161: {
@@ -86,6 +134,11 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     },
     networkString: "eip155:42161",
     explorerUrl: "https://arbiscan.io",
+    slug: "arbitrum",
+    displayName: "Arbitrum One",
+    isTestnet: false,
+    color: "bg-sky-500",
+    aliases: ["arbitrum-one"],
   },
   // Arbitrum Sepolia
   421614: {
@@ -99,8 +152,13 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     },
     networkString: "eip155:421614",
     explorerUrl: "https://sepolia.arbiscan.io",
+    slug: "arbitrum-sepolia",
+    displayName: "Arbitrum Sepolia",
+    isTestnet: true,
+    color: "bg-sky-500",
+    aliases: [],
   },
-  // Optimism
+  // OP Mainnet
   10: {
     chain: optimism,
     usdcAddress: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
@@ -112,6 +170,11 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     },
     networkString: "eip155:10",
     explorerUrl: "https://optimistic.etherscan.io",
+    slug: "optimism",
+    displayName: "OP Mainnet",
+    isTestnet: false,
+    color: "bg-red-500",
+    aliases: ["op-mainnet"],
   },
   // OP Sepolia
   11155420: {
@@ -125,8 +188,13 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     },
     networkString: "eip155:11155420",
     explorerUrl: "https://sepolia-optimism.etherscan.io",
+    slug: "op-sepolia",
+    displayName: "OP Sepolia",
+    isTestnet: true,
+    color: "bg-red-500",
+    aliases: [],
   },
-  // Polygon
+  // Polygon PoS
   137: {
     chain: polygon,
     usdcAddress: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
@@ -138,6 +206,11 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     },
     networkString: "eip155:137",
     explorerUrl: "https://polygonscan.com",
+    slug: "polygon",
+    displayName: "Polygon PoS",
+    isTestnet: false,
+    color: "bg-purple-500",
+    aliases: ["polygon-pos"],
   },
   // Polygon Amoy
   80002: {
@@ -151,23 +224,123 @@ export const CHAIN_CONFIGS: Record<number, ChainConfig> = {
     },
     networkString: "eip155:80002",
     explorerUrl: "https://amoy.polygonscan.com",
+    slug: "polygon-amoy",
+    displayName: "Polygon Amoy",
+    isTestnet: true,
+    color: "bg-purple-500",
+    aliases: [],
   },
 };
 
+// ── Token registry ─────────────────────────────────────────────────
+// Per-chain token configs keyed by lowercase token address.
+
+const USDC_TOKEN_CONFIG = makeTokenConfig("USDC", 6, 2);
+
+const CHAIN_TOKENS: Record<number, Record<string, TokenConfig>> = {};
+for (const [chainIdStr, config] of Object.entries(CHAIN_CONFIGS)) {
+  const chainId = Number(chainIdStr);
+  CHAIN_TOKENS[chainId] = {
+    [config.usdcAddress.toLowerCase()]: USDC_TOKEN_CONFIG,
+  };
+}
+
+// ── Chain helpers ──────────────────────────────────────────────────
+
 export const SUPPORTED_CHAINS: ChainConfig[] = Object.values(CHAIN_CONFIGS);
 
-export function getChainConfig(chainId: number): ChainConfig | undefined {
+export function getChainById(chainId: number): ChainConfig | undefined {
   return CHAIN_CONFIGS[chainId];
 }
 
+/** @deprecated Use getChainById() */
+export const getChainConfig = getChainById;
+
+export function getChainBySlug(slug: string): ChainConfig | undefined {
+  const lower = slug.toLowerCase();
+  return SUPPORTED_CHAINS.find((c) => c.slug === lower);
+}
+
+export function getAllChains(): ChainConfig[] {
+  return SUPPORTED_CHAINS;
+}
+
+export function getTestnetChains(): ChainConfig[] {
+  return SUPPORTED_CHAINS.filter((c) => c.isTestnet);
+}
+
+export function getMainnetChains(): ChainConfig[] {
+  return SUPPORTED_CHAINS.filter((c) => !c.isTestnet);
+}
+
+export function isTestnetChain(chainId: number): boolean {
+  return CHAIN_CONFIGS[chainId]?.isTestnet === true;
+}
+
+export function isMainnetChain(chainId: number): boolean {
+  const config = CHAIN_CONFIGS[chainId];
+  return config !== undefined && !config.isTestnet;
+}
+
 /**
- * Returns all network identifiers that may appear in a 402 payment requirement
- * for this chain (e.g. "eip155:8453" and "base"). Use when matching stored
- * requirements that might use either EIP-155 or plain chain names.
+ * Resolve a chain from a flexible input string.
+ * Accepts: slug ("base-sepolia"), alias ("eth", "mainnet"), displayName ("OP Mainnet"),
+ * numeric string ("84532"), or CAIP-2 ("eip155:84532").
  */
+export function resolveChain(nameOrId: string): ChainConfig | undefined {
+  const input = nameOrId.trim();
+
+  // Try CAIP-2 format: "eip155:84532"
+  const caip2Match = input.match(/^eip155:(\d+)$/);
+  if (caip2Match) {
+    const chainId = parseInt(caip2Match[1], 10);
+    return CHAIN_CONFIGS[chainId];
+  }
+
+  // Try numeric chain ID
+  const asNumber = parseInt(input, 10);
+  if (!isNaN(asNumber) && String(asNumber) === input) {
+    return CHAIN_CONFIGS[asNumber];
+  }
+
+  // Try slug, alias, or displayName (case-insensitive)
+  const lower = input.toLowerCase();
+  return SUPPORTED_CHAINS.find(
+    (c) =>
+      c.slug === lower ||
+      c.aliases.some((a) => a.toLowerCase() === lower) ||
+      c.displayName.toLowerCase() === lower,
+  );
+}
+
+// ── Token helpers ──────────────────────────────────────────────────
+
+export function getTokenConfig(chainId: number, tokenAddress: string): TokenConfig | undefined {
+  return CHAIN_TOKENS[chainId]?.[tokenAddress.toLowerCase()];
+}
+
+export function getUsdcConfig(chainId: number): TokenConfig | undefined {
+  const config = CHAIN_CONFIGS[chainId];
+  if (!config) return undefined;
+  return CHAIN_TOKENS[chainId]?.[config.usdcAddress.toLowerCase()];
+}
+
+export function formatTokenAmount(chainId: number, tokenAddress: string, amountRaw: bigint): string {
+  const token = getTokenConfig(chainId, tokenAddress);
+  if (!token) return formatUnits(amountRaw, 18);
+  return token.formatAmount(amountRaw);
+}
+
+export function parseTokenAmount(chainId: number, tokenAddress: string, humanReadable: string): bigint {
+  const token = getTokenConfig(chainId, tokenAddress);
+  if (!token) return parseUnits(humanReadable, 18);
+  return token.parseAmount(humanReadable);
+}
+
+// ── Existing helpers ───────────────────────────────────────────────
+
 export function getNetworkIdentifiers(config: ChainConfig): string[] {
-  const normalizedName = config.chain.name.toLowerCase().replace(/\s+/g, "-");
-  return [config.networkString, normalizedName];
+  return [config.networkString, config.slug];
 }
 
 export function isChainSupported(chainId: number): boolean {
@@ -189,8 +362,7 @@ export function getDefaultChainConfig(): ChainConfig {
  */
 export function getEnvironmentChains(): ChainConfig[] {
   const defaultConfig = getDefaultChainConfig();
-  const isTestnet = defaultConfig.chain.testnet === true;
-  return SUPPORTED_CHAINS.filter((c) => (c.chain.testnet === true) === isTestnet);
+  return SUPPORTED_CHAINS.filter((c) => c.isTestnet === defaultConfig.isTestnet);
 }
 
 // Backward-compatible alias — deprecated, use getDefaultChainConfig()

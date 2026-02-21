@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { AlertCircle, ExternalLink, FileJson } from "lucide-react";
 import { getTransactions } from "@/app/actions/transactions";
 import { useChain } from "@/contexts/chain-context";
-import { CHAIN_CONFIGS, getDefaultChainConfig } from "@/lib/chain-config";
+import { getChainById, getAllChains, getDefaultChainConfig } from "@/lib/chain-config";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -54,11 +54,12 @@ interface TransactionTableProps {
 }
 
 function getExplorerUrl(tx: { chainId?: number; network: string }): string {
-  if (tx.chainId !== undefined && CHAIN_CONFIGS[tx.chainId]) {
-    return CHAIN_CONFIGS[tx.chainId].explorerUrl;
+  if (tx.chainId !== undefined) {
+    const config = getChainById(tx.chainId);
+    if (config) return config.explorerUrl;
   }
   // Fallback: match by network string
-  const config = Object.values(CHAIN_CONFIGS).find((c) => c.networkString === tx.network);
+  const config = getAllChains().find((c) => c.networkString === tx.network);
   if (config) return config.explorerUrl;
   // Legacy fallback: use the default chain explorer when nothing matches
   return getDefaultChainConfig().explorerUrl;

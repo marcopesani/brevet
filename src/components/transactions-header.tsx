@@ -8,7 +8,7 @@ export function TransactionsHeader() {
   return (
     <div>
       <h2 className="text-xl font-semibold">
-        Transaction History — {activeChain.chain.name}
+        Transaction History — {activeChain.displayName}
       </h2>
       <p className="text-sm text-muted-foreground">
         View and filter all payments and withdrawals.

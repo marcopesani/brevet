@@ -13,8 +13,8 @@ import { useAccount, useSwitchChain } from "wagmi";
 import { toast } from "sonner";
 import {
   getDefaultChainConfig,
-  getChainConfig,
-  SUPPORTED_CHAINS,
+  getChainById,
+  getAllChains,
   type ChainConfig,
 } from "@/lib/chain-config";
 import { CHAIN_COOKIE_NAME } from "@/lib/chain-cookie";
@@ -22,7 +22,7 @@ import { CHAIN_COOKIE_NAME } from "@/lib/chain-cookie";
 interface ChainContextType {
   activeChain: ChainConfig;
   setActiveChainId: (chainId: number) => void;
-  supportedChains: typeof SUPPORTED_CHAINS;
+  supportedChains: ChainConfig[];
   isSwitchingChain: boolean;
 }
 
@@ -37,10 +37,18 @@ function setChainCookie(chainId: number) {
 export function ChainProvider({
   children,
   initialChainId,
+  enabledChains,
 }: {
   children: ReactNode;
   initialChainId?: number;
+  enabledChains?: number[];
 }) {
+  const allChains = getAllChains();
+  const filteredChains =
+    enabledChains && enabledChains.length > 0
+      ? allChains.filter((c) => enabledChains.includes(c.chain.id))
+      : allChains;
+
   const [activeChainId, setActiveChainIdState] = useState<number>(
     () => initialChainId ?? getDefaultChainConfig().chain.id,
   );
@@ -51,19 +59,32 @@ export function ChainProvider({
   // Track whether a programmatic switch is in progress to avoid sync loops
   const isSwitchingRef = useRef(false);
 
+  // Auto-switch to first enabled chain if active chain becomes disabled
+  useEffect(() => {
+    if (filteredChains.length === 0) return;
+    const isActiveEnabled = filteredChains.some(
+      (c) => c.chain.id === activeChainId,
+    );
+    if (!isActiveEnabled) {
+      const fallback = filteredChains[0].chain.id;
+      setActiveChainIdState(fallback);
+      setChainCookie(fallback);
+    }
+  }, [filteredChains, activeChainId]);
+
   // Sync activeChainId to wallet's chain when it changes externally
   useEffect(() => {
     if (!isConnected || !walletChainId || isSwitchingRef.current) return;
     if (walletChainId === activeChainId) return;
     // Only sync if the wallet's chain is one we support
-    if (!getChainConfig(walletChainId)) return;
+    if (!getChainById(walletChainId)) return;
     setActiveChainIdState(walletChainId);
     setChainCookie(walletChainId);
   }, [walletChainId, isConnected, activeChainId]);
 
   const setActiveChainId = useCallback(
     async (chainId: number) => {
-      if (!getChainConfig(chainId)) return;
+      if (!getChainById(chainId)) return;
 
       if (isConnected) {
         // Wallet connected: request chain switch, only update on success
@@ -86,14 +107,14 @@ export function ChainProvider({
     [isConnected, switchChainAsync],
   );
 
-  const activeChain = getChainConfig(activeChainId) ?? getDefaultChainConfig();
+  const activeChain = getChainById(activeChainId) ?? getDefaultChainConfig();
 
   return (
     <ChainContext.Provider
       value={{
         activeChain,
         setActiveChainId,
-        supportedChains: SUPPORTED_CHAINS,
+        supportedChains: filteredChains,
         isSwitchingChain,
       }}
     >

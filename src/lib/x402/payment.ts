@@ -4,7 +4,7 @@ import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { createTransaction } from "@/lib/data/transactions";
 import { getSmartAccount, getSmartAccountWithSessionKey, updateSessionKeyStatus } from "@/lib/data/smart-account";
-import { decryptPrivateKey, getUsdcBalance, USDC_DECIMALS } from "@/lib/hot-wallet";
+import { decryptPrivateKey, getUsdcBalance } from "@/lib/hot-wallet";
 import { checkPolicy } from "@/lib/policy";
 import { createSmartAccountSignerFromSerialized, createSmartAccountSigner } from "@/lib/smart-account";
 import { SESSION_KEY_DEFAULT_EXPIRY_DAYS } from "@/lib/smart-account-constants";
@@ -12,7 +12,8 @@ import { parsePaymentRequired, extractTxHashFromResponse, extractSettleResponse 
 import { getRequirementAmount } from "./requirements";
 import type {
 PaymentResult, SigningStrategy, ClientEvmSigner } from "./types";
-import { getChainConfig, isChainSupported, SUPPORTED_CHAINS } from "../chain-config";
+import { getChainById, getUsdcConfig, isChainSupported, getAllChains } from "../chain-config";
+import { getUserEnabledChains, isChainEnabledForUser } from "../data/user";
 import { logger } from "../logger";
 import { validateUrl, safeFetch } from "../safe-fetch";
 import { SIWxExtension } from "@x402/extensions";
@@ -33,7 +34,7 @@ function createPaymentClient(signer: ClientEvmSigner): { client: x402Client; htt
 /**
  * Resolve a network string to a chain ID.
  * Supports both EIP-155 format ("eip155:42161") and the networkString values
- * in the chain registry. Also matches against chain names from the registry
+ * in the chain registry. Also matches against chain slugs from the registry
  * for V1 SDK compatibility (e.g., "base-sepolia").
  */
 function resolveNetworkToChainId(network: string): number | undefined {
@@ -44,12 +45,10 @@ function resolveNetworkToChainId(network: string): number | undefined {
     return isChainSupported(chainId) ? chainId : undefined;
   }
 
-  // Fall back to matching against registry networkString or chain name
-  for (const config of SUPPORTED_CHAINS) {
+  // Fall back to matching against registry networkString or slug
+  for (const config of getAllChains()) {
     if (config.networkString === network) return config.chain.id;
-    // Match by lowercase chain name (e.g., "base-sepolia" → baseSepolia)
-    const normalizedName = config.chain.name.toLowerCase().replace(/\s+/g, "-");
-    if (normalizedName === network.toLowerCase()) return config.chain.id;
+    if (config.slug === network.toLowerCase()) return config.chain.id;
   }
   return undefined;
 }
@@ -69,11 +68,12 @@ async function selectBestChain(
   accepts: Array<{ network: string; [key: string]: unknown }>,
   userId: string,
 ): Promise<{ chainId: number; acceptIndex: number } | null> {
-  // Build list of supported chains from the accepts array
+  // Build list of supported chains from the accepts array, filtered to user's enabled chains
+  const enabledChains = await getUserEnabledChains(userId);
   const candidates: Array<{ chainId: number; acceptIndex: number }> = [];
   for (let i = 0; i < accepts.length; i++) {
     const resolvedChainId = resolveNetworkToChainId(accepts[i].network);
-    if (resolvedChainId !== undefined) {
+    if (resolvedChainId !== undefined && enabledChains.includes(resolvedChainId)) {
       candidates.push({ chainId: resolvedChainId, acceptIndex: i });
     }
   }
@@ -236,14 +236,23 @@ export async function executePayment(
   let acceptIndex: number;
 
   if (chainId !== undefined) {
-    // Explicit chain requested — validate it's in the accepts list
-    const config = getChainConfig(chainId);
+    // Explicit chain requested — validate it's supported, enabled, and accepted
+    const config = getChainById(chainId);
     if (!config) {
       return {
         success: false,
         status: "rejected",
         signingStrategy: "rejected",
         error: `Chain ${chainId} is not supported`,
+      };
+    }
+    const chainEnabled = await isChainEnabledForUser(userId, chainId);
+    if (!chainEnabled) {
+      return {
+        success: false,
+        status: "rejected",
+        signingStrategy: "rejected",
+        error: `Chain ${config.displayName} (${chainId}) is not enabled for your account. Enable it in Settings.`,
       };
     }
     const idx = paymentRequired.accepts.findIndex(a => a.network === config.networkString);
@@ -265,7 +274,7 @@ export async function executePayment(
         success: false,
         status: "rejected",
         signingStrategy: "rejected",
-        error: `None of the endpoint's accepted networks are supported`,
+        error: `None of the endpoint's accepted networks are supported or enabled for your account`,
       };
     }
     selectedChainId = selection.chainId;
@@ -279,7 +288,9 @@ export async function executePayment(
   const selectedRequirement = paymentRequired.accepts[acceptIndex];
   const amountStr = getRequirementAmount(selectedRequirement) ?? "0";
   const amountWei = BigInt(amountStr);
-  const amountUsd = parseFloat(formatUnits(amountWei, USDC_DECIMALS));
+  const usdcConfig = getUsdcConfig(selectedChainId);
+  const usdcDecimals = usdcConfig?.decimals ?? 6;
+  const amountUsd = parseFloat(formatUnits(amountWei, usdcDecimals));
 
   // Check session key expiry before signing
   if (smartAccount && smartAccount.sessionKeyStatus === "active" && smartAccount.sessionKeyExpiry) {

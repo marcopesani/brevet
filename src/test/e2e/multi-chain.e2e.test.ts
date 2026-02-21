@@ -15,7 +15,9 @@ import { HotWallet } from "@/lib/models/hot-wallet";
 import { SmartAccount } from "@/lib/models/smart-account";
 import { EndpointPolicy } from "@/lib/models/endpoint-policy";
 import { Transaction } from "@/lib/models/transaction";
+import { User } from "@/lib/models/user";
 import { CHAIN_CONFIGS } from "@/lib/chain-config";
+import mongoose from "mongoose";
 
 // Save the original fetch before mocking — RPC tests need the real one
 const originalFetch = globalThis.fetch;
@@ -394,6 +396,11 @@ describe("E2E: Multi-Chain", () => {
     }
 
     it("should return balances for multiple chains", async () => {
+      // Enable both chains for the user
+      await User.findByIdAndUpdate(new mongoose.Types.ObjectId(userId), {
+        $set: { enabledChains: [84532, 421614] },
+      });
+
       // Create a second smart account on Arbitrum Sepolia
       await SmartAccount.create(createTestSmartAccount(userId, { chainId: 421614 }));
 
@@ -448,6 +455,11 @@ describe("E2E: Multi-Chain", () => {
   // ─────────────────────────────────────────────
   describe("Chain auto-selection from 402 payment requirements", () => {
     it("should select the chain with the highest balance", async () => {
+      // Enable both chains for the user
+      await User.findByIdAndUpdate(new mongoose.Types.ObjectId(userId), {
+        $set: { enabledChains: [84532, 421614] },
+      });
+
       // Create smart account on Arbitrum Sepolia (with active session key)
       await SmartAccount.create(createTestSmartAccount(userId, { chainId: 421614 }));
 

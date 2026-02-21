@@ -4,6 +4,8 @@ import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import { TEST_WALLET_ADDRESS } from "@/test/helpers/crypto";
 import { getDefaultChainConfig } from "@/lib/chain-config";
 import { Transaction } from "@/lib/models/transaction";
+import { User } from "@/lib/models/user";
+import mongoose from "mongoose";
 import {
   parsePaymentRequired,
   extractSettleResponse,
@@ -576,7 +578,12 @@ describe("E2E: Crypto Operations", () => {
     it("should create pending payment when no requirement matches a chain with hot wallet", async () => {
       const { user } = await seedTestUser();
 
-      // Offer Ethereum (unsupported) + Polygon (supported but user has no hot wallet there)
+      // Enable Ethereum and Polygon for the user so they pass chain enforcement
+      await User.findByIdAndUpdate(new mongoose.Types.ObjectId(user.id), {
+        $set: { enabledChains: [84532, 1, 137] },
+      });
+
+      // Offer Ethereum (supported, enabled) + Polygon (supported, enabled but user has no hot wallet there)
       const requirements = [
         {
           ...V1_REQUIREMENT,

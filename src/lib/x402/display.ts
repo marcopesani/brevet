@@ -1,19 +1,22 @@
 import { formatUnits } from "viem";
-import { getChainConfig } from "@/lib/chain-config";
+import { getChainById, getTokenConfig } from "@/lib/chain-config";
 
 /**
  * Resolve decimals and symbol for an asset on a chain.
- * Only matches known USDC addresses per chain; no default decimals for other tokens.
+ * Only matches known token addresses per chain via the token registry;
+ * no default decimals for other tokens.
  */
 export function getDecimalsAndSymbol(
   chainId: number,
   asset: string | undefined | null,
 ): { decimals: number; symbol: string } {
-  const config = getChainConfig(chainId);
-  if (config && asset) {
-    const normalized = asset.toLowerCase();
-    if (config.usdcAddress.toLowerCase() === normalized) {
-      return { decimals: 6, symbol: "USDC" };
+  if (asset) {
+    const config = getChainById(chainId);
+    if (config) {
+      const token = getTokenConfig(chainId, asset);
+      if (token) {
+        return { decimals: token.decimals, symbol: token.symbol };
+      }
     }
   }
   return { decimals: 18, symbol: "?" };

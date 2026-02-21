@@ -5,6 +5,7 @@ import { McpServerUrl } from "@/components/mcp-server-url";
 import { ApiKeyCard } from "@/components/api-key-card";
 import { MCP_TOOLS } from "@/lib/mcp/tool-registry";
 import { getUserHumanHash } from "@/lib/data/wallet";
+import { ChainSettings } from "./chain-settings";
 
 export default async function SettingsPage() {
   const user = await getAuthenticatedUser();
@@ -35,6 +36,7 @@ export default async function SettingsPage() {
     <div className="flex flex-col gap-6">
       <McpServerUrl humanHash={humanHash} tools={[...MCP_TOOLS]} />
       <ApiKeyCard apiKeyPrefix={apiKeyPrefix} />
+      <ChainSettings />
     </div>
   );
 }

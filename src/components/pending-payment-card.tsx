@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { authorizationTypes } from "@x402/evm";
 import type { PaymentRequirements } from "@x402/core/types";
 import { useChain } from "@/contexts/chain-context";
-import { CHAIN_CONFIGS, getNetworkIdentifiers } from "@/lib/chain-config";
+import { getChainById, getNetworkIdentifiers } from "@/lib/chain-config";
 import { formatAmountForDisplay } from "@/lib/x402/display";
 import { getRequirementAmount, getRequirementAmountFromLike } from "@/lib/x402/requirements";
 import type { Hex } from "viem";
@@ -120,7 +120,7 @@ export default function PendingPaymentCard({
 
   // Use the payment's stored chainId if available, otherwise fall back to active chain
   const paymentChainConfig = payment.chainId !== undefined
-    ? CHAIN_CONFIGS[payment.chainId] ?? activeChain
+    ? getChainById(payment.chainId) ?? activeChain
     : activeChain;
 
   function invalidateAndNotify() {
@@ -280,7 +280,7 @@ export default function PendingPaymentCard({
           <div className="text-muted-foreground">Amount</div>
           <div className="font-medium">{amountLabel}</div>
           <div className="text-muted-foreground">Chain</div>
-          <div>{paymentChainConfig.chain.name}</div>
+          <div>{paymentChainConfig.displayName}</div>
           <div className="text-muted-foreground">Created</div>
           <div>{new Date(payment.createdAt).toLocaleString()}</div>
           <div className="text-muted-foreground">Expires</div>

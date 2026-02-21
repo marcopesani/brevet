@@ -50,6 +50,16 @@ function wrapperWithInitialChain(initialChainId: number) {
   };
 }
 
+function wrapperWithEnabledChains(enabledChains: number[], initialChainId?: number) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <ChainProvider enabledChains={enabledChains} initialChainId={initialChainId}>
+        {children}
+      </ChainProvider>
+    );
+  };
+}
+
 // ── Setup ───────────────────────────────────────────────────────────
 beforeEach(() => {
   vi.clearAllMocks();
@@ -232,6 +242,48 @@ describe("ChainContext", () => {
 
       expect(result.current.activeChain.chain.id).toBe(initialChainId);
       expect(mockSwitchChainAsync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("enabledChains filtering", () => {
+    it("filters supportedChains to only enabled chains", () => {
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([8453, 42161]),
+      });
+
+      const chainIds = result.current.supportedChains.map((c) => c.chain.id);
+      expect(chainIds).toEqual([8453, 42161]);
+    });
+
+    it("shows all chains when enabledChains is not provided", () => {
+      const { result } = renderHook(() => useChain(), { wrapper });
+
+      expect(result.current.supportedChains.length).toBeGreaterThan(2);
+    });
+
+    it("shows all chains when enabledChains is empty", () => {
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([]),
+      });
+
+      expect(result.current.supportedChains.length).toBeGreaterThan(2);
+    });
+
+    it("auto-switches to first enabled chain when active chain is not enabled", () => {
+      // Default chain is 8453 (Base), but we only enable Arbitrum
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([42161]),
+      });
+
+      expect(result.current.activeChain.chain.id).toBe(42161);
+    });
+
+    it("keeps active chain if it is in the enabled set", () => {
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([8453, 42161], 8453),
+      });
+
+      expect(result.current.activeChain.chain.id).toBe(8453);
     });
   });
 

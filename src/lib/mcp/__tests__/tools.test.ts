@@ -425,6 +425,15 @@ describe("x402_pay tool — multi-chain", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     await resetTestDb();
+
+    // Create user with relevant chains enabled
+    await User.create({
+      _id: new mongoose.Types.ObjectId(TEST_USER_ID),
+      email: "test@example.com",
+      walletAddress: "0x" + "a".repeat(40),
+      enabledChains: [42161, 84532, 8453],
+    });
+
     server = new McpServer({ name: "test", version: "0.0.1" });
     const { registerTools } = await import("../register-tools");
     registerTools(server, TEST_USER_ID);
@@ -513,11 +522,12 @@ describe("x402_check_balance tool — multi-chain", () => {
     vi.restoreAllMocks();
     await resetTestDb();
 
-    // Create a user
+    // Create a user with chains enabled
     await User.create({
       _id: userId,
       email: "test@example.com",
       walletAddress: "0x" + "a".repeat(40),
+      enabledChains: [8453, 42161, 10, 84532],
     });
 
     server = new McpServer({ name: "test", version: "0.0.1" });
@@ -591,10 +601,10 @@ describe("x402_check_balance tool — multi-chain", () => {
     expect(result.isError).toBeUndefined();
   });
 
-  it("returns message when no smart accounts exist on any chain", async () => {
+  it("returns message when no smart accounts exist on any enabled chain", async () => {
     const result = (await callTool(server, "x402_check_balance", {})) as ToolResult;
 
-    expect(result.content[0].text).toContain("No smart accounts found");
+    expect(result.content[0].text).toContain("No smart accounts found on any enabled chain");
     expect(result.isError).toBeUndefined();
   });
 
@@ -623,6 +633,15 @@ describe("x402_spending_history tool — multi-chain", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     await resetTestDb();
+
+    // Create user with chains enabled
+    await User.create({
+      _id: new mongoose.Types.ObjectId(TEST_USER_ID),
+      email: "spending@example.com",
+      walletAddress: "0x" + "f".repeat(40),
+      enabledChains: [8453, 42161, 84532],
+    });
+
     server = new McpServer({ name: "test", version: "0.0.1" });
     const { registerTools } = await import("../register-tools");
     registerTools(server, TEST_USER_ID);
@@ -751,5 +770,181 @@ describe("x402_check_pending tool — chain info in response", () => {
     // Default chain in test env is 84532 (Base Sepolia)
     expect(parsed.chainId).toBe(84532);
     expect(parsed.chain).toBe("Base Sepolia");
+  });
+});
+
+// --- Chain enforcement tests ---
+
+describe("x402_pay tool — chain enforcement", () => {
+  let server: McpServer;
+  const payUserId = new mongoose.Types.ObjectId();
+
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    await resetTestDb();
+
+    // User with only Base Sepolia enabled
+    await User.create({
+      _id: payUserId,
+      email: "chain-test-pay@example.com",
+      walletAddress: "0x" + "b".repeat(40),
+      enabledChains: [84532],
+    });
+
+    server = new McpServer({ name: "test", version: "0.0.1" });
+    const { registerTools } = await import("../register-tools");
+    registerTools(server, payUserId.toString());
+  });
+
+  it("rejects disabled chain with clear error message", async () => {
+    const result = (await callTool(server, "x402_pay", {
+      url: "https://api.example.com/resource",
+      chain: "arbitrum",
+    })) as ToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("not enabled for your account");
+    expect(result.content[0].text).toContain("Enable it in Settings");
+  });
+
+  it("allows enabled chain", async () => {
+    const { executePayment } = await import("@/lib/x402/payment");
+    (executePayment as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      response: new Response(JSON.stringify({ data: "ok" }), {
+        headers: { "content-type": "application/json" },
+      }),
+    });
+
+    const result = (await callTool(server, "x402_pay", {
+      url: "https://api.example.com/resource",
+      chain: "base-sepolia",
+    })) as ToolResult;
+
+    expect(result.isError).toBeUndefined();
+    expect(executePayment).toHaveBeenCalled();
+  });
+});
+
+describe("x402_check_balance tool — chain enforcement", () => {
+  let server: McpServer;
+  const balUserId = new mongoose.Types.ObjectId();
+
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    await resetTestDb();
+
+    // User with only Base enabled
+    await User.create({
+      _id: balUserId,
+      email: "chain-test-bal@example.com",
+      walletAddress: "0x" + "c".repeat(40),
+      enabledChains: [8453],
+    });
+
+    server = new McpServer({ name: "test", version: "0.0.1" });
+    const { registerTools } = await import("../register-tools");
+    registerTools(server, balUserId.toString());
+  });
+
+  it("rejects disabled chain when specified", async () => {
+    const result = (await callTool(server, "x402_check_balance", {
+      chain: "arbitrum",
+    })) as ToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("not enabled for your account");
+  });
+
+  it("only shows balances for enabled chains when no chain specified", async () => {
+    const { getUsdcBalance } = await import("@/lib/hot-wallet");
+
+    // Create smart accounts on Base (enabled) and Arbitrum (disabled)
+    await SmartAccount.create({
+      userId: balUserId,
+      ownerAddress: "0x" + "c".repeat(40),
+      chainId: 8453,
+      smartAccountAddress: "0x" + "d".repeat(40),
+      sessionKeyAddress: "0x" + "e".repeat(40),
+      sessionKeyEncrypted: "enc1",
+      sessionKeyStatus: "active",
+    });
+    await SmartAccount.create({
+      userId: balUserId,
+      ownerAddress: "0x" + "c".repeat(40),
+      chainId: 42161,
+      smartAccountAddress: "0x" + "f".repeat(40),
+      sessionKeyAddress: "0x" + "11".repeat(20),
+      sessionKeyEncrypted: "enc2",
+      sessionKeyStatus: "active",
+    });
+
+    (getUsdcBalance as ReturnType<typeof vi.fn>).mockResolvedValueOnce("10.0");
+
+    const result = (await callTool(server, "x402_check_balance", {})) as ToolResult;
+    const parsed = parseToolResult(result);
+
+    // Only Base (8453) should be shown, not Arbitrum (42161)
+    expect(parsed.balances).toHaveLength(1);
+    expect(parsed.balances[0].chainId).toBe(8453);
+  });
+
+  it("returns no-chains message when user has no enabled chains", async () => {
+    await User.findByIdAndUpdate(balUserId, { $set: { enabledChains: [] } });
+
+    const result = (await callTool(server, "x402_check_balance", {})) as ToolResult;
+
+    expect(result.content[0].text).toContain("No chains are enabled");
+    expect(result.content[0].text).toContain("Settings");
+  });
+});
+
+describe("x402_spending_history tool — chain enforcement", () => {
+  let server: McpServer;
+  const histUserId = new mongoose.Types.ObjectId();
+
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    await resetTestDb();
+
+    // User with only Base enabled
+    await User.create({
+      _id: histUserId,
+      email: "chain-test-hist@example.com",
+      walletAddress: "0x" + "d".repeat(40),
+      enabledChains: [8453],
+    });
+
+    server = new McpServer({ name: "test", version: "0.0.1" });
+    const { registerTools } = await import("../register-tools");
+    registerTools(server, histUserId.toString());
+  });
+
+  it("rejects disabled chain filter with clear error", async () => {
+    const result = (await callTool(server, "x402_spending_history", {
+      chain: "arbitrum",
+    })) as ToolResult;
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("not enabled for your account");
+  });
+
+  it("allows enabled chain filter", async () => {
+    await Transaction.create({
+      amount: 0.01,
+      endpoint: "https://api.example.com/a",
+      network: "base",
+      status: "completed",
+      userId: histUserId,
+      chainId: 8453,
+    });
+
+    const result = (await callTool(server, "x402_spending_history", {
+      chain: "base",
+    })) as ToolResult;
+    const parsed = parseToolResult(result);
+
+    expect(parsed.count).toBe(1);
+    expect(result.isError).toBeUndefined();
   });
 });

@@ -12,36 +12,20 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import type { ChainConfig } from "@/lib/chain-config"
 
-const CHAIN_COLORS: Record<number, string> = {
-  8453: "bg-blue-500",     // Base
-  84532: "bg-blue-500",    // Base Sepolia
-  42161: "bg-sky-500",     // Arbitrum
-  421614: "bg-sky-500",    // Arbitrum Sepolia
-  10: "bg-red-500",        // Optimism
-  11155420: "bg-red-500",  // OP Sepolia
-  137: "bg-purple-500",    // Polygon
-  80002: "bg-purple-500",  // Polygon Amoy
-}
-
-function ChainDot({ chainId }: { chainId: number }) {
+function ChainDot({ color }: { color: string }) {
   return (
     <span
-      className={`inline-block size-2 shrink-0 rounded-full ${CHAIN_COLORS[chainId] ?? "bg-gray-400"}`}
+      className={`inline-block size-2 shrink-0 rounded-full ${color}`}
     />
   )
-}
-
-function chainDisplayName(config: ChainConfig): string {
-  return config.chain.name
 }
 
 export function ChainSelector() {
   const { activeChain, setActiveChainId, supportedChains, isSwitchingChain } = useChain()
 
-  const mainnets = supportedChains.filter((c) => !c.chain.testnet)
-  const testnets = supportedChains.filter((c) => c.chain.testnet)
+  const mainnets = supportedChains.filter((c) => !c.isTestnet)
+  const testnets = supportedChains.filter((c) => c.isTestnet)
 
   return (
     <Select
@@ -51,9 +35,9 @@ export function ChainSelector() {
     >
       <SelectTrigger size="sm" className="w-full">
         <SelectValue>
-          <ChainDot chainId={activeChain.chain.id} />
-          <span className="truncate">{chainDisplayName(activeChain)}</span>
-          {activeChain.chain.testnet && (
+          <ChainDot color={activeChain.color} />
+          <span className="truncate">{activeChain.displayName}</span>
+          {activeChain.isTestnet && (
             <Badge variant="outline" className="ml-1 px-1 py-0 text-[10px] leading-tight">
               Testnet
             </Badge>
@@ -65,8 +49,8 @@ export function ChainSelector() {
           <SelectLabel>Mainnets</SelectLabel>
           {mainnets.map((config) => (
             <SelectItem key={config.chain.id} value={String(config.chain.id)}>
-              <ChainDot chainId={config.chain.id} />
-              {chainDisplayName(config)}
+              <ChainDot color={config.color} />
+              {config.displayName}
             </SelectItem>
           ))}
         </SelectGroup>
@@ -75,8 +59,8 @@ export function ChainSelector() {
           <SelectLabel>Testnets</SelectLabel>
           {testnets.map((config) => (
             <SelectItem key={config.chain.id} value={String(config.chain.id)}>
-              <ChainDot chainId={config.chain.id} />
-              {chainDisplayName(config)}
+              <ChainDot color={config.color} />
+              {config.displayName}
             </SelectItem>
           ))}
         </SelectGroup>

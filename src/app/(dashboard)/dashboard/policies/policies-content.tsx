@@ -32,7 +32,7 @@ export default function PoliciesContent({ allPolicies }: PoliciesContentProps) {
     <div className="flex flex-col gap-6">
       <PolicyTable
         initialPolicies={filteredPolicies}
-        chainName={activeChain.chain.name}
+        chainName={activeChain.displayName}
         chainId={chainId}
       />
     </div>

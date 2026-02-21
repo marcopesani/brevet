@@ -19,6 +19,7 @@ export function createTestUser(overrides?: {
   id?: string;
   email?: string;
   walletAddress?: string;
+  enabledChains?: number[];
 }) {
   const id = overrides?.id
     ? new mongoose.Types.ObjectId(overrides.id)
@@ -28,6 +29,7 @@ export function createTestUser(overrides?: {
     email: overrides?.email ?? "test@example.com",
     walletAddress: overrides?.walletAddress ?? TEST_WALLET_ADDRESS,
     humanHash: humanHash(id.toHexString()),
+    enabledChains: overrides?.enabledChains ?? [DEFAULT_CHAIN_ID],
   };
 }
 

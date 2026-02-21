@@ -12,15 +12,7 @@ import { connectDB } from "@/lib/db";
 import { HotWallet as HotWalletModel } from "@/lib/models/hot-wallet";
 import { createTransaction } from "@/lib/data/transactions";
 import { Types } from "mongoose";
-import { getChainConfig, getDefaultChainConfig } from "@/lib/chain-config";
-
-const DEFAULT_CHAIN_ID = parseInt(
-  process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
-  10,
-);
-
-const USDC_ADDRESS = getDefaultChainConfig().usdcAddress;
-const USDC_DECIMALS = 6;
+import { getChainById, getDefaultChainConfig, getUsdcConfig } from "@/lib/chain-config";
 
 const USDC_ABI = [
   {
@@ -97,8 +89,8 @@ export function createHotWallet(): {
 }
 
 function resolveChainConfig(chainId?: number) {
-  const id = chainId ?? DEFAULT_CHAIN_ID;
-  const config = getChainConfig(id);
+  const id = chainId ?? getDefaultChainConfig().chain.id;
+  const config = getChainById(id);
   if (!config) {
     throw new Error(`Unsupported chain: ${id}`);
   }
@@ -134,13 +126,15 @@ export async function getUsdcBalance(
 ): Promise<string> {
   const config = resolveChainConfig(chainId);
   const client = getPublicClient(chainId);
+  const usdcToken = getUsdcConfig(config.chain.id);
+  const decimals = usdcToken?.decimals ?? 6;
   const balance = await client.readContract({
     address: config.usdcAddress,
     abi: USDC_ABI,
     functionName: "balanceOf",
     args: [address as `0x${string}`],
   });
-  return formatUnits(balance, USDC_DECIMALS);
+  return formatUnits(balance, decimals);
 }
 
 export async function withdrawFromHotWallet(
@@ -156,8 +150,10 @@ export async function withdrawFromHotWallet(
     throw new Error("Amount must be greater than 0");
   }
 
-  const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
+  const resolvedChainId = chainId ?? getDefaultChainConfig().chain.id;
   const config = resolveChainConfig(resolvedChainId);
+  const usdcToken = getUsdcConfig(resolvedChainId);
+  const decimals = usdcToken?.decimals ?? 6;
 
   await connectDB();
 
@@ -192,7 +188,7 @@ export async function withdrawFromHotWallet(
     address: config.usdcAddress,
     abi: USDC_ABI,
     functionName: "transfer",
-    args: [toAddress as `0x${string}`, parseUnits(String(amount), USDC_DECIMALS)],
+    args: [toAddress as `0x${string}`, parseUnits(String(amount), decimals)],
   });
 
   // Log withdrawal transaction via data layer
@@ -209,5 +205,3 @@ export async function withdrawFromHotWallet(
 
   return { txHash };
 }
-
-export { USDC_ADDRESS, USDC_DECIMALS };

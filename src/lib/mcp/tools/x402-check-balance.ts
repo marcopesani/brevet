@@ -1,8 +1,8 @@
 import { z } from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getSmartAccountBalance, getAllSmartAccounts } from "@/lib/data/smart-account";
-import { CHAIN_CONFIGS } from "@/lib/chain-config";
-import { resolveChainParam, textContent, jsonContent, toolError } from "../shared";
+import { getChainById } from "@/lib/chain-config";
+import { resolveChainParam, validateChainEnabled, getUserEnabledChains, textContent, jsonContent, toolError } from "../shared";
 
 export function registerX402CheckBalance(
   server: McpServer,
@@ -29,6 +29,7 @@ export function registerX402CheckBalance(
           let chainId: number;
           try {
             chainId = resolveChainParam(chain);
+            await validateChainEnabled(userId, chainId);
           } catch (e) {
             return textContent(`Error: ${(e as Error).message}`, true);
           }
@@ -41,30 +42,43 @@ export function registerX402CheckBalance(
             );
           }
 
-          const chainConfig = CHAIN_CONFIGS[chainId];
+          const chainConfig = getChainById(chainId);
 
           return jsonContent({
-            chain: chainConfig?.chain.name ?? `Chain ${chainId}`,
+            chain: chainConfig?.displayName ?? `Chain ${chainId}`,
             chainId,
             smartAccountAddress: result.address,
             usdcBalance: result.balance,
           });
         }
 
+        const enabledChains = await getUserEnabledChains(userId);
+
+        if (enabledChains.length === 0) {
+          return textContent(
+            "No chains are enabled for your account. Enable chains in Settings.",
+          );
+        }
+
         const accounts = await getAllSmartAccounts(userId);
 
-        if (!accounts || accounts.length === 0) {
+        // Filter to only enabled chains
+        const enabledAccounts = accounts?.filter(
+          (account) => enabledChains.includes(account.chainId),
+        ) ?? [];
+
+        if (enabledAccounts.length === 0) {
           return textContent(
-            "No smart accounts found for this user on any chain.",
+            "No smart accounts found on any enabled chain.",
           );
         }
 
         const balances = await Promise.all(
-          accounts.map(async (account) => {
+          enabledAccounts.map(async (account) => {
             const result = await getSmartAccountBalance(userId, account.chainId);
-            const chainConfig = CHAIN_CONFIGS[account.chainId];
+            const chainConfig = getChainById(account.chainId);
             return {
-              chain: chainConfig?.chain.name ?? `Chain ${account.chainId}`,
+              chain: chainConfig?.displayName ?? `Chain ${account.chainId}`,
               chainId: account.chainId,
               balance: result?.balance ?? "0",
               address: account.smartAccountAddress,
