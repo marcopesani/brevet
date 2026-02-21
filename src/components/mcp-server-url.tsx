@@ -12,12 +12,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import type { McpToolDescriptor } from "@/lib/mcp/tool-registry";
 
 interface McpServerUrlProps {
   userId: string;
+  tools: McpToolDescriptor[];
 }
 
-export function McpServerUrl({ userId }: McpServerUrlProps) {
+export function McpServerUrl({ userId, tools }: McpServerUrlProps) {
   const [copied, setCopied] = useState(false);
 
   const mcpUrl =
@@ -77,10 +79,11 @@ export function McpServerUrl({ userId }: McpServerUrlProps) {
             use the following tools:
           </p>
           <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">x402_pay</Badge>
-            <Badge variant="secondary">x402_check_balance</Badge>
-            <Badge variant="secondary">x402_spending_history</Badge>
-            <Badge variant="secondary">x402_check_pending</Badge>
+            {tools.map((tool) => (
+              <Badge key={tool.name} variant="secondary" title={tool.summary}>
+                {tool.name}
+              </Badge>
+            ))}
           </div>
         </div>
       </CardContent>
