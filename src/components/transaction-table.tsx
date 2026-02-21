@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { AlertCircle, ExternalLink, FileJson } from "lucide-react";
 import { getTransactions } from "@/app/actions/transactions";
 import { useChain } from "@/contexts/chain-context";
-import { CHAIN_CONFIGS } from "@/lib/chain-config";
+import { CHAIN_CONFIGS, getDefaultChainConfig } from "@/lib/chain-config";
 import { cn } from "@/lib/utils";
 import {
   Table,
@@ -60,9 +60,8 @@ function getExplorerUrl(tx: { chainId?: number; network: string }): string {
   // Fallback: match by network string
   const config = Object.values(CHAIN_CONFIGS).find((c) => c.networkString === tx.network);
   if (config) return config.explorerUrl;
-  // Legacy fallback
-  if (tx.network === "eip155:84532") return "https://sepolia.basescan.org";
-  return "https://basescan.org";
+  // Legacy fallback: use the default chain explorer when nothing matches
+  return getDefaultChainConfig().explorerUrl;
 }
 
 function formatDate(dateStr: string | Date): string {

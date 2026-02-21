@@ -1,4 +1,6 @@
+import { headers } from "next/headers";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { getInitialChainIdFromCookie } from "@/lib/chain-cookie";
 import { getAnalytics } from "@/lib/data/analytics";
 import { getSmartAccountBalance } from "@/lib/data/smart-account";
 import { getPendingCount } from "@/lib/data/payments";
@@ -12,12 +14,16 @@ export default async function DashboardPage() {
   // Layout already redirects unauthenticated users — safe to assert non-null
   const user = (await getAuthenticatedUser())!;
 
+  const headersList = await headers();
+  const cookieHeader = headersList.get("cookie");
+  const chainId = getInitialChainIdFromCookie(cookieHeader);
+
   const [analytics, wallet, pendingCount, recentTransactions] =
     await Promise.all([
-      getAnalytics(user.userId),
-      getSmartAccountBalance(user.userId),
-      getPendingCount(user.userId),
-      getRecentTransactions(user.userId, 5),
+      getAnalytics(user.userId, { chainId }),
+      getSmartAccountBalance(user.userId, chainId),
+      getPendingCount(user.userId, { chainId }),
+      getRecentTransactions(user.userId, 5, { chainId }),
     ]);
 
   return (
