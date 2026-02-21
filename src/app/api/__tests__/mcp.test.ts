@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
-import { TEST_USER_ID } from "@/test/helpers/fixtures";
+import { TEST_USER_HUMAN_HASH } from "@/test/helpers/fixtures";
 
 // Mock rate-limit to avoid interference
 vi.mock("@/lib/rate-limit", () => ({
@@ -51,13 +51,13 @@ describe("MCP API route", () => {
     await resetTestDb();
   });
 
-  describe("POST /api/mcp/[userId]", () => {
+  describe("POST /api/mcp/[humanHash]", () => {
     it("should accept a JSON-RPC initialize request", async () => {
       await seedTestUser();
-      const { POST } = await import("@/app/api/mcp/[userId]/route");
+      const { POST } = await import("@/app/api/mcp/[humanHash]/route");
 
       const request = new Request(
-        `http://localhost/api/mcp/${TEST_USER_ID}`,
+        `http://localhost/api/mcp/${TEST_USER_HUMAN_HASH}`,
         {
           method: "POST",
           headers: MCP_HEADERS,
@@ -90,10 +90,10 @@ describe("MCP API route", () => {
 
     it("should include tool capabilities in initialize response", async () => {
       await seedTestUser();
-      const { POST } = await import("@/app/api/mcp/[userId]/route");
+      const { POST } = await import("@/app/api/mcp/[humanHash]/route");
 
       const request = new Request(
-        `http://localhost/api/mcp/${TEST_USER_ID}`,
+        `http://localhost/api/mcp/${TEST_USER_HUMAN_HASH}`,
         {
           method: "POST",
           headers: MCP_HEADERS,
@@ -119,10 +119,11 @@ describe("MCP API route", () => {
     });
 
     it("should handle invalid JSON-RPC method gracefully", async () => {
-      const { POST } = await import("@/app/api/mcp/[userId]/route");
+      await seedTestUser();
+      const { POST } = await import("@/app/api/mcp/[humanHash]/route");
 
       const request = new Request(
-        `http://localhost/api/mcp/${TEST_USER_ID}`,
+        `http://localhost/api/mcp/${TEST_USER_HUMAN_HASH}`,
         {
           method: "POST",
           headers: MCP_HEADERS,
@@ -139,6 +140,34 @@ describe("MCP API route", () => {
       const data = (await parseMcpResponse(response)) as Record<string, unknown>;
       expect(data.jsonrpc).toBe("2.0");
       expect(data.error).toBeDefined();
+    });
+
+    it("should return 404 for unknown human hash", async () => {
+      const { POST } = await import("@/app/api/mcp/[humanHash]/route");
+
+      const request = new Request(
+        `http://localhost/api/mcp/unknown_hash_does_not_exist`,
+        {
+          method: "POST",
+          headers: MCP_HEADERS,
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "initialize",
+            params: {
+              protocolVersion: "2025-03-26",
+              capabilities: {},
+              clientInfo: { name: "test-client", version: "1.0" },
+            },
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(404);
+
+      const data = await response.json();
+      expect(data.error).toBe("User not found");
     });
   });
 });

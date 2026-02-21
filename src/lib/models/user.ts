@@ -4,6 +4,7 @@ export interface IUser {
   _id: Types.ObjectId;
   email: string | null;
   walletAddress: string | null;
+  humanHash: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -14,6 +15,7 @@ const userSchema = new Schema<IUserDocument>(
   {
     email: { type: String, default: null },
     walletAddress: { type: String, default: null },
+    humanHash: { type: String },
   },
   {
     timestamps: true,
@@ -35,6 +37,7 @@ userSchema.index(
   }
 );
 userSchema.index({ walletAddress: 1 }, { unique: true, sparse: true });
+userSchema.index({ humanHash: 1 }, { unique: true, sparse: true });
 
 export const User: Model<IUserDocument> =
   mongoose.models.User || mongoose.model<IUserDocument>("User", userSchema);
