@@ -3,8 +3,9 @@ import { User } from "@/lib/models/user";
 import { HotWallet } from "@/lib/models/hot-wallet";
 import { EndpointPolicy } from "@/lib/models/endpoint-policy";
 import { connectDB } from "@/lib/db";
-import { createHotWallet as createHotWalletKeys, getUsdcBalance, withdrawFromHotWallet as withdrawHotWallet } from "@/lib/hot-wallet";
+import { createHotWallet as createHotWalletKeys, getUsdcBalance } from "@/lib/hot-wallet";
 import { getEnvironmentChains } from "@/lib/chain-config";
+import { withdrawFromSmartAccount } from "@/lib/data/smart-account";
 
 const DEFAULT_CHAIN_ID = parseInt(
   process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
@@ -106,7 +107,7 @@ export async function ensureAllHotWallets(userId: string): Promise<number> {
 }
 
 /**
- * Withdraw USDC from the user's hot wallet to a destination address on a specific chain.
+ * Withdraw USDC from the user's smart account to a destination address on a specific chain.
  */
 export async function withdrawFromWallet(
   userId: string,
@@ -114,7 +115,7 @@ export async function withdrawFromWallet(
   toAddress: string,
   chainId?: number,
 ) {
-  return withdrawHotWallet(userId, amount, toAddress, chainId);
+  return withdrawFromSmartAccount(userId, amount, toAddress, chainId);
 }
 
 /**

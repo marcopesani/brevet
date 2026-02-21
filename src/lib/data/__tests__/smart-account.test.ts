@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import mongoose from "mongoose";
 import { User } from "@/lib/models/user";
 import { SmartAccount } from "@/lib/models/smart-account";
+import { Transaction } from "@/lib/models/transaction";
 import {
   getSmartAccount,
   getSmartAccountWithSessionKey,
@@ -12,10 +13,15 @@ import {
   storeSerializedAccount,
   updateSessionKeyStatus,
   activateSessionKey,
+  withdrawFromSmartAccount,
 } from "../smart-account";
 
+const mockGetUsdcBalance = vi.fn().mockResolvedValue("50.000000");
+const mockDecryptPrivateKey = vi.fn().mockReturnValue("0x" + "ab".repeat(32));
+
 vi.mock("@/lib/hot-wallet", () => ({
-  getUsdcBalance: vi.fn().mockResolvedValue("50.000000"),
+  getUsdcBalance: (...args: unknown[]) => mockGetUsdcBalance(...args),
+  decryptPrivateKey: (...args: unknown[]) => mockDecryptPrivateKey(...args),
   createHotWallet: vi.fn(),
   encryptPrivateKey: vi.fn().mockReturnValue("encrypted-session-key"),
 }));
@@ -27,6 +33,58 @@ vi.mock("@/lib/smart-account", () => ({
     encryptedPrivateKey: "encrypted-session-key",
   }),
 }));
+
+// Set PIMLICO_API_KEY for withdrawal tests
+process.env.PIMLICO_API_KEY = process.env.PIMLICO_API_KEY || "test-pimlico-key";
+
+// Mock ZeroDev SDK modules
+const mockSendUserOperation = vi.fn().mockResolvedValue("0x" + "bb".repeat(32));
+const mockWaitForUserOperationReceipt = vi.fn().mockResolvedValue({
+  success: true,
+  receipt: { transactionHash: "0x" + "cc".repeat(32) },
+});
+const mockEncodeCalls = vi.fn().mockResolvedValue("0xencodedCalldata");
+
+vi.mock("@zerodev/permissions", () => ({
+  deserializePermissionAccount: vi.fn().mockResolvedValue({
+    address: "0xSmartAccount",
+    encodeCalls: (...args: unknown[]) => mockEncodeCalls(...args),
+  }),
+}));
+
+vi.mock("@zerodev/permissions/signers", () => ({
+  toECDSASigner: vi.fn().mockResolvedValue({
+    type: "local",
+  }),
+}));
+
+vi.mock("@zerodev/sdk", () => ({
+  createKernelAccountClient: vi.fn().mockReturnValue({
+    sendUserOperation: (...args: unknown[]) => mockSendUserOperation(...args),
+  }),
+}));
+
+vi.mock("permissionless/clients/pimlico", () => ({
+  createPimlicoClient: vi.fn().mockReturnValue({
+    getUserOperationGasPrice: vi.fn().mockResolvedValue({
+      fast: { maxFeePerGas: BigInt(1), maxPriorityFeePerGas: BigInt(1) },
+    }),
+    waitForUserOperationReceipt: (...args: unknown[]) => mockWaitForUserOperationReceipt(...args),
+    getPaymasterData: vi.fn(),
+    getPaymasterStubData: vi.fn(),
+  }),
+}));
+
+vi.mock("viem", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("viem")>();
+  return {
+    ...actual,
+    createPublicClient: vi.fn(() => ({
+      readContract: vi.fn(),
+      chain: { id: 84532 },
+    })),
+  };
+});
 
 const DEFAULT_CHAIN_ID = parseInt(
   process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
@@ -413,5 +471,208 @@ describe("activateSessionKey", () => {
       500_000_000,
     );
     expect(result).toBeNull();
+  });
+});
+
+describe("withdrawFromSmartAccount", () => {
+  const VALID_ADDRESS = "0x" + "1".repeat(40);
+  const MOCK_USER_OP_HASH = "0x" + "bb".repeat(32);
+  const MOCK_TX_HASH = "0x" + "cc".repeat(32);
+
+  /** Create a user with an active smart account ready for withdrawal. */
+  async function createActiveSmartAccount(overrides?: Partial<{
+    chainId: number;
+    sessionKeyStatus: string;
+    sessionKeyExpiry: Date;
+    serializedAccount: string;
+    spendLimitPerTx: number;
+    spendLimitDaily: number;
+  }>) {
+    const user = await User.create({ walletAddress: "0xUser1" });
+    const sa = await SmartAccount.create({
+      userId: user._id,
+      chainId: overrides?.chainId ?? DEFAULT_CHAIN_ID,
+      ownerAddress: "0xOwner",
+      smartAccountAddress: "0xSmartAccount",
+      sessionKeyAddress: "0xSessionKey",
+      sessionKeyEncrypted: "encrypted-session-key",
+      sessionKeyStatus: overrides?.sessionKeyStatus ?? "active",
+      sessionKeyExpiry: overrides?.sessionKeyExpiry ?? new Date(Date.now() + 86400_000),
+      serializedAccount: overrides?.serializedAccount ?? "serialized-permission-account",
+      spendLimitPerTx: overrides?.spendLimitPerTx ?? 1_000_000,
+      spendLimitDaily: overrides?.spendLimitDaily ?? 10_000_000,
+    });
+    return { user, sa };
+  }
+
+  beforeEach(() => {
+    mockGetUsdcBalance.mockResolvedValue("50.000000");
+    mockDecryptPrivateKey.mockReturnValue("0x" + "ab".repeat(32));
+    mockSendUserOperation.mockResolvedValue(MOCK_USER_OP_HASH);
+    mockWaitForUserOperationReceipt.mockResolvedValue({
+      success: true,
+      receipt: { transactionHash: MOCK_TX_HASH },
+    });
+    mockEncodeCalls.mockResolvedValue("0xencodedCalldata");
+  });
+
+  afterEach(() => {
+    mockGetUsdcBalance.mockReset().mockResolvedValue("50.000000");
+    mockDecryptPrivateKey.mockReset().mockReturnValue("0x" + "ab".repeat(32));
+    mockSendUserOperation.mockReset();
+    mockWaitForUserOperationReceipt.mockReset();
+    mockEncodeCalls.mockReset();
+  });
+
+  it("throws for an invalid destination address", async () => {
+    const { user } = await createActiveSmartAccount();
+
+    await expect(
+      withdrawFromSmartAccount(user._id.toString(), 1.0, "not-an-address"),
+    ).rejects.toThrow("Invalid destination address");
+  });
+
+  it("throws for zero amount", async () => {
+    const userId = new mongoose.Types.ObjectId().toString();
+
+    await expect(
+      withdrawFromSmartAccount(userId, 0, VALID_ADDRESS),
+    ).rejects.toThrow("Amount must be greater than 0");
+  });
+
+  it("throws for negative amount", async () => {
+    const userId = new mongoose.Types.ObjectId().toString();
+
+    await expect(
+      withdrawFromSmartAccount(userId, -5, VALID_ADDRESS),
+    ).rejects.toThrow("Amount must be greater than 0");
+  });
+
+  it("throws when no smart account found", async () => {
+    const user = await User.create({ walletAddress: "0xUser1" });
+
+    await expect(
+      withdrawFromSmartAccount(user._id.toString(), 1.0, VALID_ADDRESS),
+    ).rejects.toThrow("No smart account found");
+  });
+
+  it("throws when session key is pending_grant", async () => {
+    const { user } = await createActiveSmartAccount({
+      sessionKeyStatus: "pending_grant",
+    });
+
+    await expect(
+      withdrawFromSmartAccount(user._id.toString(), 1.0, VALID_ADDRESS),
+    ).rejects.toThrow("Session key is not active");
+  });
+
+  it("throws when session key is revoked", async () => {
+    const { user } = await createActiveSmartAccount({
+      sessionKeyStatus: "revoked",
+    });
+
+    await expect(
+      withdrawFromSmartAccount(user._id.toString(), 1.0, VALID_ADDRESS),
+    ).rejects.toThrow("Session key is not active");
+  });
+
+  it("throws when session key has expired", async () => {
+    const { user } = await createActiveSmartAccount({
+      sessionKeyExpiry: new Date(Date.now() - 86400_000), // yesterday
+    });
+
+    await expect(
+      withdrawFromSmartAccount(user._id.toString(), 1.0, VALID_ADDRESS),
+    ).rejects.toThrow("Session key has expired");
+  });
+
+  it("throws when USDC balance is insufficient", async () => {
+    const { user } = await createActiveSmartAccount();
+    mockGetUsdcBalance.mockResolvedValue("0.500000"); // only 0.5 USDC
+
+    await expect(
+      withdrawFromSmartAccount(user._id.toString(), 1.0, VALID_ADDRESS),
+    ).rejects.toThrow(/Insufficient balance/);
+  });
+
+  it("returns txHash and userOpHash on successful withdrawal", async () => {
+    const { user } = await createActiveSmartAccount();
+
+    const result = await withdrawFromSmartAccount(
+      user._id.toString(),
+      1.0,
+      VALID_ADDRESS,
+    );
+
+    expect(result.userOpHash).toBe(MOCK_USER_OP_HASH);
+    expect(result.txHash).toBe(MOCK_TX_HASH);
+  });
+
+  it("logs a transaction record in the database on success", async () => {
+    const { user } = await createActiveSmartAccount();
+
+    await withdrawFromSmartAccount(
+      user._id.toString(),
+      1.0,
+      VALID_ADDRESS,
+    );
+
+    const tx = await Transaction.findOne({
+      userId: user._id,
+      type: "withdrawal",
+    }).lean();
+    expect(tx).not.toBeNull();
+    expect(tx!.txHash).toBe(MOCK_TX_HASH);
+    expect(tx!.amount).toBe(1.0);
+    expect(tx!.endpoint).toBe(`withdrawal:${VALID_ADDRESS}`);
+    expect(tx!.status).toBe("completed");
+  });
+
+  it("uses the correct chain when chainId is specified", async () => {
+    const user = await User.create({ walletAddress: "0xUser1" });
+    await SmartAccount.create({
+      userId: user._id,
+      chainId: DEFAULT_CHAIN_ID,
+      ownerAddress: "0xOwner",
+      smartAccountAddress: "0xSA_Base",
+      sessionKeyAddress: "0xSK1",
+      sessionKeyEncrypted: "enc1",
+      sessionKeyStatus: "active",
+      sessionKeyExpiry: new Date(Date.now() + 86400_000),
+      serializedAccount: "serialized-base",
+      spendLimitPerTx: 1_000_000,
+      spendLimitDaily: 10_000_000,
+    });
+    await SmartAccount.create({
+      userId: user._id,
+      chainId: 42161,
+      ownerAddress: "0xOwner",
+      smartAccountAddress: "0xSA_Arb",
+      sessionKeyAddress: "0xSK2",
+      sessionKeyEncrypted: "enc2",
+      sessionKeyStatus: "active",
+      sessionKeyExpiry: new Date(Date.now() + 86400_000),
+      serializedAccount: "serialized-arb",
+      spendLimitPerTx: 1_000_000,
+      spendLimitDaily: 10_000_000,
+    });
+
+    const result = await withdrawFromSmartAccount(
+      user._id.toString(),
+      1.0,
+      VALID_ADDRESS,
+      42161,
+    );
+
+    expect(result.txHash).toBe(MOCK_TX_HASH);
+
+    // Verify transaction was logged with correct chainId
+    const tx = await Transaction.findOne({
+      userId: user._id,
+      type: "withdrawal",
+      chainId: 42161,
+    }).lean();
+    expect(tx).not.toBeNull();
+    expect(tx!.chainId).toBe(42161);
   });
 });
