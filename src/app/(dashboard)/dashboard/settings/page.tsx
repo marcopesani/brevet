@@ -14,7 +14,17 @@ export default async function SettingsPage() {
   const humanHash = await getUserHumanHash(user.userId);
 
   if (!humanHash) {
-    redirect("/login");
+    // Backfill humanHash for existing users who don't have one yet
+    const { upsertUser } = await import("@/lib/data/wallet");
+    const user_record = await upsertUser(user.walletAddress);
+    if (!user_record?.humanHash) {
+      redirect("/login");
+    }
+    return (
+      <div className="flex flex-col gap-6">
+        <McpServerUrl humanHash={user_record.humanHash!} tools={[...MCP_TOOLS]} />
+      </div>
+    );
   }
 
   return (
