@@ -1,3 +1,4 @@
+import { cacheLife, cacheTag } from "next/cache";
 import { Types } from "mongoose";
 import { User } from "@/lib/models/user";
 import { HotWallet } from "@/lib/models/hot-wallet";
@@ -228,6 +229,10 @@ export async function findByHumanHash(hash: string): Promise<string | null> {
  * Returns the humanHash string, or null if not found.
  */
 export async function getUserHumanHash(userId: string): Promise<string | null> {
+  "use cache";
+  cacheLife({ revalidate: 600 });
+  cacheTag(`users-${userId}`);
+
   await connectDB();
   const user = await User.findById(new Types.ObjectId(userId)).lean();
   if (!user) return null;

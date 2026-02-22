@@ -1,3 +1,4 @@
+import { cacheLife, cacheTag } from "next/cache";
 import { randomBytes, createHash } from "crypto";
 import { Types } from "mongoose";
 import { User } from "@/lib/models/user";
@@ -115,6 +116,10 @@ export async function rotateApiKey(
 export async function getApiKeyPrefix(
   userId: string,
 ): Promise<string | null> {
+  "use cache";
+  cacheLife({ revalidate: 600 });
+  cacheTag(`users-${userId}`);
+
   await connectDB();
   const userObjectId = new Types.ObjectId(userId);
 

@@ -1,3 +1,4 @@
+import { cacheLife, cacheTag } from "next/cache";
 import { EndpointPolicy } from "@/lib/models/endpoint-policy";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
@@ -12,6 +13,10 @@ function withId<T extends { _id: Types.ObjectId }>(doc: T): Omit<T, "_id"> & { i
  * Get endpoint policies for a user, optionally filtered by status and/or chainId.
  */
 export async function getPolicies(userId: string, status?: string, options?: { chainId?: number }) {
+  "use cache";
+  cacheLife({ revalidate: 120 });
+  cacheTag(`policies-${userId}`);
+
   await connectDB();
   const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
   if (status) {

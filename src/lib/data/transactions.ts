@@ -1,3 +1,4 @@
+import { cacheLife, cacheTag } from "next/cache";
 import { Transaction } from "@/lib/models/transaction";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
@@ -12,6 +13,10 @@ function withId<T extends { _id: Types.ObjectId; userId?: Types.ObjectId }>(doc:
  * Get recent transactions for a user, limited to a specified count.
  */
 export async function getRecentTransactions(userId: string, limit: number = 5, options?: { chainId?: number }) {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag(`transactions-${userId}`);
+
   await connectDB();
   const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
   if (options?.chainId !== undefined) {
@@ -31,6 +36,10 @@ export async function getTransactions(
   userId: string,
   options?: { since?: Date; until?: Date; chainId?: number },
 ) {
+  "use cache";
+  cacheLife({ revalidate: 120 });
+  cacheTag(`transactions-${userId}`);
+
   await connectDB();
   const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
 
@@ -58,6 +67,10 @@ export async function getSpendingHistory(
   userId: string,
   options?: { since?: Date; chainId?: number },
 ) {
+  "use cache";
+  cacheLife({ revalidate: 120 });
+  cacheTag(`transactions-${userId}`);
+
   await connectDB();
   const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
   if (options?.since) {

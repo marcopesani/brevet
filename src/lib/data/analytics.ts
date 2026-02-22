@@ -1,3 +1,4 @@
+import { cacheLife, cacheTag } from "next/cache";
 import { Transaction } from "@/lib/models/transaction";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
@@ -24,6 +25,10 @@ export interface AnalyticsData {
  * Get aggregated spending analytics for a user (last 30 days).
  */
 export async function getAnalytics(userId: string, options?: { chainId?: number }): Promise<AnalyticsData> {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag(`analytics-${userId}`);
+
   await connectDB();
   const now = new Date();
   const thirtyDaysAgo = new Date(now);
