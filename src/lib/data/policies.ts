@@ -183,3 +183,17 @@ export async function archivePolicy(policyId: string, userId: string) {
   ).lean();
   return doc ? withId(doc) : null;
 }
+
+/**
+ * Unarchive a policy (restore from archive to draft).
+ * Requires userId for defense-in-depth ownership verification.
+ */
+export async function unarchivePolicy(policyId: string, userId: string) {
+  await connectDB();
+  const doc = await EndpointPolicy.findOneAndUpdate(
+    { _id: policyId, userId: new Types.ObjectId(userId) },
+    { $set: { status: "draft", archivedAt: null } },
+    { returnDocument: "after" },
+  ).lean();
+  return doc ? withId(doc) : null;
+}

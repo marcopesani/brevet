@@ -10,6 +10,7 @@ import {
   activatePolicy as _activatePolicy,
   toggleAutoSign as _toggleAutoSign,
   archivePolicy as _archivePolicy,
+  unarchivePolicy as _unarchivePolicy,
 } from "@/lib/data/policies";
 
 export async function getPolicies(status?: string, options?: { chainId?: number }) {
@@ -107,6 +108,22 @@ export async function archivePolicy(policyId: string) {
   if (existing.status === "archived") throw new Error("Policy is already archived");
 
   const policy = await _archivePolicy(policyId, auth.userId);
+
+  revalidatePath("/dashboard/policies");
+  return policy;
+}
+
+export async function unarchivePolicy(policyId: string) {
+  const auth = await getAuthenticatedUser();
+  if (!auth) throw new Error("Unauthorized");
+
+  const existing = await _getPolicy(policyId);
+  if (!existing) throw new Error("Policy not found");
+  if (existing.userId.toString() !== auth.userId) throw new Error("Forbidden");
+
+  if (existing.status !== "archived") throw new Error("Policy is not archived");
+
+  const policy = await _unarchivePolicy(policyId, auth.userId);
 
   revalidatePath("/dashboard/policies");
   return policy;

@@ -24,6 +24,7 @@ import {
   activatePolicy,
   toggleAutoSign,
   archivePolicy,
+  unarchivePolicy,
 } from "@/app/actions/policies";
 
 interface Policy {
@@ -95,6 +96,21 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to archive");
+    } finally {
+      setActionInProgress(null);
+    }
+  }
+
+  async function handleUnarchive(policyId: string) {
+    setActionInProgress(policyId);
+    try {
+      await unarchivePolicy(policyId);
+      toast.success("Policy reactivated");
+      startTransition(() => {
+        router.refresh();
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to reactivate");
     } finally {
       setActionInProgress(null);
     }
@@ -220,7 +236,16 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
                           />
                         </TableCell>
                         <TableCell className="text-right">
-                          {!isArchived && (
+                          {isArchived ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isBusy}
+                              onClick={() => handleUnarchive(policy.id)}
+                            >
+                              {isActionTarget ? "..." : "Reactivate"}
+                            </Button>
+                          ) : (
                             <div className="flex items-center justify-end gap-2">
                               {policy.status === "draft" && (
                                 <Button
