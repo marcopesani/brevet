@@ -45,10 +45,12 @@ function resolveNetworkToChainId(network: string): number | undefined {
     return isChainSupported(chainId) ? chainId : undefined;
   }
 
-  // Fall back to matching against registry networkString or slug
+  // Fall back to matching against registry networkString, slug, or aliases
+  const lower = network.toLowerCase();
   for (const config of getAllChains()) {
     if (config.networkString === network) return config.chain.id;
-    if (config.slug === network.toLowerCase()) return config.chain.id;
+    if (config.slug === lower) return config.chain.id;
+    if (config.aliases.some((a) => a.toLowerCase() === lower)) return config.chain.id;
   }
   return undefined;
 }

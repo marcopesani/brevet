@@ -196,6 +196,25 @@ describe("upsertUser", () => {
     const wallets = await HotWallet.find({ userId: user1._id }).lean();
     expect(wallets).toHaveLength(0);
   });
+
+  it("backfills enabledChains for existing user with empty array", async () => {
+    const existing = await User.create({ walletAddress: "0xlegacy" });
+    expect(existing.enabledChains).toEqual([]);
+
+    const user = await upsertUser("0xlegacy");
+
+    expect(user.enabledChains.length).toBeGreaterThan(0);
+    const dbUser = await User.findById(user._id).lean();
+    expect(dbUser!.enabledChains.length).toBeGreaterThan(0);
+  });
+
+  it("does not overwrite existing enabledChains on login", async () => {
+    await User.create({ walletAddress: "0xhas-chains", enabledChains: [84532] });
+
+    const user = await upsertUser("0xhas-chains");
+
+    expect(user.enabledChains).toEqual([84532]);
+  });
 });
 
 describe("authOptions callbacks", () => {

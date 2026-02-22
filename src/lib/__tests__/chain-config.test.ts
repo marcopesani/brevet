@@ -249,6 +249,16 @@ describe("getNetworkIdentifiers", () => {
     expect(ids).toContain("eip155:8453");
     expect(ids).toContain("base");
   });
+
+  it("includes aliases for backward compat with V1 network names", () => {
+    const arbitrum = getChainById(42161)!;
+    const ids = getNetworkIdentifiers(arbitrum);
+    expect(ids).toContain("arbitrum-one");
+
+    const optimism = getChainById(10)!;
+    const optIds = getNetworkIdentifiers(optimism);
+    expect(optIds).toContain("op-mainnet");
+  });
 });
 
 describe("getDefaultChainConfig", () => {

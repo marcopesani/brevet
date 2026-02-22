@@ -92,6 +92,9 @@ export async function upsertUser(walletAddress: string) {
   if (!user) {
     const enabledChains = getDefaultEnabledChains();
     user = await User.create({ walletAddress, enabledChains });
+  } else if (!user.enabledChains || user.enabledChains.length === 0) {
+    user.enabledChains = getDefaultEnabledChains();
+    await user.save();
   }
 
   await ensureApiKey(user.id);

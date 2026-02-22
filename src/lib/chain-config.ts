@@ -340,7 +340,7 @@ export function parseTokenAmount(chainId: number, tokenAddress: string, humanRea
 // ── Existing helpers ───────────────────────────────────────────────
 
 export function getNetworkIdentifiers(config: ChainConfig): string[] {
-  return [config.networkString, config.slug];
+  return [config.networkString, config.slug, ...config.aliases];
 }
 
 export function isChainSupported(chainId: number): boolean {
