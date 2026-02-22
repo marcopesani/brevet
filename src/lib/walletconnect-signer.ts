@@ -52,7 +52,7 @@ export function createSigningRequest(
     throw new Error("Payment requirement has no amount");
   }
   const amountWei = BigInt(amountStr);
-  const nonce = `0x${crypto.randomBytes(32).toString("hex")}` as Hex;
+  const nonce = `0x${crypto.randomBytes(32).toString("hex")}` as Hex; // Constructed hex string
   const now = BigInt(Math.floor(Date.now() / 1_000));
   const timeoutSeconds = BigInt(requirement.maxTimeoutSeconds ?? 600);
 
@@ -62,9 +62,9 @@ export function createSigningRequest(
     primaryType: "TransferWithAuthorization",
     message: {
       from: userAddress,
-      to: requirement.payTo as Hex,
+      to: requirement.payTo as Hex, // x402 protocol guarantees hex address
       value: amountWei,
-      validAfter: now - 600n,
+      validAfter: now - BigInt(600),
       validBefore: now + timeoutSeconds,
       nonce,
     },

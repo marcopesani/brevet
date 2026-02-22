@@ -88,7 +88,7 @@ function buildTransferAuth(from: Address, to: Address, value: bigint) {
     from,
     to,
     value,
-    validAfter: now - 600n, // 10-minute lookback (matches production code)
+    validAfter: now - BigInt(600), // 10-minute lookback (matches production code)
     validBefore: now + BigInt(600), // 10 minutes
     nonce,
   };

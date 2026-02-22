@@ -308,7 +308,7 @@ export async function executePayment(
       amountRaw: getRequirementAmount(selectedRequirement) ?? "",
       asset: selectedRequirement.asset,
       chainId: selectedChainId,
-      maxTimeoutSeconds: (selectedRequirement as Record<string, unknown>).maxTimeoutSeconds as number | undefined,
+      maxTimeoutSeconds: selectedRequirement.maxTimeoutSeconds,
     };
   }
 
@@ -349,11 +349,12 @@ export async function executePayment(
       amountRaw: getRequirementAmount(selectedRequirement) ?? "",
       asset: selectedRequirement.asset,
       chainId: selectedChainId,
-      maxTimeoutSeconds: (selectedRequirement as Record<string, unknown>).maxTimeoutSeconds as number | undefined,
+      maxTimeoutSeconds: selectedRequirement.maxTimeoutSeconds,
     };
   }
 
   // Step 8: Create smart account signer and payment payload via SDK
+  // decryptPrivateKey returns a hex string; cast needed because return type is string
   const sessionKeyHex = decryptPrivateKey(smartAccount.sessionKeyEncrypted) as Hex;
   let signer: ClientEvmSigner;
   try {
@@ -372,7 +373,7 @@ export async function executePayment(
         : Math.floor(Date.now() / 1000 + SESSION_KEY_DEFAULT_EXPIRY_DAYS * 24 * 60 * 60);
       signer = await createSmartAccountSigner(
         sessionKeyHex,
-        smartAccount.smartAccountAddress as `0x${string}`,
+        smartAccount.smartAccountAddress as `0x${string}`, // Validated Ethereum address from DB
         selectedChainId,
         expiryTs,
       );
@@ -400,6 +401,7 @@ export async function executePayment(
   }
 
   // opt in SIVX support
+  // extensions is Record<string, unknown>; cast to SDK type at boundary
   const siwxExtension = paymentRequired.extensions?.['sign-in-with-x'] as SIWxExtension | undefined;
   let signInWithXHeader: string | undefined;
   if (siwxExtension) {

@@ -55,7 +55,7 @@ function generateNonce(): Hex {
   const hex = Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return `0x${hex}` as Hex;
+  return `0x${hex}` as Hex; // Constructed hex string
 }
 
 function useCountdown(expiresAt: string) {
@@ -169,10 +169,10 @@ export default function PendingPaymentCard({
 
       const maxTimeout = BigInt(requirement.maxTimeoutSeconds ?? 600);
       const authorization = {
-        from: walletAddress as Hex,
-        to: requirement.payTo as Hex,
+        from: walletAddress as Hex, // WalletConnect guarantees hex address
+        to: requirement.payTo as Hex, // x402 protocol guarantees hex address
         value: amountWei,
-        validAfter: now - 600n,
+        validAfter: now - BigInt(600),
         validBefore: now + maxTimeout,
         nonce,
       };

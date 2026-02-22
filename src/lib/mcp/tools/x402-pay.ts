@@ -44,7 +44,7 @@ export function registerX402Pay(server: McpServer, userId: string): void {
           try {
             chainId = resolveChainParam(chain);
           } catch (e) {
-            return textContent(`Error: ${(e as Error).message}`, true);
+            return textContent(`Error: ${e instanceof Error ? e.message : String(e)}`, true);
           }
         }
 
