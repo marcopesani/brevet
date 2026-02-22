@@ -9,6 +9,7 @@ import {
   activatePolicy,
   toggleAutoSign,
   archivePolicy,
+  unarchivePolicy,
   validateEndpointPattern,
 } from "../policies";
 
@@ -162,6 +163,30 @@ describe("archivePolicy", () => {
     // Verify original was not modified
     const original = await EndpointPolicy.findById(created._id).lean();
     expect(original!.status).toBe("active");
+  });
+});
+
+describe("unarchivePolicy", () => {
+  it("sets status to draft and clears archivedAt", async () => {
+    const userId = uid();
+    const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", status: "archived", archivedAt: new Date() });
+
+    const updated = await unarchivePolicy(created._id.toString(), userId);
+    expect(updated!.status).toBe("draft");
+    expect(updated!.archivedAt).toBeNull();
+  });
+
+  it("returns null when userId does not match (IDOR protection)", async () => {
+    const userId = uid();
+    const attackerId = uid();
+    const created = await EndpointPolicy.create({ userId: new Types.ObjectId(userId), endpointPattern: "https://a.com", status: "archived", archivedAt: new Date() });
+
+    const result = await unarchivePolicy(created._id.toString(), attackerId);
+    expect(result).toBeNull();
+
+    // Verify original was not modified
+    const original = await EndpointPolicy.findById(created._id).lean();
+    expect(original!.status).toBe("archived");
   });
 });
 
