@@ -8,9 +8,10 @@ vi.mock("@/lib/rate-limit", () => ({
   getClientIp: vi.fn().mockReturnValue("127.0.0.1"),
 }));
 
-// Mock getUserByApiKey to authenticate test requests
+// Mock data layer functions to authenticate test requests
 vi.mock("@/lib/data/users", () => ({
   getUserByApiKey: vi.fn().mockResolvedValue({ userId: TEST_USER_ID }),
+  recordMcpCall: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock hot-wallet to avoid real RPC calls

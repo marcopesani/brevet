@@ -3,6 +3,14 @@ import { Types } from "mongoose";
 import { User } from "@/lib/models/user";
 import { connectDB } from "@/lib/db";
 
+export interface OnboardingState {
+  currentStep: number;
+  completedAt: string | null;
+  dismissedAt: string | null;
+  skippedSteps: number[];
+  firstMcpCallAt: string | null;
+}
+
 const API_KEY_PREFIX = "brv_";
 
 /** Generate a raw API key: brv_ + 32 random hex chars (128 bits of entropy). */
@@ -127,4 +135,145 @@ export async function getApiKeyPrefix(
   }
 
   return user.apiKeyPrefix ?? null;
+}
+
+/**
+ * Get the current onboarding state for a user.
+ * Returns ISO strings for dates (not Date objects) so the result
+ * is safe to pass across the RSC Server→Client boundary.
+ */
+export async function getOnboardingState(
+  userId: string,
+): Promise<OnboardingState> {
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
+
+  const user = await User.findById(userObjectId)
+    .select(
+      "onboardingStep onboardingCompletedAt onboardingSkippedSteps onboardingDismissedAt firstMcpCallAt",
+    )
+    .lean();
+
+  if (!user) {
+    throw new Error(`User not found: ${userId}`);
+  }
+
+  return {
+    currentStep: user.onboardingStep ?? 0,
+    completedAt: user.onboardingCompletedAt
+      ? user.onboardingCompletedAt.toISOString()
+      : null,
+    dismissedAt: user.onboardingDismissedAt
+      ? user.onboardingDismissedAt.toISOString()
+      : null,
+    skippedSteps: user.onboardingSkippedSteps ?? [],
+    firstMcpCallAt: user.firstMcpCallAt
+      ? user.firstMcpCallAt.toISOString()
+      : null,
+  };
+}
+
+/**
+ * Advance onboarding to a specific step. If `skipped` is true,
+ * the step number is added to `onboardingSkippedSteps`.
+ * When step reaches 3, `onboardingCompletedAt` is set automatically.
+ */
+export async function updateOnboardingStep(
+  userId: string,
+  step: number,
+  skipped?: boolean,
+): Promise<void> {
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
+
+  const update: Record<string, unknown> = {
+    $set: { onboardingStep: step },
+  };
+
+  if (skipped) {
+    update.$addToSet = { onboardingSkippedSteps: step };
+  }
+
+  if (step >= 3) {
+    (update.$set as Record<string, unknown>).onboardingCompletedAt = new Date();
+  }
+
+  const result = await User.updateOne({ _id: userObjectId }, update);
+
+  if (result.matchedCount === 0) {
+    throw new Error(`User not found: ${userId}`);
+  }
+}
+
+/**
+ * Mark onboarding as fully complete.
+ */
+export async function completeOnboarding(userId: string): Promise<void> {
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
+
+  const result = await User.updateOne(
+    { _id: userObjectId },
+    { $set: { onboardingStep: 3, onboardingCompletedAt: new Date() } },
+  );
+
+  if (result.matchedCount === 0) {
+    throw new Error(`User not found: ${userId}`);
+  }
+}
+
+/**
+ * Dismiss onboarding — user exits wizard early.
+ * Sets `onboardingDismissedAt` which prevents /dashboard redirect.
+ */
+export async function dismissOnboarding(userId: string): Promise<void> {
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
+
+  const result = await User.updateOne(
+    { _id: userObjectId },
+    { $set: { onboardingDismissedAt: new Date() } },
+  );
+
+  if (result.matchedCount === 0) {
+    throw new Error(`User not found: ${userId}`);
+  }
+}
+
+/**
+ * Clear dismissal — user re-enters wizard via banner "Continue Setup" link.
+ * Resets `onboardingDismissedAt` to null.
+ */
+export async function resumeOnboarding(userId: string): Promise<void> {
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
+
+  const result = await User.updateOne(
+    { _id: userObjectId },
+    { $set: { onboardingDismissedAt: null } },
+  );
+
+  if (result.matchedCount === 0) {
+    throw new Error(`User not found: ${userId}`);
+  }
+}
+
+/**
+ * Record an MCP call for a user. Sets `firstMcpCallAt` only if null
+ * (first call ever), and always updates `lastMcpCallAt`.
+ */
+export async function recordMcpCall(userId: string): Promise<void> {
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
+  const now = new Date();
+
+  await User.updateOne(
+    { _id: userObjectId, firstMcpCallAt: null },
+    { $set: { firstMcpCallAt: now } },
+  );
+
+  await User.updateOne(
+    { _id: userObjectId },
+    { $set: { lastMcpCallAt: now } },
+  );
 }

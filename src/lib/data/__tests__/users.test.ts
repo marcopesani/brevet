@@ -7,6 +7,12 @@ import {
   getUserByApiKey,
   rotateApiKey,
   getApiKeyPrefix,
+  getOnboardingState,
+  updateOnboardingStep,
+  completeOnboarding,
+  dismissOnboarding,
+  resumeOnboarding,
+  recordMcpCall,
 } from "../users";
 
 /** Generate a valid ObjectId string that does not exist in the DB. */
@@ -145,5 +151,194 @@ describe("getApiKeyPrefix", () => {
   it("returns null for non-existent user", async () => {
     const prefix = await getApiKeyPrefix(nonExistentId());
     expect(prefix).toBeNull();
+  });
+});
+
+describe("getOnboardingState", () => {
+  it("returns default state for a new user", async () => {
+    const user = await User.create({ walletAddress: "0xOnboard1" });
+
+    const state = await getOnboardingState(user._id.toString());
+
+    expect(state.currentStep).toBe(0);
+    expect(state.completedAt).toBeNull();
+    expect(state.dismissedAt).toBeNull();
+    expect(state.skippedSteps).toEqual([]);
+    expect(state.firstMcpCallAt).toBeNull();
+  });
+
+  it("returns ISO strings for date fields, not Date objects", async () => {
+    const user = await User.create({
+      walletAddress: "0xOnboard2",
+      onboardingStep: 3,
+      onboardingCompletedAt: new Date("2026-01-15T12:00:00Z"),
+      firstMcpCallAt: new Date("2026-01-14T10:00:00Z"),
+    });
+
+    const state = await getOnboardingState(user._id.toString());
+
+    expect(typeof state.completedAt).toBe("string");
+    expect(state.completedAt).toBe("2026-01-15T12:00:00.000Z");
+    expect(typeof state.firstMcpCallAt).toBe("string");
+    expect(state.firstMcpCallAt).toBe("2026-01-14T10:00:00.000Z");
+  });
+
+  it("throws for non-existent user", async () => {
+    await expect(getOnboardingState(nonExistentId())).rejects.toThrow(
+      "User not found",
+    );
+  });
+});
+
+describe("updateOnboardingStep", () => {
+  it("advances onboarding step", async () => {
+    const user = await User.create({ walletAddress: "0xStep1" });
+
+    await updateOnboardingStep(user._id.toString(), 1);
+
+    const updated = await User.findById(user._id).lean();
+    expect(updated!.onboardingStep).toBe(1);
+  });
+
+  it("marks step as skipped when skipped=true", async () => {
+    const user = await User.create({ walletAddress: "0xSkip1" });
+
+    await updateOnboardingStep(user._id.toString(), 2, true);
+
+    const updated = await User.findById(user._id).lean();
+    expect(updated!.onboardingStep).toBe(2);
+    expect(updated!.onboardingSkippedSteps).toContain(2);
+  });
+
+  it("does not duplicate skipped steps on repeated calls", async () => {
+    const user = await User.create({ walletAddress: "0xSkipDup" });
+
+    await updateOnboardingStep(user._id.toString(), 2, true);
+    await updateOnboardingStep(user._id.toString(), 2, true);
+
+    const updated = await User.findById(user._id).lean();
+    expect(
+      updated!.onboardingSkippedSteps!.filter((s: number) => s === 2),
+    ).toHaveLength(1);
+  });
+
+  it("sets onboardingCompletedAt when step reaches 3", async () => {
+    const user = await User.create({ walletAddress: "0xComplete1" });
+
+    await updateOnboardingStep(user._id.toString(), 3);
+
+    const updated = await User.findById(user._id).lean();
+    expect(updated!.onboardingStep).toBe(3);
+    expect(updated!.onboardingCompletedAt).toBeInstanceOf(Date);
+  });
+
+  it("throws for non-existent user", async () => {
+    await expect(
+      updateOnboardingStep(nonExistentId(), 1),
+    ).rejects.toThrow("User not found");
+  });
+});
+
+describe("completeOnboarding", () => {
+  it("sets step to 3 and onboardingCompletedAt", async () => {
+    const user = await User.create({
+      walletAddress: "0xCompAll",
+      onboardingStep: 2,
+    });
+
+    await completeOnboarding(user._id.toString());
+
+    const updated = await User.findById(user._id).lean();
+    expect(updated!.onboardingStep).toBe(3);
+    expect(updated!.onboardingCompletedAt).toBeInstanceOf(Date);
+  });
+
+  it("throws for non-existent user", async () => {
+    await expect(completeOnboarding(nonExistentId())).rejects.toThrow(
+      "User not found",
+    );
+  });
+});
+
+describe("dismissOnboarding", () => {
+  it("sets onboardingDismissedAt", async () => {
+    const user = await User.create({ walletAddress: "0xDismiss1" });
+
+    await dismissOnboarding(user._id.toString());
+
+    const updated = await User.findById(user._id).lean();
+    expect(updated!.onboardingDismissedAt).toBeInstanceOf(Date);
+  });
+
+  it("throws for non-existent user", async () => {
+    await expect(dismissOnboarding(nonExistentId())).rejects.toThrow(
+      "User not found",
+    );
+  });
+});
+
+describe("resumeOnboarding", () => {
+  it("clears onboardingDismissedAt", async () => {
+    const user = await User.create({
+      walletAddress: "0xResume1",
+      onboardingDismissedAt: new Date(),
+    });
+
+    await resumeOnboarding(user._id.toString());
+
+    const updated = await User.findById(user._id).lean();
+    expect(updated!.onboardingDismissedAt).toBeNull();
+  });
+
+  it("throws for non-existent user", async () => {
+    await expect(resumeOnboarding(nonExistentId())).rejects.toThrow(
+      "User not found",
+    );
+  });
+});
+
+describe("recordMcpCall", () => {
+  it("sets firstMcpCallAt on the first call", async () => {
+    const user = await User.create({ walletAddress: "0xMcp1" });
+
+    await recordMcpCall(user._id.toString());
+
+    const updated = await User.findById(user._id).lean();
+    expect(updated!.firstMcpCallAt).toBeInstanceOf(Date);
+    expect(updated!.lastMcpCallAt).toBeInstanceOf(Date);
+  });
+
+  it("does not overwrite firstMcpCallAt on subsequent calls", async () => {
+    const firstCallTime = new Date("2026-01-10T12:00:00Z");
+    const user = await User.create({
+      walletAddress: "0xMcp2",
+      firstMcpCallAt: firstCallTime,
+    });
+
+    await recordMcpCall(user._id.toString());
+
+    const updated = await User.findById(user._id).lean();
+    expect(updated!.firstMcpCallAt!.toISOString()).toBe(
+      firstCallTime.toISOString(),
+    );
+    expect(updated!.lastMcpCallAt).toBeInstanceOf(Date);
+  });
+
+  it("updates lastMcpCallAt on every call", async () => {
+    const user = await User.create({ walletAddress: "0xMcp3" });
+
+    await recordMcpCall(user._id.toString());
+    const first = await User.findById(user._id).lean();
+    const firstLastCall = first!.lastMcpCallAt!;
+
+    // Small delay to ensure different timestamp
+    await new Promise((r) => setTimeout(r, 10));
+
+    await recordMcpCall(user._id.toString());
+    const second = await User.findById(user._id).lean();
+
+    expect(second!.lastMcpCallAt!.getTime()).toBeGreaterThanOrEqual(
+      firstLastCall.getTime(),
+    );
   });
 });

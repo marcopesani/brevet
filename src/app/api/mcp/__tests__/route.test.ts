@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { _resetStoreForTesting } from "@/lib/rate-limit";
 
-// Mock getUserByApiKey
+// Mock data layer functions
 vi.mock("@/lib/data/users", () => ({
   getUserByApiKey: vi.fn(),
+  recordMcpCall: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock MCP server + transport so we don't need a real MCP stack
@@ -22,9 +23,10 @@ vi.mock("@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js", () => {
 });
 
 import { POST } from "../[humanHash]/route";
-import { getUserByApiKey } from "@/lib/data/users";
+import { getUserByApiKey, recordMcpCall } from "@/lib/data/users";
 
 const mockGetUserByApiKey = vi.mocked(getUserByApiKey);
+const mockRecordMcpCall = vi.mocked(recordMcpCall);
 
 const VALID_KEY = "brv_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6";
 const VALID_USER_ID = "507f1f77bcf86cd799439011";
@@ -119,5 +121,43 @@ describe("MCP route API key authentication", () => {
     await POST(makeRequest({ bearerToken: VALID_KEY }));
 
     expect(mockCreateMcpServer).toHaveBeenCalledWith(resolvedUserId);
+  });
+});
+
+describe("MCP route usage tracking", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    _resetStoreForTesting();
+  });
+
+  it("calls recordMcpCall after successful API key validation", async () => {
+    mockGetUserByApiKey.mockResolvedValue({ userId: VALID_USER_ID });
+
+    await POST(makeRequest({ bearerToken: VALID_KEY }));
+
+    expect(mockRecordMcpCall).toHaveBeenCalledWith(VALID_USER_ID);
+  });
+
+  it("does not call recordMcpCall when API key is missing", async () => {
+    await POST(makeRequest({}));
+
+    expect(mockRecordMcpCall).not.toHaveBeenCalled();
+  });
+
+  it("does not call recordMcpCall when API key is invalid", async () => {
+    mockGetUserByApiKey.mockResolvedValue(null);
+
+    await POST(makeRequest({ bearerToken: "brv_invalid" }));
+
+    expect(mockRecordMcpCall).not.toHaveBeenCalled();
+  });
+
+  it("does not block the request if recordMcpCall fails", async () => {
+    mockGetUserByApiKey.mockResolvedValue({ userId: VALID_USER_ID });
+    mockRecordMcpCall.mockRejectedValue(new Error("DB error"));
+
+    const response = await POST(makeRequest({ bearerToken: VALID_KEY }));
+
+    expect(response.status).toBe(200);
   });
 });

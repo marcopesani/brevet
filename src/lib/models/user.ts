@@ -7,6 +7,12 @@ export interface IUser {
   humanHash: string | null;
   apiKeyHash: string | null;
   apiKeyPrefix: string | null;
+  onboardingStep: number;
+  onboardingCompletedAt: Date | null;
+  onboardingSkippedSteps: number[];
+  onboardingDismissedAt: Date | null;
+  firstMcpCallAt: Date | null;
+  lastMcpCallAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,6 +26,12 @@ const userSchema = new Schema<IUserDocument>(
     humanHash: { type: String },
     apiKeyHash: { type: String, default: null },
     apiKeyPrefix: { type: String, default: null },
+    onboardingStep: { type: Number, default: 0, min: 0, max: 3 },
+    onboardingCompletedAt: { type: Date, default: null },
+    onboardingSkippedSteps: { type: [Number], default: [] },
+    onboardingDismissedAt: { type: Date, default: null },
+    firstMcpCallAt: { type: Date, default: null },
+    lastMcpCallAt: { type: Date, default: null },
   },
   {
     timestamps: true,

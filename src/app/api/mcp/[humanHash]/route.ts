@@ -1,7 +1,7 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { createMcpServer } from "@/lib/mcp/server";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
-import { getUserByApiKey } from "@/lib/data/users";
+import { getUserByApiKey, recordMcpCall } from "@/lib/data/users";
 
 /**
  * Extract API key from the request.
@@ -55,6 +55,10 @@ async function handleMcpRequest(
   }
 
   const { userId } = result;
+
+  // Track MCP usage (firstMcpCallAt once, lastMcpCallAt every request)
+  // Fire-and-forget: don't block the request on this update
+  recordMcpCall(userId).catch(() => {});
 
   // API key rate limiting (after validation, keyed by userId)
   const keyLimited = rateLimit(`apikey:${userId}`, 60);
