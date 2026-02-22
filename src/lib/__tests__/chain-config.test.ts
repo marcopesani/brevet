@@ -8,6 +8,7 @@ import {
   isTestnetChain,
   isMainnetChain,
   resolveChain,
+  resolveValidChainId,
   getUsdcConfig,
   getTokenConfig,
   formatTokenAmount,
@@ -276,5 +277,27 @@ describe("isChainSupported", () => {
 
   it("returns false for unsupported chains", () => {
     expect(isChainSupported(999999)).toBe(false);
+  });
+});
+
+describe("resolveValidChainId", () => {
+  it("returns preferredChainId when enabledChainIds is undefined", () => {
+    expect(resolveValidChainId(8453, undefined)).toBe(8453);
+  });
+
+  it("returns preferredChainId when enabledChainIds is empty", () => {
+    expect(resolveValidChainId(8453, [])).toBe(8453);
+  });
+
+  it("returns preferredChainId when it is in enabledChainIds", () => {
+    expect(resolveValidChainId(8453, [8453, 42161])).toBe(8453);
+  });
+
+  it("returns first enabled chain when preferredChainId is not in enabledChainIds", () => {
+    expect(resolveValidChainId(8453, [42161, 84532])).toBe(42161);
+  });
+
+  it("falls back to testnet when mainnet preferred but only testnets enabled", () => {
+    expect(resolveValidChainId(8453, [84532, 11155111])).toBe(84532);
   });
 });

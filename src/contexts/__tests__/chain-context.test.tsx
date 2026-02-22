@@ -285,6 +285,33 @@ describe("ChainContext", () => {
 
       expect(result.current.activeChain.chain.id).toBe(8453);
     });
+
+    it("initializes to first enabled testnet when initialChainId is mainnet and only testnets enabled", () => {
+      const testnetIds = [84532, 11155111, 421614, 11155420, 80002];
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains(testnetIds, 8453),
+      });
+
+      // filteredChains follows allChains order (numeric key sort), so 80002 comes first
+      expect(testnetIds).toContain(result.current.activeChain.chain.id);
+      expect(result.current.activeChain.isTestnet).toBe(true);
+    });
+
+    it("initializes to first enabled chain when initialChainId is not in enabledChains", () => {
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([42161], 8453),
+      });
+
+      expect(result.current.activeChain.chain.id).toBe(42161);
+    });
+
+    it("uses initialChainId when it is in enabledChains", () => {
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([84532, 42161], 84532),
+      });
+
+      expect(result.current.activeChain.chain.id).toBe(84532);
+    });
   });
 
   describe("useChain outside provider", () => {

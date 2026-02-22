@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { User } from "@/lib/models/user";
 import { CHAIN_CONFIGS } from "@/lib/chain-config";
 import { Types } from "mongoose";
@@ -6,14 +7,17 @@ import { connectDB } from "@/lib/db";
 /**
  * Get the list of enabled chain IDs for a user.
  * Returns an empty array if the user is not found.
+ * Wrapped with React cache() to deduplicate within a single server request.
  */
-export async function getUserEnabledChains(userId: string): Promise<number[]> {
-  await connectDB();
-  const user = await User.findById(new Types.ObjectId(userId))
-    .select("enabledChains")
-    .lean();
-  return user?.enabledChains ?? [];
-}
+export const getUserEnabledChains = cache(
+  async (userId: string): Promise<number[]> => {
+    await connectDB();
+    const user = await User.findById(new Types.ObjectId(userId))
+      .select("enabledChains")
+      .lean();
+    return user?.enabledChains ?? [];
+  },
+);
 
 /**
  * Set the enabled chain IDs for a user.

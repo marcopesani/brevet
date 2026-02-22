@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { getInitialChainIdFromCookie } from "@/lib/chain-cookie";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { getUserEnabledChains } from "@/lib/data/user";
+import { resolveValidChainId } from "@/lib/chain-config";
 import Providers from "./providers";
 import "./globals.css";
 
@@ -29,10 +30,11 @@ export default async function RootLayout({
 }>) {
   const headersObj = await headers();
   const cookies = headersObj.get("cookie");
-  const initialChainId = getInitialChainIdFromCookie(cookies);
+  const rawInitialChainId = getInitialChainIdFromCookie(cookies);
 
   const user = await getAuthenticatedUser();
   const enabledChains = user ? await getUserEnabledChains(user.userId) : undefined;
+  const initialChainId = resolveValidChainId(rawInitialChainId, enabledChains);
 
   return (
     <html lang="en">

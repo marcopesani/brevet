@@ -365,5 +365,18 @@ export function getEnvironmentChains(): ChainConfig[] {
   return SUPPORTED_CHAINS.filter((c) => c.isTestnet === defaultConfig.isTestnet);
 }
 
+/**
+ * Validate a preferred chain ID against the user's enabled chains.
+ * Falls back to the first enabled chain when preferred is not in the list.
+ */
+export function resolveValidChainId(
+  preferredChainId: number,
+  enabledChainIds?: number[],
+): number {
+  if (!enabledChainIds || enabledChainIds.length === 0) return preferredChainId;
+  if (enabledChainIds.includes(preferredChainId)) return preferredChainId;
+  return enabledChainIds[0];
+}
+
 // Backward-compatible alias — deprecated, use getDefaultChainConfig()
 export const chainConfig: ChainConfig = getDefaultChainConfig();

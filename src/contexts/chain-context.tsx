@@ -49,9 +49,16 @@ export function ChainProvider({
       ? allChains.filter((c) => enabledChains.includes(c.chain.id))
       : allChains;
 
-  const [activeChainId, setActiveChainIdState] = useState<number>(
-    () => initialChainId ?? getDefaultChainConfig().chain.id,
-  );
+  const [activeChainId, setActiveChainIdState] = useState<number>(() => {
+    const preferred = initialChainId ?? getDefaultChainConfig().chain.id;
+    if (
+      filteredChains.length > 0 &&
+      !filteredChains.some((c) => c.chain.id === preferred)
+    ) {
+      return filteredChains[0].chain.id;
+    }
+    return preferred;
+  });
 
   const { chainId: walletChainId, isConnected } = useAccount();
   const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain();
