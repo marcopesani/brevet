@@ -1,5 +1,10 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { getAuthenticatedUser } from "@/lib/auth";
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+};
 import { getInitialChainIdFromCookie } from "@/lib/chain-cookie";
 import { getAnalytics } from "@/lib/data/analytics";
 import { getSmartAccountBalance } from "@/lib/data/smart-account";

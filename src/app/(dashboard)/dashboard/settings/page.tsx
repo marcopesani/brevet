@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { getApiKeyPrefix } from "@/lib/data/users";
+
+export const metadata: Metadata = {
+  title: "Settings",
+};
 import { McpServerUrl } from "@/components/mcp-server-url";
 import { ApiKeyCard } from "@/components/api-key-card";
 import { MCP_TOOLS } from "@/lib/mcp/tool-registry";

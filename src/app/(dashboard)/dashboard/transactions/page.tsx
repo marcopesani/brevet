@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth";
+
+export const metadata: Metadata = {
+  title: "Transactions",
+};
 import { getInitialChainIdFromCookie } from "@/lib/chain-cookie";
 import { getTransactions } from "@/lib/data/transactions";
 import { TransactionTable } from "@/components/transaction-table";

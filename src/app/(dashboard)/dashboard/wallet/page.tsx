@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { getAuthenticatedUser } from "@/lib/auth";
+
+export const metadata: Metadata = {
+  title: "Wallet",
+};
 import WalletPageContent from "./wallet-page-content";
 import WalletLoading from "./loading";
 

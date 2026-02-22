@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
+
+export const metadata: Metadata = {
+  title: "Policies",
+};
 import { getPolicies } from "@/lib/data/policies";
 import { getInitialChainIdFromCookie } from "@/lib/chain-cookie";
 import PoliciesContent from "./policies-content";
