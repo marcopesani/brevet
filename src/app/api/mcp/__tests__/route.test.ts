@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { _resetStoreForTesting } from "@/lib/rate-limit";
 
+// Mock next/server after() — it requires a Next.js request scope unavailable in tests
+vi.mock("next/server", () => ({
+  after: vi.fn(),
+}));
+
 // Mock getUserByApiKey
 vi.mock("@/lib/data/users", () => ({
   getUserByApiKey: vi.fn(),

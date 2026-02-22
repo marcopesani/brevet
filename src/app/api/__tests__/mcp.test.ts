@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import { TEST_USER_HUMAN_HASH, TEST_USER_ID } from "@/test/helpers/fixtures";
 
+// Mock next/server after() — it requires a Next.js request scope unavailable in tests
+vi.mock("next/server", () => ({
+  after: vi.fn(),
+}));
+
 // Mock rate-limit to avoid interference
 vi.mock("@/lib/rate-limit", () => ({
   rateLimit: vi.fn().mockReturnValue(null),
