@@ -11,7 +11,8 @@ import {
 import WalletContent from "./wallet-content";
 
 export default async function WalletPageContent() {
-  const user = (await getAuthenticatedUser())!;
+  const user = await getAuthenticatedUser();
+  if (!user) return null;
 
   const headersList = await headers();
   const cookieHeader = headersList.get("cookie");

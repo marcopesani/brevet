@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { getInitialChainIdFromCookie } from "@/lib/chain-cookie";
@@ -13,8 +14,8 @@ import { SpendingChart } from "@/components/spending-chart";
 import { RecentTransactions } from "@/components/recent-transactions";
 
 export default async function DashboardPage() {
-  // Layout already redirects unauthenticated users — safe to assert non-null
-  const user = (await getAuthenticatedUser())!;
+  const user = await getAuthenticatedUser();
+  if (!user) redirect("/login");
 
   const headersList = await headers();
   const cookieHeader = headersList.get("cookie");
