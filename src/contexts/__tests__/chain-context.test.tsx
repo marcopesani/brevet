@@ -50,6 +50,16 @@ function wrapperWithInitialChain(initialChainId: number) {
   };
 }
 
+function wrapperWithEnabledChains(enabledChains: number[], initialChainId?: number) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <ChainProvider enabledChains={enabledChains} initialChainId={initialChainId}>
+        {children}
+      </ChainProvider>
+    );
+  };
+}
+
 // ── Setup ───────────────────────────────────────────────────────────
 beforeEach(() => {
   vi.clearAllMocks();
@@ -198,6 +208,39 @@ describe("ChainContext", () => {
 
       expect(result.current.activeChain.chain.id).not.toBe(999999);
     });
+
+    it("does not sync to wallet chain outside user's enabled chains", () => {
+      mockState.isConnected = true;
+      mockState.walletChainId = 1; // Ethereum mainnet — supported but not enabled
+
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([84532, 42161], 84532),
+      });
+
+      expect(result.current.activeChain.chain.id).toBe(84532);
+    });
+
+    it("prevents infinite re-render when wallet is on disabled chain (regression test)", () => {
+      // Regression: wallet on chain 1 (Ethereum), only Base Sepolia enabled
+      // Should stay on initialChainId=84532 without infinite re-render loop
+      mockState.isConnected = true;
+      mockState.walletChainId = 1; // Ethereum mainnet — globally supported but not enabled
+
+      const { result, rerender } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([84532], 84532),
+      });
+
+      // Should remain on the enabled chain, not sync to wallet's disabled chain
+      expect(result.current.activeChain.chain.id).toBe(84532);
+
+      // Rerender multiple times to verify no infinite loop
+      for (let i = 0; i < 5; i++) {
+        rerender();
+      }
+
+      // Should still be on the enabled chain
+      expect(result.current.activeChain.chain.id).toBe(84532);
+    });
   });
 
   describe("isSwitchingChain", () => {
@@ -232,6 +275,75 @@ describe("ChainContext", () => {
 
       expect(result.current.activeChain.chain.id).toBe(initialChainId);
       expect(mockSwitchChainAsync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("enabledChains filtering", () => {
+    it("filters supportedChains to only enabled chains", () => {
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([8453, 42161]),
+      });
+
+      const chainIds = result.current.supportedChains.map((c) => c.chain.id);
+      expect(chainIds).toEqual([8453, 42161]);
+    });
+
+    it("shows all chains when enabledChains is not provided", () => {
+      const { result } = renderHook(() => useChain(), { wrapper });
+
+      expect(result.current.supportedChains.length).toBeGreaterThan(2);
+    });
+
+    it("shows all chains when enabledChains is empty", () => {
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([]),
+      });
+
+      expect(result.current.supportedChains.length).toBeGreaterThan(2);
+    });
+
+    it("auto-switches to first enabled chain when active chain is not enabled", () => {
+      // Default chain is 8453 (Base), but we only enable Arbitrum
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([42161]),
+      });
+
+      expect(result.current.activeChain.chain.id).toBe(42161);
+    });
+
+    it("keeps active chain if it is in the enabled set", () => {
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([8453, 42161], 8453),
+      });
+
+      expect(result.current.activeChain.chain.id).toBe(8453);
+    });
+
+    it("initializes to first enabled testnet when initialChainId is mainnet and only testnets enabled", () => {
+      const testnetIds = [84532, 11155111, 421614, 11155420, 80002];
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains(testnetIds, 8453),
+      });
+
+      // filteredChains follows allChains order (numeric key sort), so 80002 comes first
+      expect(testnetIds).toContain(result.current.activeChain.chain.id);
+      expect(result.current.activeChain.isTestnet).toBe(true);
+    });
+
+    it("initializes to first enabled chain when initialChainId is not in enabledChains", () => {
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([42161], 8453),
+      });
+
+      expect(result.current.activeChain.chain.id).toBe(42161);
+    });
+
+    it("uses initialChainId when it is in enabledChains", () => {
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([84532, 42161], 84532),
+      });
+
+      expect(result.current.activeChain.chain.id).toBe(84532);
     });
   });
 

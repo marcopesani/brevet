@@ -3,7 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { executePayment } from "@/lib/x402/payment";
 import { createPendingPayment } from "@/lib/data/payments";
 import { formatAmountForDisplay } from "@/lib/x402/display";
-import { resolveChainParam, textContent, jsonContent, toolError } from "../shared";
+import { resolveChainParam, validateChainEnabled, textContent, jsonContent, toolError } from "../shared";
 
 export function registerX402Pay(server: McpServer, userId: string): void {
   server.registerTool(
@@ -43,6 +43,7 @@ export function registerX402Pay(server: McpServer, userId: string): void {
         if (chain) {
           try {
             chainId = resolveChainParam(chain);
+            await validateChainEnabled(userId, chainId);
           } catch (e) {
             return textContent(`Error: ${(e as Error).message}`, true);
           }

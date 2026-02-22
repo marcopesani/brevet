@@ -4,8 +4,8 @@ import {
   decryptPrivateKey,
   createHotWallet,
   withdrawFromHotWallet,
-  USDC_ADDRESS,
 } from "../hot-wallet";
+import { getDefaultChainConfig } from "../chain-config";
 import {
   TEST_PRIVATE_KEY,
 } from "../../test/helpers/crypto";
@@ -218,7 +218,7 @@ describe("hot-wallet", () => {
       // Verify writeContract was called with correct args
       expect(mockWriteContract).toHaveBeenCalledOnce();
       const callArgs = mockWriteContract.mock.calls[0][0];
-      expect(callArgs.address).toBe(USDC_ADDRESS);
+      expect(callArgs.address).toBe(getDefaultChainConfig().usdcAddress);
       expect(callArgs.functionName).toBe("transfer");
       expect(callArgs.args[0]).toBe(toAddress);
 

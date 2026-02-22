@@ -10,13 +10,8 @@ import { connectDB } from "@/lib/db";
 import { getUsdcBalance, decryptPrivateKey } from "@/lib/hot-wallet";
 import { computeSmartAccountAddress, createSessionKey } from "@/lib/smart-account";
 import { ENTRY_POINT, KERNEL_VERSION } from "@/lib/smart-account-constants";
-import { getChainConfig } from "@/lib/chain-config";
+import { getChainById, getDefaultChainConfig, getUsdcConfig } from "@/lib/chain-config";
 import { createTransaction } from "@/lib/data/transactions";
-
-const DEFAULT_CHAIN_ID = parseInt(
-  process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
-  10,
-);
 
 /** Serialize a lean SmartAccount doc for the Server→Client boundary. */
 function serialize<T extends { _id: Types.ObjectId; userId: Types.ObjectId; createdAt?: Date; updatedAt?: Date; sessionKeyExpiry?: Date }>(
@@ -82,7 +77,7 @@ export async function getAllSmartAccounts(userId: string) {
  */
 export async function getSmartAccountBalance(userId: string, chainId?: number) {
   await connectDB();
-  const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
+  const resolvedChainId = chainId ?? getDefaultChainConfig().chain.id;
   const doc = await SmartAccount.findOne({
     userId: new Types.ObjectId(userId),
     chainId: resolvedChainId,
@@ -255,7 +250,6 @@ export async function updateSessionKeyStatus(
 const USDC_TRANSFER_ABI = parseAbi([
   "function transfer(address to, uint256 amount) external returns (bool)",
 ]);
-const USDC_DECIMALS = 6;
 
 /**
  * Withdraw USDC from the user's smart account to a destination address.
@@ -274,11 +268,13 @@ export async function withdrawFromSmartAccount(
     throw new Error("Amount must be greater than 0");
   }
 
-  const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
-  const config = getChainConfig(resolvedChainId);
+  const resolvedChainId = chainId ?? getDefaultChainConfig().chain.id;
+  const config = getChainById(resolvedChainId);
   if (!config) {
     throw new Error(`Unsupported chain: ${resolvedChainId}`);
   }
+  const usdcToken = getUsdcConfig(resolvedChainId);
+  const decimals = usdcToken?.decimals ?? 6;
 
   await connectDB();
 
@@ -369,7 +365,7 @@ export async function withdrawFromSmartAccount(
   const calldata = encodeFunctionData({
     abi: USDC_TRANSFER_ABI,
     functionName: "transfer",
-    args: [toAddress as Address, parseUnits(String(amount), USDC_DECIMALS)],
+    args: [toAddress as Address, parseUnits(String(amount), decimals)],
   });
 
   // Submit UserOp

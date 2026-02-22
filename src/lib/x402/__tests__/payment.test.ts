@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resetTestDb, seedTestUser } from "../../../test/helpers/db";
 import { executePayment, sanitizeHeaders } from "../payment";
 import { Transaction } from "@/lib/models/transaction";
+import { User } from "@/lib/models/user";
 import { SmartAccount } from "../../models/smart-account";
 import { EndpointPolicy } from "../../models/endpoint-policy";
 import { createTestSmartAccount, createTestEndpointPolicy } from "../../../test/helpers/fixtures";
@@ -450,6 +451,11 @@ describe("executePayment", () => {
     it("selects chain with highest balance when multiple networks offered", async () => {
       const { getUsdcBalance } = await import("@/lib/hot-wallet");
 
+      // Enable both chains for the user
+      await User.findByIdAndUpdate(new mongoose.Types.ObjectId(userId), {
+        $set: { enabledChains: [84532, 421614] },
+      });
+
       // Create smart account + policy on Arbitrum Sepolia (421614)
       const arbSmartAccountData = createTestSmartAccount(userId, { chainId: 421614 });
       await SmartAccount.create(arbSmartAccountData);
@@ -494,6 +500,11 @@ describe("executePayment", () => {
       // Delete default smart account
       await SmartAccount.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
 
+      // Enable Arbitrum Sepolia for the user
+      await User.findByIdAndUpdate(new mongoose.Types.ObjectId(userId), {
+        $set: { enabledChains: [421614] },
+      });
+
       // Endpoint only accepts Arbitrum Sepolia (421614) — user has no smart account there
       const arbRequirement = {
         ...DEFAULT_REQUIREMENT,
@@ -534,6 +545,11 @@ describe("executePayment", () => {
     });
 
     it("rejects when explicit chainId is not accepted by endpoint", async () => {
+      // Enable Arbitrum mainnet so the "not accepted" check is reached (not "not enabled")
+      await User.findByIdAndUpdate(new mongoose.Types.ObjectId(userId), {
+        $set: { enabledChains: [84532, 42161] },
+      });
+
       mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
 
       const result = await executePayment(
@@ -580,6 +596,11 @@ describe("executePayment", () => {
 
     it("only considers chains with active session keys for auto-sign selection", async () => {
       const { getUsdcBalance } = await import("@/lib/hot-wallet");
+
+      // Enable both chains for the user
+      await User.findByIdAndUpdate(new mongoose.Types.ObjectId(userId), {
+        $set: { enabledChains: [84532, 421614] },
+      });
 
       // Create smart account on Arbitrum Sepolia with pending_grant (not active)
       const arbSmartAccountData = createTestSmartAccount(userId, {
@@ -659,6 +680,154 @@ describe("executePayment", () => {
       expect(result.error).toContain("SIWx is not supported with smart account signers");
       // Should only have made the initial 402 fetch, not the paid retry
       expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("enabled chains enforcement", () => {
+    it("rejects explicit chainId when chain is not enabled for user", async () => {
+      // User only has 84532 enabled (default), try to use 42161
+      mockFetch.mockResolvedValueOnce(make402Response([{
+        ...DEFAULT_REQUIREMENT,
+        network: "eip155:42161",
+      }]));
+
+      const result = await executePayment(
+        "https://api.example.com/resource",
+        userId,
+        undefined,
+        42161,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("rejected");
+      expect(result.error).toContain("not enabled for your account");
+      expect(result.error).toContain("Enable it in Settings");
+    });
+
+    it("allows explicit chainId when chain is enabled for user", async () => {
+      const txHash = "0x" + "f".repeat(64);
+
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+      mockFetch.mockResolvedValueOnce(
+        make200Response({ success: true }, { "X-PAYMENT-TX-HASH": txHash }),
+      );
+
+      const result = await executePayment(
+        "https://api.example.com/resource",
+        userId,
+        undefined,
+        84532, // enabled by default
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.status).toBe("completed");
+    });
+
+    it("auto-select filters to only enabled chains", async () => {
+      const { getUsdcBalance } = await import("@/lib/hot-wallet");
+
+      // Enable both chains
+      await User.findByIdAndUpdate(new mongoose.Types.ObjectId(userId), {
+        $set: { enabledChains: [84532, 421614] },
+      });
+
+      // Create smart account + policy on Arbitrum Sepolia (421614)
+      await SmartAccount.create(createTestSmartAccount(userId, { chainId: 421614 }));
+      await EndpointPolicy.create(createTestEndpointPolicy(userId, { chainId: 421614 }));
+
+      // Mock balance: Arbitrum has more
+      vi.mocked(getUsdcBalance)
+        .mockResolvedValueOnce("10.000000")   // Base Sepolia
+        .mockResolvedValueOnce("50.000000")   // Arbitrum Sepolia
+        .mockResolvedValueOnce("50.000000");  // Balance re-check
+
+      const multiReq = {
+        ...DEFAULT_REQUIREMENT,
+        network: "eip155:421614",
+        asset: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+      };
+
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT, multiReq]));
+      mockFetch.mockResolvedValueOnce(
+        make200Response({ success: true }, { "X-PAYMENT-TX-HASH": "0x" + "e".repeat(64) }),
+      );
+
+      const result = await executePayment("https://api.example.com/resource", userId);
+      expect(result.success).toBe(true);
+
+      const tx = await Transaction.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+      }).lean();
+      expect(tx!.chainId).toBe(421614);
+    });
+
+    it("auto-select skips disabled chains even if they have higher balance", async () => {
+      const { getUsdcBalance } = await import("@/lib/hot-wallet");
+
+      // Only enable Base Sepolia, NOT Arbitrum
+      await User.findByIdAndUpdate(new mongoose.Types.ObjectId(userId), {
+        $set: { enabledChains: [84532] },
+      });
+
+      // Create smart account + policy on Arbitrum Sepolia (421614)
+      await SmartAccount.create(createTestSmartAccount(userId, { chainId: 421614 }));
+      await EndpointPolicy.create(createTestEndpointPolicy(userId, { chainId: 421614 }));
+
+      // Mock balance: Base Sepolia only (Arbitrum should not be queried since it's disabled)
+      vi.mocked(getUsdcBalance)
+        .mockResolvedValueOnce("10.000000")   // Base Sepolia balance check
+        .mockResolvedValueOnce("10.000000");  // Balance re-check
+
+      const multiReq = {
+        ...DEFAULT_REQUIREMENT,
+        network: "eip155:421614",
+        asset: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+      };
+
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT, multiReq]));
+      mockFetch.mockResolvedValueOnce(
+        make200Response({ success: true }, { "X-PAYMENT-TX-HASH": "0x" + "e".repeat(64) }),
+      );
+
+      const result = await executePayment("https://api.example.com/resource", userId);
+      expect(result.success).toBe(true);
+
+      // Should pick Base Sepolia because Arbitrum is disabled
+      const tx = await Transaction.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+      }).lean();
+      expect(tx!.chainId).toBe(84532);
+    });
+
+    it("rejects when no enabled chains match endpoint's accepted networks", async () => {
+      // User only has 84532 enabled, but endpoint only accepts 421614
+      const arbRequirement = {
+        ...DEFAULT_REQUIREMENT,
+        network: "eip155:421614",
+        asset: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+      };
+      mockFetch.mockResolvedValueOnce(make402Response([arbRequirement]));
+
+      const result = await executePayment("https://api.example.com/resource", userId);
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("rejected");
+      expect(result.error).toContain("supported or enabled for your account");
+    });
+
+    it("rejects all operations when user has no enabled chains", async () => {
+      // Disable all chains
+      await User.findByIdAndUpdate(new mongoose.Types.ObjectId(userId), {
+        $set: { enabledChains: [] },
+      });
+
+      mockFetch.mockResolvedValueOnce(make402Response([DEFAULT_REQUIREMENT]));
+
+      const result = await executePayment("https://api.example.com/resource", userId);
+
+      expect(result.success).toBe(false);
+      expect(result.status).toBe("rejected");
+      expect(result.error).toContain("supported or enabled for your account");
     });
   });
 

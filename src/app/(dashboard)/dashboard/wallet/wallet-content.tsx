@@ -28,10 +28,11 @@ export default function WalletContent({
   initialData,
   initialChainId,
 }: WalletContentProps) {
-  const { activeChain } = useChain();
+  const { activeChain, supportedChains } = useChain();
   const chainId = activeChain.chain.id;
   const queryClient = useQueryClient();
   const isInitialChain = chainId === initialChainId;
+  const enabledChainIds = new Set(supportedChains.map((c) => c.chain.id));
 
   const {
     data: smartAccount,
@@ -74,8 +75,8 @@ export default function WalletContent({
     return (
       <NoAccountCard
         chainId={chainId}
-        chainName={activeChain.chain.name}
-        hasAnyAccounts={(allAccounts?.length ?? 0) > 0}
+        chainName={activeChain.displayName}
+        hasAnyAccounts={(allAccounts?.filter((a) => enabledChainIds.has(a.chainId)).length ?? 0) > 0}
         onSetup={doSetup}
         setupPending={setupPending}
       />
@@ -98,7 +99,7 @@ export default function WalletContent({
       balance={liveBalance}
       balanceLoading={accountLoading || balanceLoading}
       balanceError={balanceError}
-      chainName={activeChain.chain.name}
+      chainName={activeChain.displayName}
       explorerUrl={activeChain.explorerUrl}
       sessionKeyStatus={sessionKeyStatus}
       chainId={chainId}

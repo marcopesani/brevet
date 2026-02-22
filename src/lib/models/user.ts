@@ -7,6 +7,7 @@ export interface IUser {
   humanHash: string | null;
   apiKeyHash: string | null;
   apiKeyPrefix: string | null;
+  enabledChains: number[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -20,6 +21,7 @@ const userSchema = new Schema<IUserDocument>(
     humanHash: { type: String },
     apiKeyHash: { type: String, default: null },
     apiKeyPrefix: { type: String, default: null },
+    enabledChains: { type: [Number], default: [] },
   },
   {
     timestamps: true,

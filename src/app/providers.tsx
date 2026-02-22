@@ -52,10 +52,12 @@ export default function Providers({
   children,
   cookies,
   initialChainId,
+  enabledChains,
 }: {
   children: ReactNode;
   cookies: string | null;
   initialChainId?: number;
+  enabledChains?: number[];
 }) {
   const initialState = cookieToInitialState(
     wagmiAdapter.wagmiConfig as Config,
@@ -69,7 +71,7 @@ export default function Providers({
         initialState={initialState}
       >
         <QueryClientProvider client={queryClient}>
-          <ChainProvider initialChainId={initialChainId}>
+          <ChainProvider initialChainId={initialChainId} enabledChains={enabledChains}>
             {children}
           </ChainProvider>
         </QueryClientProvider>

@@ -1,7 +1,7 @@
 import { z } from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getSpendingHistory } from "@/lib/data/transactions";
-import { resolveChainParam, textContent, jsonContent, toolError } from "../shared";
+import { resolveChainParam, validateChainEnabled, textContent, jsonContent, toolError } from "../shared";
 
 export function registerX402SpendingHistory(
   server: McpServer,
@@ -35,6 +35,7 @@ export function registerX402SpendingHistory(
         if (chain) {
           try {
             chainId = resolveChainParam(chain);
+            await validateChainEnabled(userId, chainId);
           } catch (e) {
             return textContent(`Error: ${(e as Error).message}`, true);
           }

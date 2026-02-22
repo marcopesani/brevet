@@ -1,6 +1,7 @@
+import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getAuthenticatedUser } from "@/lib/auth";
-import { getInitialChainIdFromCookie } from "@/lib/chain-cookie";
+import { getValidatedChainId } from "@/lib/server/chain";
 import { getAnalytics } from "@/lib/data/analytics";
 import { getSmartAccountBalance } from "@/lib/data/smart-account";
 import { getPendingCount } from "@/lib/data/payments";
@@ -11,12 +12,12 @@ import { SpendingChart } from "@/components/spending-chart";
 import { RecentTransactions } from "@/components/recent-transactions";
 
 export default async function DashboardPage() {
-  // Layout already redirects unauthenticated users — safe to assert non-null
-  const user = (await getAuthenticatedUser())!;
+  const user = await getAuthenticatedUser();
+  if (!user) redirect("/login");
 
   const headersList = await headers();
   const cookieHeader = headersList.get("cookie");
-  const chainId = getInitialChainIdFromCookie(cookieHeader);
+  const chainId = await getValidatedChainId(cookieHeader, user.userId);
 
   const [analytics, wallet, pendingCount, recentTransactions] =
     await Promise.all([

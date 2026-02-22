@@ -1,39 +1,29 @@
-import { isChainSupported } from "@/lib/chain-config";
-
-/**
- * Map friendly chain names to chain IDs.
- * Also accepts numeric chain IDs as strings (e.g. "42161" → 42161).
- */
-export const CHAIN_NAME_TO_ID: Record<string, number> = {
-  ethereum: 1,
-  eth: 1,
-  mainnet: 1,
-  "eth-mainnet": 1,
-  sepolia: 11155111,
-  "eth-sepolia": 11155111,
-  base: 8453,
-  "base-sepolia": 84532,
-  arbitrum: 42161,
-  "arbitrum-sepolia": 421614,
-  optimism: 10,
-  "op-sepolia": 11155420,
-  polygon: 137,
-  "polygon-amoy": 80002,
-};
+import { resolveChain, getAllChains, getChainById } from "@/lib/chain-config";
+import { isChainEnabledForUser, getUserEnabledChains } from "@/lib/data/user";
 
 export function resolveChainParam(chain: string): number {
-  const lower = chain.toLowerCase().trim();
-
-  const byName = CHAIN_NAME_TO_ID[lower];
-  if (byName !== undefined) return byName;
-
-  const asNumber = parseInt(lower, 10);
-  if (!isNaN(asNumber) && isChainSupported(asNumber)) return asNumber;
+  const config = resolveChain(chain);
+  if (config) return config.chain.id;
 
   throw new Error(
-    `Unsupported chain "${chain}". Supported: ${Object.keys(CHAIN_NAME_TO_ID).join(", ")} or numeric chain IDs.`,
+    `Unsupported chain "${chain}". Supported: ${getAllChains().map((c) => c.slug).join(", ")} or numeric chain IDs.`,
   );
 }
+
+/**
+ * Validate that a chain is enabled for the user. Throws if disabled.
+ * This is the server-side security boundary — client-side filtering is cosmetic only.
+ */
+export async function validateChainEnabled(userId: string, chainId: number): Promise<void> {
+  const enabled = await isChainEnabledForUser(userId, chainId);
+  if (!enabled) {
+    const config = getChainById(chainId);
+    const name = config?.displayName ?? "Unknown";
+    throw new Error(`Chain ${name} (${chainId}) is not enabled for your account. Enable it in Settings.`);
+  }
+}
+
+export { getUserEnabledChains };
 
 export type ToolResult = {
   content: Array<{ type: "text"; text: string }>;

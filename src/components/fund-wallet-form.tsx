@@ -16,10 +16,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getChainConfig, getDefaultChainConfig } from "@/lib/chain-config";
+import { getChainById, getDefaultChainConfig, getUsdcConfig } from "@/lib/chain-config";
 import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
-
-const USDC_DECIMALS = 6;
 
 const ERC20_ABI = [
   {
@@ -49,7 +47,8 @@ export default function FundWalletForm({
   const { chainId: walletChainId } = useAccount();
   const { switchChainAsync } = useSwitchChain();
 
-  const chainConfig = chainId ? getChainConfig(chainId) ?? getDefaultChainConfig() : getDefaultChainConfig();
+  const chainConfig = chainId ? getChainById(chainId) ?? getDefaultChainConfig() : getDefaultChainConfig();
+  const usdcDecimals = getUsdcConfig(chainConfig.chain.id)?.decimals ?? 6;
 
   const { writeContract, data: txHash, isPending, error, reset } = useWriteContract();
 
@@ -75,7 +74,7 @@ export default function FundWalletForm({
       functionName: "transfer",
       args: [
         accountAddress as `0x${string}`,
-        parseUnits(amount, USDC_DECIMALS),
+        parseUnits(amount, usdcDecimals),
       ],
     });
   }

@@ -159,6 +159,17 @@ MongoDB with Mongoose. Six collections: `users`, `hotwallets`, `endpointpolicies
 
 `NEXT_PUBLIC_CHAIN_ID` env var toggles between Base mainnet (8453) and Base Sepolia testnet (84532). Singleton config exported from `src/lib/chain-config.ts`.
 
+## React 19 + Compiler
+
+This project uses **React 19.2.3** with the **React Compiler enabled** (`reactCompiler: true` in `next.config.ts`).
+
+### What this means for development:
+
+- **No manual memoization needed**: The compiler auto-memoizes components, `useMemo`, `useCallback`, and `React.memo` are unnecessary in new code. For existing code, leave it in place or remove carefully after testing.
+- **Actions**: Use async transitions (`startTransition`) for data mutations. The compiler handles pending states automatically.
+- **useActionState**: Preferred hook for form actions with built-in pending/error state.
+- **Server Components by default**: React 19 solidifies Server Components as the default mental model. Client Components (`"use client"`) are only needed for: event handlers, `useState`/`useEffect`, browser APIs (wagmi, clipboard), interactive controls.
+
 ## Code Conventions
 
 - Import alias: `@/*` maps to `src/*`

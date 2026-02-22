@@ -16,7 +16,7 @@ import { createTransaction } from "@/lib/data/transactions";
 import { buildPaymentHeaders, extractSettleResponse, extractTxHashFromResponse } from "@/lib/x402/headers";
 import { formatAmountForDisplay } from "@/lib/x402/display";
 import { getRequirementAmount } from "@/lib/x402/requirements";
-import { CHAIN_CONFIGS, getNetworkIdentifiers } from "@/lib/chain-config";
+import { getChainById, getDefaultChainConfig, getNetworkIdentifiers } from "@/lib/chain-config";
 import { logger } from "@/lib/logger";
 import { safeFetch } from "@/lib/safe-fetch";
 import type { Hex } from "viem";
@@ -70,8 +70,8 @@ export async function approvePendingPayment(
       : [storedPaymentRequired];
 
   // Resolve the requirement that matches the payment's chainId (same logic as the card)
-  const chainId = payment.chainId ?? 8453;
-  const chainConfig = CHAIN_CONFIGS[chainId];
+  const chainId = payment.chainId ?? getDefaultChainConfig().chain.id;
+  const chainConfig = getChainById(chainId);
   const acceptedNetworks = chainConfig ? getNetworkIdentifiers(chainConfig) : [];
   const acceptedRequirement =
     accepts.find(

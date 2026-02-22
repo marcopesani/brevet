@@ -8,6 +8,7 @@ import { createPublicClient, http } from "viem";
 import { connectDB } from "@/lib/db";
 import { User } from "@/lib/models/user";
 import { ensureApiKey } from "@/lib/data/users";
+import { getTestnetChains, getMainnetChains } from "@/lib/chain-config";
 
 declare module "next-auth" {
   interface User {
@@ -71,6 +72,17 @@ export async function verifySignature(
   });
 }
 
+/** Compute the default enabledChains for a new user. */
+export function getDefaultEnabledChains(): number[] {
+  const testnetIds = getTestnetChains().map((c) => c.chain.id);
+  const mainnetEnabled = process.env.DEFAULT_MAINNET_CHAINS_ENABLED === "true";
+  if (mainnetEnabled) {
+    const mainnetIds = getMainnetChains().map((c) => c.chain.id);
+    return [...testnetIds, ...mainnetIds];
+  }
+  return testnetIds;
+}
+
 /** Find or create a user by wallet address. */
 export async function upsertUser(walletAddress: string) {
   await connectDB();
@@ -78,7 +90,11 @@ export async function upsertUser(walletAddress: string) {
   let user = await User.findOne({ walletAddress });
 
   if (!user) {
-    user = await User.create({ walletAddress });
+    const enabledChains = getDefaultEnabledChains();
+    user = await User.create({ walletAddress, enabledChains });
+  } else if (!user.enabledChains || user.enabledChains.length === 0) {
+    user.enabledChains = getDefaultEnabledChains();
+    await user.save();
   }
 
   await ensureApiKey(user.id);
