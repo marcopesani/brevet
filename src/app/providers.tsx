@@ -4,13 +4,11 @@ import { wagmiAdapter, projectId, networks } from "@/lib/walletconnect";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createAppKit } from "@reown/appkit/react";
 import { OptionsController } from "@reown/appkit-controllers";
-import React, { type ReactNode } from "react";
+import React, { useState, type ReactNode } from "react";
 import { cookieToInitialState, WagmiProvider, type Config } from "wagmi";
 import { SessionProvider } from "next-auth/react";
 import { siweConfig } from "@/lib/siwe-config";
 import { ChainProvider } from "@/contexts/chain-context";
-
-const queryClient = new QueryClient();
 
 const metadata = {
   name: "Brevet",
@@ -57,6 +55,8 @@ export default function Providers({
   cookies: string | null;
   initialChainId?: number;
 }) {
+  const [queryClient] = useState(() => new QueryClient());
+
   const initialState = cookieToInitialState(
     wagmiAdapter.wagmiConfig as Config,
     cookies,
