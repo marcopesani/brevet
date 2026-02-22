@@ -54,7 +54,12 @@ export function ChainSettings({
         const result = await updateEnabledChainsAction(updated);
         setEnabledChains(result);
       } catch {
-        setEnabledChains(enabledChains);
+        // Revert only this toggle using functional update to avoid stale closure
+        setEnabledChains((prev) =>
+          checked
+            ? prev.filter((id) => id !== chainId)
+            : [...prev, chainId],
+        );
       }
     });
   }
