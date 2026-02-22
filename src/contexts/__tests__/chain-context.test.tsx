@@ -219,6 +219,28 @@ describe("ChainContext", () => {
 
       expect(result.current.activeChain.chain.id).toBe(84532);
     });
+
+    it("prevents infinite re-render when wallet is on disabled chain (regression test)", () => {
+      // Regression: wallet on chain 1 (Ethereum), only Base Sepolia enabled
+      // Should stay on initialChainId=84532 without infinite re-render loop
+      mockState.isConnected = true;
+      mockState.walletChainId = 1; // Ethereum mainnet — globally supported but not enabled
+
+      const { result, rerender } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([84532], 84532),
+      });
+
+      // Should remain on the enabled chain, not sync to wallet's disabled chain
+      expect(result.current.activeChain.chain.id).toBe(84532);
+
+      // Rerender multiple times to verify no infinite loop
+      for (let i = 0; i < 5; i++) {
+        rerender();
+      }
+
+      // Should still be on the enabled chain
+      expect(result.current.activeChain.chain.id).toBe(84532);
+    });
   });
 
   describe("isSwitchingChain", () => {

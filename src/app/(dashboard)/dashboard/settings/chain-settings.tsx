@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import {
   Card,
   CardContent,
@@ -13,10 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { getEnvironmentChains } from "@/lib/chain-config";
 import type { ChainConfig } from "@/lib/chain-config";
-import {
-  getEnabledChainsAction,
-  updateEnabledChainsAction,
-} from "@/app/actions/user";
+import { updateEnabledChainsAction } from "@/app/actions/user";
 
 function ChainDot({ color }: { color: string }) {
   return (
@@ -26,20 +23,16 @@ function ChainDot({ color }: { color: string }) {
   );
 }
 
-export function ChainSettings() {
-  const [enabledChains, setEnabledChains] = useState<number[]>([]);
-  const [loaded, setLoaded] = useState(false);
+export function ChainSettings({
+  initialEnabledChains,
+}: {
+  initialEnabledChains: number[];
+}) {
+  const [enabledChains, setEnabledChains] = useState<number[]>(initialEnabledChains);
   const [isPending, startTransition] = useTransition();
   const [warning, setWarning] = useState<string | null>(null);
 
   const environmentChains: ChainConfig[] = getEnvironmentChains();
-
-  useEffect(() => {
-    getEnabledChainsAction().then((chains) => {
-      setEnabledChains(chains);
-      setLoaded(true);
-    });
-  }, []);
 
   function handleToggle(chainId: number, checked: boolean) {
     const updated = checked
@@ -75,53 +68,47 @@ export function ChainSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!loaded ? (
-          <p className="text-muted-foreground text-sm">Loading chains…</p>
-        ) : (
-          <>
-            {environmentChains.map((config) => {
-              const chainId = config.chain.id;
-              const isEnabled = enabledChains.includes(chainId);
+        {environmentChains.map((config) => {
+          const chainId = config.chain.id;
+          const isEnabled = enabledChains.includes(chainId);
 
-              return (
-                <div
-                  key={chainId}
-                  className="flex items-center justify-between gap-4"
-                >
-                  <Label
-                    htmlFor={`chain-${chainId}`}
-                    className="flex items-center gap-2 font-normal"
+          return (
+            <div
+              key={chainId}
+              className="flex items-center justify-between gap-4"
+            >
+              <Label
+                htmlFor={`chain-${chainId}`}
+                className="flex items-center gap-2 font-normal"
+              >
+                <ChainDot color={config.color} />
+                <span>{config.displayName}</span>
+                <span className="text-muted-foreground text-xs">
+                  ({chainId})
+                </span>
+                {config.isTestnet && (
+                  <Badge
+                    variant="outline"
+                    className="px-1 py-0 text-[10px] leading-tight"
                   >
-                    <ChainDot color={config.color} />
-                    <span>{config.displayName}</span>
-                    <span className="text-muted-foreground text-xs">
-                      ({chainId})
-                    </span>
-                    {config.isTestnet && (
-                      <Badge
-                        variant="outline"
-                        className="px-1 py-0 text-[10px] leading-tight"
-                      >
-                        Testnet
-                      </Badge>
-                    )}
-                  </Label>
-                  <Switch
-                    id={`chain-${chainId}`}
-                    checked={isEnabled}
-                    onCheckedChange={(checked) =>
-                      handleToggle(chainId, checked)
-                    }
-                    disabled={isPending}
-                  />
-                </div>
-              );
-            })}
+                    Testnet
+                  </Badge>
+                )}
+              </Label>
+              <Switch
+                id={`chain-${chainId}`}
+                checked={isEnabled}
+                onCheckedChange={(checked) =>
+                  handleToggle(chainId, checked)
+                }
+                disabled={isPending}
+              />
+            </div>
+          );
+        })}
 
-            {warning && (
-              <p className="text-destructive text-sm">{warning}</p>
-            )}
-          </>
+        {warning && (
+          <p className="text-destructive text-sm">{warning}</p>
         )}
       </CardContent>
     </Card>

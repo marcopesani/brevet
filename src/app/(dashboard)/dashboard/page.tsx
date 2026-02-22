@@ -1,9 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getAuthenticatedUser } from "@/lib/auth";
-import { getInitialChainIdFromCookie } from "@/lib/chain-cookie";
-import { resolveValidChainId } from "@/lib/chain-config";
-import { getUserEnabledChains } from "@/lib/data/user";
+import { getValidatedChainId } from "@/lib/server/chain";
 import { getAnalytics } from "@/lib/data/analytics";
 import { getSmartAccountBalance } from "@/lib/data/smart-account";
 import { getPendingCount } from "@/lib/data/payments";
@@ -19,9 +17,7 @@ export default async function DashboardPage() {
 
   const headersList = await headers();
   const cookieHeader = headersList.get("cookie");
-  const rawChainId = getInitialChainIdFromCookie(cookieHeader);
-  const enabledChains = await getUserEnabledChains(user.userId);
-  const chainId = resolveValidChainId(rawChainId, enabledChains);
+  const chainId = await getValidatedChainId(cookieHeader, user.userId);
 
   const [analytics, wallet, pendingCount, recentTransactions] =
     await Promise.all([

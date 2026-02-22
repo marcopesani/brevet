@@ -1,8 +1,6 @@
 import { headers } from "next/headers";
-import { getInitialChainIdFromCookie } from "@/lib/chain-cookie";
-import { resolveValidChainId } from "@/lib/chain-config";
+import { getValidatedChainId } from "@/lib/server/chain";
 import { getAuthenticatedUser } from "@/lib/auth";
-import { getUserEnabledChains } from "@/lib/data/user";
 import {
   getSmartAccountForChain,
   getAllSmartAccountsAction,
@@ -16,9 +14,7 @@ export default async function WalletPageContent() {
 
   const headersList = await headers();
   const cookieHeader = headersList.get("cookie");
-  const rawChainId = getInitialChainIdFromCookie(cookieHeader);
-  const enabledChains = await getUserEnabledChains(user.userId);
-  const initialChainId = resolveValidChainId(rawChainId, enabledChains);
+  const initialChainId = await getValidatedChainId(cookieHeader, user.userId);
 
   const [smartAccount, allAccounts, balance] = await Promise.all([
     getSmartAccountForChain(initialChainId),
