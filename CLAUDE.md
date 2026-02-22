@@ -106,7 +106,7 @@ The automated test suite in `scripts/test-mcp-auth.sh` exercises all auth scenar
 
 Sign-In-With-Ethereum (SIWE) via Reown AppKit + NextAuth credentials provider. SIWX extension support for x402-aware auth flows. Configuration in `src/lib/auth-config.ts` and `src/lib/siwe-config.ts`.
 
-No middleware — route protection uses Next.js route groups: `(dashboard)` layout checks auth and redirects to `/login`.
+`src/proxy.ts` handles early auth redirect for `/dashboard/*` (cookie check before layout renders) and sets security headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, HSTS). Route group `(dashboard)` layout provides a secondary auth check with full session validation.
 
 ### Hot Wallet
 
@@ -162,7 +162,7 @@ MongoDB with Mongoose. Six collections: `users`, `hotwallets`, `endpointpolicies
 ### Architectural Decisions
 
 - Two actors mutate data: **dashboard** (Server Actions → `revalidatePath`/`revalidateTag`) and **MCP agent** (direct DB writes, no cache access). Cache TTLs are set by data sensitivity — never cache financial/time-sensitive data.
-- No `proxy.ts` or `middleware.ts` yet. Auth is in `(dashboard)` layout. Known gap: full React tree renders before auth redirect.
+- `src/proxy.ts` provides early auth redirect for `/dashboard/*` and security headers. The `(dashboard)` layout provides a secondary auth check with full session validation.
 - React Query is strictly for external-mutation data (MCP agent writes). All dashboard-only mutations use `revalidatePath`.
 
 **Caching tiers:**
