@@ -208,6 +208,17 @@ describe("ChainContext", () => {
 
       expect(result.current.activeChain.chain.id).not.toBe(999999);
     });
+
+    it("does not sync to wallet chain outside user's enabled chains", () => {
+      mockState.isConnected = true;
+      mockState.walletChainId = 1; // Ethereum mainnet — supported but not enabled
+
+      const { result } = renderHook(() => useChain(), {
+        wrapper: wrapperWithEnabledChains([84532, 42161], 84532),
+      });
+
+      expect(result.current.activeChain.chain.id).toBe(84532);
+    });
   });
 
   describe("isSwitchingChain", () => {

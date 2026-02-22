@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -43,18 +44,29 @@ export function ChainProvider({
   initialChainId?: number;
   enabledChains?: number[];
 }) {
-  const allChains = getAllChains();
-  const filteredChains =
-    enabledChains && enabledChains.length > 0
-      ? allChains.filter((c) => enabledChains.includes(c.chain.id))
-      : allChains;
+  // Stable set for O(1) lookups; keyed by serialized value to avoid
+  // re-creating on every render when the parent passes a new array ref.
+  const enabledKey = enabledChains?.join(",") ?? "";
+  const enabledSet = useMemo(
+    () =>
+      enabledChains && enabledChains.length > 0
+        ? new Set(enabledChains)
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [enabledKey],
+  );
 
+  const allChains = getAllChains();
+  const filteredChains = useMemo(
+    () => (enabledSet ? allChains.filter((c) => enabledSet.has(c.chain.id)) : allChains),
+    [allChains, enabledSet],
+  );
+
+  // Server already validates initialChainId against enabledChains
+  // (resolveValidChainId in layout.tsx). Client-side check is a safety net.
   const [activeChainId, setActiveChainIdState] = useState<number>(() => {
     const preferred = initialChainId ?? getDefaultChainConfig().chain.id;
-    if (
-      filteredChains.length > 0 &&
-      !filteredChains.some((c) => c.chain.id === preferred)
-    ) {
+    if (enabledSet && !enabledSet.has(preferred) && filteredChains.length > 0) {
       return filteredChains[0].chain.id;
     }
     return preferred;
@@ -63,38 +75,37 @@ export function ChainProvider({
   const { chainId: walletChainId, isConnected } = useAccount();
   const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain();
 
-  // Track whether a programmatic switch is in progress to avoid sync loops
   const isSwitchingRef = useRef(false);
 
-  // Auto-switch to first enabled chain if active chain becomes disabled
+  // Auto-switch to first enabled chain when enabledChains changes at
+  // runtime (e.g. user toggles chains in settings) and current selection
+  // is no longer valid.
   useEffect(() => {
-    if (filteredChains.length === 0) return;
-    const isActiveEnabled = filteredChains.some(
-      (c) => c.chain.id === activeChainId,
-    );
-    if (!isActiveEnabled) {
-      const fallback = filteredChains[0].chain.id;
-      setActiveChainIdState(fallback);
-      setChainCookie(fallback);
-    }
-  }, [filteredChains, activeChainId]);
+    if (!enabledSet || filteredChains.length === 0) return;
+    if (enabledSet.has(activeChainId)) return;
+    const fallback = filteredChains[0].chain.id;
+    setActiveChainIdState(fallback);
+    setChainCookie(fallback);
+  }, [enabledSet, filteredChains, activeChainId]);
 
-  // Sync activeChainId to wallet's chain when it changes externally
+  // Sync activeChainId to wallet's chain when it changes externally.
+  // Only syncs if the wallet's chain is both supported AND enabled for
+  // this user — prevents the infinite loop between this effect and the
+  // auto-switch effect above.
   useEffect(() => {
     if (!isConnected || !walletChainId || isSwitchingRef.current) return;
     if (walletChainId === activeChainId) return;
-    // Only sync if the wallet's chain is one we support
     if (!getChainById(walletChainId)) return;
+    if (enabledSet && !enabledSet.has(walletChainId)) return;
     setActiveChainIdState(walletChainId);
     setChainCookie(walletChainId);
-  }, [walletChainId, isConnected, activeChainId]);
+  }, [walletChainId, isConnected, activeChainId, enabledSet]);
 
   const setActiveChainId = useCallback(
     async (chainId: number) => {
       if (!getChainById(chainId)) return;
 
       if (isConnected) {
-        // Wallet connected: request chain switch, only update on success
         isSwitchingRef.current = true;
         try {
           await switchChainAsync({ chainId });
@@ -106,7 +117,6 @@ export function ChainProvider({
           isSwitchingRef.current = false;
         }
       } else {
-        // No wallet: update local state + cookie immediately
         setActiveChainIdState(chainId);
         setChainCookie(chainId);
       }
