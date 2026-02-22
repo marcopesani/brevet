@@ -42,6 +42,7 @@ export type PaymentResult =
       paymentRequirements?: undefined;
       amountRaw?: undefined;
       asset?: undefined;
+      maxTimeoutSeconds?: undefined;
     }
   | {
       success: false;
@@ -55,6 +56,8 @@ export type PaymentResult =
       asset?: string;
       /** The chain ID selected for this payment. */
       chainId?: number;
+      /** Protocol-defined validity window in seconds. */
+      maxTimeoutSeconds?: number;
       error?: undefined;
       response?: undefined;
       settlement?: undefined;
@@ -70,4 +73,5 @@ export type PaymentResult =
       paymentRequirements?: undefined;
       amountRaw?: undefined;
       asset?: undefined;
+      maxTimeoutSeconds?: undefined;
     };

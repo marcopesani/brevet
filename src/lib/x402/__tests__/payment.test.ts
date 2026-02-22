@@ -234,6 +234,7 @@ describe("executePayment", () => {
     expect(result.status).toBe("pending_approval");
     expect(result.signingStrategy).toBe("manual_approval");
     expect(result.chainId).toBe(84532);
+    expect(result.maxTimeoutSeconds).toBe(3600);
   });
 
   it("returns pending_approval when session key is not active", async () => {
@@ -250,6 +251,21 @@ describe("executePayment", () => {
     expect(result.status).toBe("pending_approval");
     expect(result.signingStrategy).toBe("manual_approval");
     expect(result.chainId).toBe(84532);
+    expect(result.maxTimeoutSeconds).toBe(3600);
+  });
+
+  it("returns undefined maxTimeoutSeconds when requirement lacks it", async () => {
+    await SmartAccount.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
+
+    const requirementWithoutTimeout = { ...DEFAULT_REQUIREMENT };
+    delete (requirementWithoutTimeout as Record<string, unknown>).maxTimeoutSeconds;
+    mockFetch.mockResolvedValueOnce(make402Response([requirementWithoutTimeout]));
+
+    const result = await executePayment("https://api.example.com/resource", userId);
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe("pending_approval");
+    expect(result.maxTimeoutSeconds).toBeUndefined();
   });
 
   it("rejects with expired session key and updates status to expired", async () => {
@@ -426,6 +442,7 @@ describe("executePayment", () => {
     expect(result.signingStrategy).toBe("manual_approval");
     expect(result.paymentRequirements).toBeDefined();
     expect(result.chainId).toBe(84532);
+    expect(result.maxTimeoutSeconds).toBe(3600);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -443,6 +460,7 @@ describe("executePayment", () => {
     expect(result.status).toBe("pending_approval");
     expect(result.signingStrategy).toBe("manual_approval");
     expect(result.paymentRequirements).toBeDefined();
+    expect(result.maxTimeoutSeconds).toBe(3600);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -508,6 +526,7 @@ describe("executePayment", () => {
       expect(result.status).toBe("pending_approval");
       expect(result.signingStrategy).toBe("manual_approval");
       expect(result.chainId).toBe(421614);
+      expect(result.maxTimeoutSeconds).toBe(3600);
     });
 
     it("uses explicit chainId when provided", async () => {

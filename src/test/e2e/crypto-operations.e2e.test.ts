@@ -321,15 +321,22 @@ describe("E2E: Crypto Operations", () => {
       expect(result.message.from).toBe(TEST_WALLET_ADDRESS);
       expect(result.message.to).toBe(requirement.payTo);
       expect(result.message.value).toBe(BigInt(100000));
-      expect(result.message.validAfter).toBe(BigInt(0));
 
-      // validBefore should be ~now + 300s
+      // validAfter should be ~now - 600s (10-minute lookback)
       const now = BigInt(Math.floor(Date.now() / 1000));
+      expect(result.message.validAfter).toBeGreaterThanOrEqual(
+        now - BigInt(610),
+      );
+      expect(result.message.validAfter).toBeLessThanOrEqual(
+        now - BigInt(590),
+      );
+
+      // validBefore should be ~now + maxTimeoutSeconds (3600s for this requirement)
       expect(result.message.validBefore).toBeGreaterThanOrEqual(
-        now + BigInt(298),
+        now + BigInt(3598),
       );
       expect(result.message.validBefore).toBeLessThanOrEqual(
-        now + BigInt(302),
+        now + BigInt(3602),
       );
 
       // Nonce should be a 32-byte hex string

@@ -167,12 +167,13 @@ export default function PendingPaymentCard({
         }
       }
 
+      const maxTimeout = BigInt(requirement.maxTimeoutSeconds ?? 600);
       const authorization = {
         from: walletAddress as Hex,
         to: requirement.payTo as Hex,
         value: amountWei,
-        validAfter: BigInt(0),
-        validBefore: now + BigInt(300),
+        validAfter: now - 600n,
+        validBefore: now + maxTimeout,
         nonce,
       };
 

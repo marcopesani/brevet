@@ -54,6 +54,7 @@ export function createSigningRequest(
   const amountWei = BigInt(amountStr);
   const nonce = `0x${crypto.randomBytes(32).toString("hex")}` as Hex;
   const now = BigInt(Math.floor(Date.now() / 1_000));
+  const timeoutSeconds = BigInt(requirement.maxTimeoutSeconds ?? 600);
 
   return {
     domain: usdcDomain,
@@ -63,8 +64,8 @@ export function createSigningRequest(
       from: userAddress,
       to: requirement.payTo as Hex,
       value: amountWei,
-      validAfter: BigInt(0),
-      validBefore: now + BigInt(300),
+      validAfter: now - 600n,
+      validBefore: now + timeoutSeconds,
       nonce,
     },
   };

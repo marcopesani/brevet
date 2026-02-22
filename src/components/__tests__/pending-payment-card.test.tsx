@@ -132,6 +132,19 @@ const BASE_V1_MAX_AMOUNT_REQUIREMENTS = JSON.stringify({
   ],
 });
 
+// Requirement without maxTimeoutSeconds — should fall back to 600s
+const BASE_NO_TIMEOUT_REQUIREMENTS = JSON.stringify({
+  accepts: [
+    {
+      scheme: "exact",
+      network: "base",
+      amount: "100000",
+      asset: BASE_USDC_ADDRESS,
+      payTo: "0x43a2a720cd0911690c248075f4a29a5e7716f758",
+    },
+  ],
+});
+
 // Requirement with no amount — approve must show error and not sign
 const BASE_NO_AMOUNT_REQUIREMENTS = JSON.stringify({
   accepts: [
@@ -341,5 +354,59 @@ describe("PendingPaymentCard payment requirement network match", () => {
     });
     renderCard(payment);
     expect(screen.getByText("Unknown")).toBeInTheDocument();
+  });
+});
+
+describe("PendingPaymentCard validAfter/validBefore", () => {
+  it("uses maxTimeoutSeconds for validBefore and now-600 for validAfter", async () => {
+    const fakeNow = 1700000000;
+    vi.spyOn(Date, "now").mockReturnValue(fakeNow * 1000);
+
+    const payment = createPayment({
+      chainId: 8453,
+      paymentRequirements: BASE_PAYMENT_REQUIREMENTS, // maxTimeoutSeconds: 3600
+    });
+
+    mockSignTypedDataAsync.mockResolvedValueOnce("0xsignature");
+    renderCard(payment);
+
+    const approveButton = screen.getAllByRole("button").find((b) => b.textContent?.includes("Approve"));
+    fireEvent.click(approveButton!);
+
+    await waitFor(() => {
+      expect(mockSignTypedDataAsync).toHaveBeenCalled();
+    });
+
+    const signMessage = mockSignTypedDataAsync.mock.calls[0][0].message;
+    expect(signMessage.validAfter).toBe(BigInt(fakeNow - 600));
+    expect(signMessage.validBefore).toBe(BigInt(fakeNow + 3600));
+
+    vi.restoreAllMocks();
+  });
+
+  it("falls back to 600s when maxTimeoutSeconds is missing", async () => {
+    const fakeNow = 1700000000;
+    vi.spyOn(Date, "now").mockReturnValue(fakeNow * 1000);
+
+    const payment = createPayment({
+      chainId: 8453,
+      paymentRequirements: BASE_NO_TIMEOUT_REQUIREMENTS,
+    });
+
+    mockSignTypedDataAsync.mockResolvedValueOnce("0xsignature");
+    renderCard(payment);
+
+    const approveButton = screen.getAllByRole("button").find((b) => b.textContent?.includes("Approve"));
+    fireEvent.click(approveButton!);
+
+    await waitFor(() => {
+      expect(mockSignTypedDataAsync).toHaveBeenCalled();
+    });
+
+    const signMessage = mockSignTypedDataAsync.mock.calls[0][0].message;
+    expect(signMessage.validAfter).toBe(BigInt(fakeNow - 600));
+    expect(signMessage.validBefore).toBe(BigInt(fakeNow + 600));
+
+    vi.restoreAllMocks();
   });
 });
