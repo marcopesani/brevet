@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { getAuthenticatedUser } from "@/lib/auth";
 import {
   getPendingPayments as _getPendingPayments,
@@ -196,6 +196,9 @@ export async function approvePendingPayment(
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/pending");
     revalidatePath("/dashboard/transactions");
+    revalidatePath("/dashboard/history");
+    updateTag(`transactions-${auth.userId}`);
+    updateTag(`analytics-${auth.userId}`);
 
     return {
       success: paidResponse.ok,
@@ -230,6 +233,9 @@ export async function approvePendingPayment(
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/pending");
     revalidatePath("/dashboard/transactions");
+    revalidatePath("/dashboard/history");
+    updateTag(`transactions-${auth.userId}`);
+    updateTag(`analytics-${auth.userId}`);
 
     return {
       success: false,

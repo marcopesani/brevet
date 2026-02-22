@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 // Mock next/cache
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
 }));
 
 // Mock auth

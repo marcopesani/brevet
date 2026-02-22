@@ -21,6 +21,15 @@ vi.mock("@/lib/db", () => ({
   connectDB: async () => {},
 }));
 
+// Mock next/cache functions used by "use cache" directive in data layer
+vi.mock("next/cache", () => ({
+  cacheLife: () => {},
+  cacheTag: () => {},
+  updateTag: () => {},
+  revalidatePath: () => {},
+  revalidateTag: () => {},
+}));
+
 let mongoServer: MongoMemoryServer;
 
 beforeAll(async () => {

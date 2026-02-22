@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { getAuthenticatedUser } from "@/lib/auth";
 import {
   getApiKeyPrefix as _getApiKeyPrefix,
@@ -22,6 +22,7 @@ export async function regenerateApiKey() {
   const { rawKey } = await _rotateApiKey(auth.userId);
 
   revalidatePath("/dashboard/settings");
+  updateTag(`users-${auth.userId}`);
 
   return { rawKey };
 }

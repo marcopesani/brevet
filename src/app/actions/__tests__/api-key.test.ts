@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock next/cache
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
 }));
 
 // Mock auth

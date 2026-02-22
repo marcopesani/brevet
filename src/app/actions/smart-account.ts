@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { createPublicClient, http, type Hex } from "viem";
 import { z } from "zod/v4";
 import { getAuthenticatedUser } from "@/lib/auth";
@@ -33,6 +33,7 @@ export async function setupSmartAccount(chainId: number) {
 
   revalidatePath("/dashboard/wallet");
   revalidatePath("/dashboard");
+  updateTag(`analytics-${auth.userId}`);
   return {
     id: account.id,
     smartAccountAddress: account.smartAccountAddress,
@@ -219,6 +220,7 @@ export async function finalizeSessionKey(
 
   revalidatePath("/dashboard/wallet");
   revalidatePath("/dashboard");
+  updateTag(`analytics-${auth.userId}`);
 
   return {
     success: true as const,
