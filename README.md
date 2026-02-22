@@ -54,6 +54,13 @@ flowchart LR
     Data --> DB[(MongoDB)]
 ```
 
+### Architecture Decisions
+
+- **Two-actor mutation model** — Both the dashboard user (via Server Actions) and the MCP agent (via direct DB writes) mutate data independently. The MCP agent has no access to Next.js cache APIs, so cache TTLs are driven by data sensitivity rather than invalidation signals.
+- **Tiered caching by financial sensitivity** — Financial data (balances, pending payments) is never cached. Informational data (analytics, transaction history) uses short TTLs. Static content (marketing pages, settings) can be cached aggressively.
+- **React Query only for external mutations** — Polling is reserved for data that changes outside the dashboard (e.g., MCP agent creates a pending payment). All other data uses Server Components with on-demand revalidation.
+- **No middleware / no proxy** — Auth checks happen in the `(dashboard)` route group layout. There is no `middleware.ts` or `proxy.ts`. This means the full React tree renders before auth redirects — a known trade-off for simplicity.
+
 ## Quick Start
 
 ### Prerequisites

@@ -159,6 +159,22 @@ MongoDB with Mongoose. Six collections: `users`, `hotwallets`, `endpointpolicies
 
 `NEXT_PUBLIC_CHAIN_ID` env var toggles between Base mainnet (8453) and Base Sepolia testnet (84532). Singleton config exported from `src/lib/chain-config.ts`.
 
+### Architectural Decisions
+
+- Two actors mutate data: **dashboard** (Server Actions → `revalidatePath`/`revalidateTag`) and **MCP agent** (direct DB writes, no cache access). Cache TTLs are set by data sensitivity — never cache financial/time-sensitive data.
+- No `proxy.ts` or `middleware.ts` yet. Auth is in `(dashboard)` layout. Known gap: full React tree renders before auth redirect.
+- React Query is strictly for external-mutation data (MCP agent writes). All dashboard-only mutations use `revalidatePath`.
+
+**Caching tiers:**
+
+| Tier | TTL | Data | Reason |
+|------|-----|------|--------|
+| 1 — Never cache | 0 | Pending payment count, wallet balance, pending payments list | Stale = bad financial decisions |
+| 2 — Short | 60s | Analytics, recent transactions | Informational only |
+| 3 — Medium | 2min | Policy list, transaction history | Infrequent change |
+| 4 — Long | 10min | Settings, user profile | User-only mutations |
+| 5 — Static | ∞ | Marketing page | No dynamic data |
+
 ## Code Conventions
 
 - Import alias: `@/*` maps to `src/*`
