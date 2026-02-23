@@ -4,6 +4,7 @@ import { resetTestDb, seedTestUser } from "@/test/helpers/db";
 import { TEST_WALLET_ADDRESS } from "@/test/helpers/crypto";
 import { getDefaultChainConfig } from "@/lib/chain-config";
 import { Transaction } from "@/lib/models/transaction";
+import { SmartAccount } from "@/lib/models/smart-account";
 import { User } from "@/lib/models/user";
 import mongoose from "mongoose";
 import {
@@ -20,8 +21,25 @@ vi.stubGlobal("fetch", mockFetch);
 // Mock getUsdcBalance — individual tests override as needed
 const mockGetUsdcBalance = vi.fn().mockResolvedValue("1000.000000");
 
-// Mock viem wallet/public clients for withdrawal tests
+// Mock decryptPrivateKey for smart account withdrawal tests
+const mockDecryptPrivateKey = vi.fn().mockReturnValue("0x" + "ab".repeat(32));
+
+// Mock viem wallet/public clients for hot wallet withdrawal tests
 const mockWriteContract = vi.fn();
+
+// Mock ZeroDev SDK for smart account withdrawal tests
+const mockEncodeCalls = vi.fn().mockResolvedValue("0xencodedCalldata");
+const mockSendUserOperation = vi.fn();
+const mockWaitForUserOperationReceipt = vi.fn();
+
+// Mock chain public client (used by withdrawFromSmartAccount)
+const mockCreateChainPublicClient = vi.fn().mockReturnValue({
+  readContract: vi.fn(),
+  chain: { id: 84532 },
+});
+
+// ZERODEV_PROJECT_ID is required by getZeroDevBundlerRpc; use a placeholder for tests
+process.env.ZERODEV_PROJECT_ID = process.env.ZERODEV_PROJECT_ID ?? "test-project-id";
 
 vi.mock("@/lib/hot-wallet", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/hot-wallet")>();
@@ -29,6 +47,38 @@ vi.mock("@/lib/hot-wallet", async (importOriginal) => {
     ...actual,
     getUsdcBalance: (...args: Parameters<typeof actual.getUsdcBalance>) =>
       mockGetUsdcBalance(...args),
+    decryptPrivateKey: (...args: unknown[]) => mockDecryptPrivateKey(...args),
+  };
+});
+
+vi.mock("@zerodev/permissions", () => ({
+  deserializePermissionAccount: vi.fn().mockResolvedValue({
+    address: "0x" + "cc".repeat(20),
+    encodeCalls: (...args: unknown[]) => mockEncodeCalls(...args),
+  }),
+}));
+
+vi.mock("@zerodev/permissions/signers", () => ({
+  toECDSASigner: vi.fn().mockResolvedValue({ type: "local" }),
+}));
+
+vi.mock("@zerodev/sdk", () => ({
+  createKernelAccountClient: vi.fn().mockReturnValue({
+    sendUserOperation: (...args: unknown[]) => mockSendUserOperation(...args),
+    waitForUserOperationReceipt: (...args: unknown[]) =>
+      mockWaitForUserOperationReceipt(...args),
+  }),
+  createZeroDevPaymasterClient: vi.fn().mockReturnValue({
+    sponsorUserOperation: vi.fn(),
+  }),
+}));
+
+vi.mock("@/lib/chain-config", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/chain-config")>();
+  return {
+    ...actual,
+    createChainPublicClient: (...args: unknown[]) =>
+      mockCreateChainPublicClient(...args),
   };
 });
 
@@ -757,6 +807,174 @@ describe("E2E: Crypto Operations", () => {
       expect(result.success).toBe(false);
       expect(result.status).toBe("rejected");
       expect(result.error).toContain("SIWx is not supported with smart account signers");
+    });
+  });
+
+  // ─── 7. Smart Account Withdrawal Flow ─────────────────────────────────────
+  describe("Smart Account Withdrawal Flow", () => {
+    const MOCK_USER_OP_HASH = "0x" + "bb".repeat(32);
+    const MOCK_TX_HASH = "0x" + "cc".repeat(32);
+    const VALID_RECIPIENT = "0x1234567890abcdef1234567890abcdef12345678";
+
+    beforeEach(() => {
+      mockGetUsdcBalance.mockResolvedValue("50.000000");
+      mockDecryptPrivateKey.mockReturnValue("0x" + "ab".repeat(32));
+      mockSendUserOperation.mockResolvedValue(MOCK_USER_OP_HASH);
+      mockWaitForUserOperationReceipt.mockResolvedValue({
+        success: true,
+        receipt: { transactionHash: MOCK_TX_HASH },
+      });
+      mockEncodeCalls.mockResolvedValue("0xencodedCalldata");
+    });
+
+    afterEach(() => {
+      mockSendUserOperation.mockReset();
+      mockWaitForUserOperationReceipt.mockReset();
+      mockEncodeCalls.mockReset();
+    });
+
+    /**
+     * Seed a user + SmartAccount ready for withdrawal.
+     * Does not use seedTestUser() so we control the SmartAccount fields precisely
+     * (in particular serializedAccount which seedTestUser leaves undefined).
+     */
+    async function seedUserWithActiveSmartAccount(
+      overrides?: Partial<{
+        sessionKeyStatus: "pending_grant" | "active" | "expired" | "revoked";
+        sessionKeyExpiry: Date;
+        serializedAccount: string | undefined;
+      }>,
+    ) {
+      const user = await User.create({ walletAddress: TEST_WALLET_ADDRESS });
+      const chainId = getDefaultChainConfig().chain.id;
+      const sa = await SmartAccount.create({
+        userId: user._id,
+        chainId,
+        ownerAddress: TEST_WALLET_ADDRESS,
+        smartAccountAddress: "0x" + "cc".repeat(20),
+        sessionKeyAddress: "0x" + "dd".repeat(20),
+        sessionKeyEncrypted: "enc-session-key",
+        sessionKeyStatus: overrides?.sessionKeyStatus ?? "active",
+        sessionKeyExpiry:
+          overrides?.sessionKeyExpiry ?? new Date(Date.now() + 86_400_000),
+        serializedAccount:
+          overrides && "serializedAccount" in overrides
+            ? overrides.serializedAccount
+            : "serialized-permission-account",
+        spendLimitPerTx: 1_000_000,
+        spendLimitDaily: 10_000_000,
+      });
+      return { user, sa, chainId };
+    }
+
+    it("should return txHash and userOpHash on successful withdrawal", async () => {
+      const { user } = await seedUserWithActiveSmartAccount();
+
+      const { withdrawFromSmartAccount } = await import(
+        "@/lib/data/smart-account"
+      );
+      const result = await withdrawFromSmartAccount(
+        user._id.toString(),
+        1.0,
+        VALID_RECIPIENT,
+      );
+
+      expect(result.userOpHash).toBe(MOCK_USER_OP_HASH);
+      expect(result.txHash).toBe(MOCK_TX_HASH);
+    });
+
+    it("should create a Transaction record in the database on success", async () => {
+      const { user } = await seedUserWithActiveSmartAccount();
+
+      const { withdrawFromSmartAccount } = await import(
+        "@/lib/data/smart-account"
+      );
+      await withdrawFromSmartAccount(user._id.toString(), 1.0, VALID_RECIPIENT);
+
+      const tx = await Transaction.findOne({
+        userId: user._id,
+        type: "withdrawal",
+      }).lean();
+      expect(tx).not.toBeNull();
+      expect(tx!.txHash).toBe(MOCK_TX_HASH);
+      expect(tx!.amount).toBe(1.0);
+      expect(tx!.endpoint).toBe(`withdrawal:${VALID_RECIPIENT}`);
+      expect(tx!.status).toBe("completed");
+    });
+
+    it("should reject withdrawal when USDC balance is insufficient", async () => {
+      const { user } = await seedUserWithActiveSmartAccount();
+      mockGetUsdcBalance.mockResolvedValue("0.500000");
+
+      const { withdrawFromSmartAccount } = await import(
+        "@/lib/data/smart-account"
+      );
+      await expect(
+        withdrawFromSmartAccount(user._id.toString(), 1.0, VALID_RECIPIENT),
+      ).rejects.toThrow(/Insufficient balance/);
+    });
+
+    it("should reject withdrawal when session key is not active", async () => {
+      const { user } = await seedUserWithActiveSmartAccount({
+        sessionKeyStatus: "pending_grant",
+      });
+
+      const { withdrawFromSmartAccount } = await import(
+        "@/lib/data/smart-account"
+      );
+      await expect(
+        withdrawFromSmartAccount(user._id.toString(), 1.0, VALID_RECIPIENT),
+      ).rejects.toThrow("Session key is not active");
+    });
+
+    it("should reject withdrawal when session key has expired", async () => {
+      const { user } = await seedUserWithActiveSmartAccount({
+        sessionKeyExpiry: new Date(Date.now() - 86_400_000),
+      });
+
+      const { withdrawFromSmartAccount } = await import(
+        "@/lib/data/smart-account"
+      );
+      await expect(
+        withdrawFromSmartAccount(user._id.toString(), 1.0, VALID_RECIPIENT),
+      ).rejects.toThrow("Session key has expired");
+    });
+
+    it("should reject withdrawal when no serialized account is stored", async () => {
+      const { user } = await seedUserWithActiveSmartAccount({
+        serializedAccount: undefined,
+      });
+
+      const { withdrawFromSmartAccount } = await import(
+        "@/lib/data/smart-account"
+      );
+      await expect(
+        withdrawFromSmartAccount(user._id.toString(), 1.0, VALID_RECIPIENT),
+      ).rejects.toThrow("No serialized account found");
+    });
+
+    it("should reject withdrawal when no smart account exists for the user", async () => {
+      const nonExistentUserId = new mongoose.Types.ObjectId().toString();
+
+      const { withdrawFromSmartAccount } = await import(
+        "@/lib/data/smart-account"
+      );
+      await expect(
+        withdrawFromSmartAccount(nonExistentUserId, 1.0, VALID_RECIPIENT),
+      ).rejects.toThrow("No smart account found");
+    });
+
+    it("should reject withdrawal with an invalid destination address", async () => {
+      const { withdrawFromSmartAccount } = await import(
+        "@/lib/data/smart-account"
+      );
+      await expect(
+        withdrawFromSmartAccount(
+          new mongoose.Types.ObjectId().toString(),
+          1.0,
+          "not-an-address",
+        ),
+      ).rejects.toThrow("Invalid destination address");
     });
   });
 });
