@@ -151,7 +151,7 @@ function createPayment(overrides: Partial<PendingPayment> = {}): PendingPayment 
     chainId: 8453,
     paymentRequirements: BASE_PAYMENT_REQUIREMENTS,
     status: "pending",
-    expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+    expiresAt: new Date(Date.now() + 3600_000).toISOString(),
     createdAt: new Date().toISOString(),
     ...overrides,
   };

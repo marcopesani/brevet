@@ -57,6 +57,7 @@ export function registerX402Pay(server: McpServer, userId: string): void {
         );
 
         if (result.status === "pending_approval") {
+          const expiresAt = new Date(Date.now() + result.maxTimeoutSeconds * 1000);
           const pendingPayment = await createPendingPayment({
             userId,
             url,
@@ -65,6 +66,7 @@ export function registerX402Pay(server: McpServer, userId: string): void {
             asset: result.asset,
             chainId: result.chainId,
             paymentRequirements: result.paymentRequirements,
+            expiresAt,
             body,
             headers,
           });
@@ -76,9 +78,10 @@ export function registerX402Pay(server: McpServer, userId: string): void {
             displayChainId,
           );
           const amountLabel = displayAmount !== "—" ? `${displayAmount} ${symbol}` : "unknown amount";
+          const timeoutMinutes = Math.ceil(result.maxTimeoutSeconds / 60);
 
           return textContent(
-            `Payment of ${amountLabel} requires user approval. Payment ID: ${pendingPayment.id}. The user has been notified and has 30 minutes to approve. Use x402_check_pending to check the status.`,
+            `Payment of ${amountLabel} requires user approval. Payment ID: ${pendingPayment.id}. The user has been notified and has ${timeoutMinutes} minutes to approve. Use x402_check_pending to check the status.`,
           );
         }
 

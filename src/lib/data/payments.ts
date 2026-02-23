@@ -68,7 +68,7 @@ export async function createPendingPayment(data: {
   asset?: string;
   chainId?: number;
   paymentRequirements: string;
-  expiresAt?: Date;
+  expiresAt: Date;
   body?: string;
   headers?: Record<string, string>;
 }) {
@@ -82,7 +82,7 @@ export async function createPendingPayment(data: {
     ...(data.asset !== undefined && data.asset !== "" && { asset: data.asset }),
     ...(data.chainId !== undefined && { chainId: data.chainId }),
     paymentRequirements: data.paymentRequirements,
-    expiresAt: data.expiresAt ?? new Date(Date.now() + 30 * 60 * 1000),
+    expiresAt: data.expiresAt,
     requestBody: data.body ?? null,
     requestHeaders: data.headers ? JSON.stringify(data.headers) : null,
   });
