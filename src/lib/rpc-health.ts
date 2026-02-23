@@ -39,7 +39,7 @@ export function reportRpcError(chainId: number, error: unknown): void {
 
   // Escalate from degraded to down after the second consecutive failure
   const nextStatus: RpcStatusLevel =
-    existing?.status === "degraded" ? "down" : "degraded";
+    existing?.status === "healthy" || !existing ? "degraded" : "down";
 
   healthMap.set(chainId, {
     status: nextStatus,
