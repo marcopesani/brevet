@@ -23,4 +23,6 @@ export async function selectMetaMaskInAppKit(page: Page): Promise<void> {
       return;
     }
   }
+
+  throw new Error("Could not find a MetaMask-compatible AppKit wallet option");
 }
