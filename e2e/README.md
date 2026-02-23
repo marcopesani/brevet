@@ -41,3 +41,7 @@ npm run test:e2e:browser:headed
 - `E2E_BASE_URL` (default `http://127.0.0.1:3000`)
 - `E2E_METAMASK_SEED_PHRASE` (defaults to Hardhat mnemonic)
 - `E2E_METAMASK_PASSWORD` (default `Password123!`)
+- `E2E_WALLETCONNECT_PROJECT_ID` (fallback if `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is not set)
+- `E2E_ZERODEV_PROJECT_ID` (fallback if `ZERODEV_PROJECT_ID` is not set)
+
+Use a valid WalletConnect/Reown project ID for full wallet-connection happy paths.

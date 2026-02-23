@@ -2,11 +2,19 @@ import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
 const mongoUri = process.env.MONGODB_URI ?? "mongodb://127.0.0.1:27017/brevet";
+const walletConnectProjectId =
+  process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ??
+  process.env.E2E_WALLETCONNECT_PROJECT_ID ??
+  "e2e-walletconnect-project-id";
+const zeroDevProjectId =
+  process.env.ZERODEV_PROJECT_ID ??
+  process.env.E2E_ZERODEV_PROJECT_ID ??
+  "e2e-zerodev-project-id";
 const webServerCommand = [
   "NEXT_PUBLIC_TEST_MODE=true",
-  "NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=e2e-walletconnect-project-id",
+  `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=${walletConnectProjectId}`,
   "NEXTAUTH_SECRET=e2e-nextauth-secret-with-32chars",
-  "ZERODEV_PROJECT_ID=e2e-zerodev-project-id",
+  `ZERODEV_PROJECT_ID=${zeroDevProjectId}`,
   `MONGODB_URI=${mongoUri}`,
   "npm run dev",
 ].join(" ");

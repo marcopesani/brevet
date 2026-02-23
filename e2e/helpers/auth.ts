@@ -46,18 +46,8 @@ async function signInViaInjectedProvider(
     return provider.request({ method: "eth_requestAccounts" }) as Promise<string[]>;
   });
 
-  let accounts: string[];
-  try {
-    accounts = await Promise.race([
-      requestAccountsPromise,
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("eth_requestAccounts timeout")), 20_000),
-      ),
-    ]);
-  } catch {
-    await metamask.connectToDapp();
-    accounts = await requestAccountsPromise;
-  }
+  await metamask.connectToDapp();
+  const accounts = await requestAccountsPromise;
   const address = accounts[0];
   if (!address) throw new Error("No account returned from injected provider");
 

@@ -247,6 +247,10 @@ npm run test:e2e:browser:headed
 - `E2E_BASE_URL` (default: `http://127.0.0.1:3000`)
 - `E2E_METAMASK_SEED_PHRASE` (default: Hardhat test mnemonic)
 - `E2E_METAMASK_PASSWORD` (default: `Password123!`)
+- `E2E_WALLETCONNECT_PROJECT_ID` (used by Playwright webServer if `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is not already set)
+- `E2E_ZERODEV_PROJECT_ID` (used by Playwright webServer if `ZERODEV_PROJECT_ID` is not already set)
+
+> Note: for wallet-connection happy paths, use a valid WalletConnect/Reown project ID. Placeholder IDs allow app startup but can fail at runtime wallet handshake.
 
 | Layer | What is covered |
 |-------|-----------------|
