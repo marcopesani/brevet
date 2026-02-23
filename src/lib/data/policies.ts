@@ -21,6 +21,7 @@ export async function getPolicies(userId: string, status?: string, options?: { c
     filter.chainId = options.chainId;
   }
   const docs = await EndpointPolicy.find(filter)
+    .select("-userId")
     .sort({ createdAt: -1 })
     .lean();
   return docs.map(withId);
