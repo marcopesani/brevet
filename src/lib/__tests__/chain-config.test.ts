@@ -18,6 +18,7 @@ import {
   isChainSupported,
   getNetworkIdentifiers,
   getChainRpcUrlsForCsp,
+  getUsdcGasTokenAddress,
 } from "../chain-config";
 
 describe("getChainById", () => {
@@ -332,5 +333,58 @@ describe("resolveValidChainId", () => {
 
   it("falls back to testnet when mainnet preferred but only testnets enabled", () => {
     expect(resolveValidChainId(8453, [84532, 11155111])).toBe(84532);
+  });
+});
+
+describe("getUsdcGasTokenAddress", () => {
+  it("returns USDC gas token address for Base mainnet (8453)", () => {
+    const addr = getUsdcGasTokenAddress(8453);
+    expect(addr).toBe("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913");
+  });
+
+  it("returns USDC gas token address for Arbitrum One (42161)", () => {
+    const addr = getUsdcGasTokenAddress(42161);
+    expect(addr).toBe("0xaf88d065e77c8cC2239327C5EDb3A432268e5831");
+  });
+
+  it("returns USDC gas token address for OP Mainnet (10)", () => {
+    const addr = getUsdcGasTokenAddress(10);
+    expect(addr).toBe("0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
+  });
+
+  it("returns USDC gas token address for Polygon (137)", () => {
+    const addr = getUsdcGasTokenAddress(137);
+    expect(addr).toBe("0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359");
+  });
+
+  it("returns USDC gas token address for Ethereum mainnet (1)", () => {
+    const addr = getUsdcGasTokenAddress(1);
+    expect(addr).toBe("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+  });
+
+  it("returns USDC gas token address for Ethereum Sepolia (11155111)", () => {
+    const addr = getUsdcGasTokenAddress(11155111);
+    expect(addr).toBe("0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238");
+  });
+
+  it("returns undefined for Base Sepolia (84532) — no USDC gas token support", () => {
+    expect(getUsdcGasTokenAddress(84532)).toBeUndefined();
+  });
+
+  it("returns undefined for Arbitrum Sepolia (421614)", () => {
+    expect(getUsdcGasTokenAddress(421614)).toBeUndefined();
+  });
+
+  it("returns undefined for OP Sepolia (11155420)", () => {
+    expect(getUsdcGasTokenAddress(11155420)).toBeUndefined();
+  });
+
+  it("returns undefined for Polygon Amoy (80002)", () => {
+    expect(getUsdcGasTokenAddress(80002)).toBeUndefined();
+  });
+
+  it("returns undefined for unknown chain IDs", () => {
+    expect(getUsdcGasTokenAddress(99999)).toBeUndefined();
+    expect(getUsdcGasTokenAddress(0)).toBeUndefined();
   });
 });

@@ -67,6 +67,7 @@ const ALLOWED_BUNDLER_METHODS = new Set([
   "eth_sendUserOperation",
   "eth_estimateUserOperationGas",
   "zd_getUserOperationGasPrice",
+  "zd_sponsorUserOperation",
   "pm_getPaymasterData",
   "pm_getPaymasterStubData",
   "pm_sponsorUserOperation",

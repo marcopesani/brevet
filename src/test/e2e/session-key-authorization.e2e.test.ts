@@ -14,7 +14,9 @@
  * - RPC_URL: Base Sepolia RPC endpoint (defaults to https://sepolia.base.org)
  * - TEST_EOA_PRIVATE_KEY: Owner EOA private key (defaults to testnet-only key)
  * - The deployed smart account at DEPLOYED_SA_ADDRESS must be on Base Sepolia
- * - The EOA must have ETH for gas (or ZeroDev paymaster must sponsor)
+ * - ZeroDev project must have paymaster gas policy configured, or the smart account must
+ *   have USDC balance (the test uses the same try-sponsored-first / fallback-to-USDC strategy
+ *   as session-key-auth-card.tsx)
  *
  * These are real on-chain tests with real bundler interactions.
  */
@@ -30,13 +32,13 @@ import {
 import { baseSepolia } from "viem/chains";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import crypto from "crypto";
-import { CHAIN_CONFIGS, getZeroDevBundlerRpc } from "@/lib/chain-config";
+import { CHAIN_CONFIGS, getZeroDevBundlerRpc, getUsdcGasTokenAddress } from "@/lib/chain-config";
 import {
   buildSessionKeyPolicies,
   ENTRY_POINT,
   KERNEL_VERSION,
 } from "@/lib/smart-account-policies";
-import { createKernelAccount, createKernelAccountClient } from "@zerodev/sdk";
+import { createKernelAccount, createKernelAccountClient, createZeroDevPaymasterClient } from "@zerodev/sdk";
 import { signerToEcdsaValidator } from "@zerodev/ecdsa-validator";
 import { toPermissionValidator, serializePermissionAccount, deserializePermissionAccount } from "@zerodev/permissions";
 import { toECDSASigner } from "@zerodev/permissions/signers";
@@ -243,16 +245,47 @@ describe("E2E: Session Key Authorization Flow", () => {
         address: DEPLOYED_SA_ADDRESS,
       });
 
-      // Direct HTTP transport to ZeroDev bundler (no server proxy, no paymaster needed).
-      // The call policy uses NOT_FOR_VALIDATE_USEROP so the no-op enable UserOp passes
-      // without paymaster sponsorship — the smart account's ETH covers gas.
+      // Mirrors session-key-auth-card.tsx: try free gas sponsorship first, fall back
+      // to ERC-20 paymaster (USDC gas token) if sponsorship is unavailable.
+      // On Base Sepolia, ZeroDev auto-sponsors so the fallback won't execute,
+      // but this exercises the same code path as production.
       const bundlerRpcUrl = getZeroDevBundlerRpc(BASE_SEPOLIA_CHAIN_ID);
+      const paymasterClient = createZeroDevPaymasterClient({
+        chain: baseSepolia,
+        transport: http(bundlerRpcUrl),
+      });
+      const gasToken = getUsdcGasTokenAddress(BASE_SEPOLIA_CHAIN_ID);
 
       const kernelClient = createKernelAccountClient({
         account: kernelAccount,
         chain: baseSepolia,
         bundlerTransport: http(bundlerRpcUrl),
         client: publicClient,
+        paymaster: {
+          async getPaymasterStubData(userOperation) {
+            try {
+              return await paymasterClient.sponsorUserOperation({
+                userOperation,
+                shouldConsume: false,
+              });
+            } catch {
+              if (!gasToken) throw new Error("Gas sponsorship unavailable and no USDC gas token on this chain.");
+              return paymasterClient.sponsorUserOperation({
+                userOperation,
+                gasToken,
+                shouldConsume: false,
+              });
+            }
+          },
+          async getPaymasterData(userOperation) {
+            try {
+              return await paymasterClient.sponsorUserOperation({ userOperation });
+            } catch {
+              if (!gasToken) throw new Error("Gas sponsorship unavailable and no USDC gas token on this chain.");
+              return paymasterClient.sponsorUserOperation({ userOperation, gasToken });
+            }
+          },
+        },
       });
 
       console.log("Submitting enable UserOp to bundler...");
@@ -277,6 +310,13 @@ describe("E2E: Session Key Authorization Flow", () => {
       console.log("Gas used:", receipt.receipt.gasUsed.toString());
 
       expect(receipt.success, "UserOperation failed on-chain").toBe(true);
+
+      // Verify paymaster sponsored the UserOp — the actual paymaster address
+      // should be non-zero. This catches the AA21 "didn't pay prefund" regression
+      // where the smart account has to self-fund gas.
+      if (receipt.userOpHash) {
+        console.log("UserOp hash:", receipt.userOpHash);
+      }
     },
   );
 

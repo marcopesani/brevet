@@ -416,3 +416,24 @@ export function getZeroDevBundlerRpc(chainId: number): string {
 export function getZeroDevPaymasterRpc(chainId: number): string {
   return `https://rpc.zerodev.app/api/v3/${getZeroDevProjectId()}/chain/${chainId}`;
 }
+
+/**
+ * Returns the ZeroDev ERC-20 gas token address for USDC on a given chain.
+ * Used by the session key authorization flow to pay gas in USDC when free
+ * gas sponsorship is unavailable. Returns undefined for chains where ZeroDev
+ * does not support USDC as a gas token (most testnets).
+ *
+ * Addresses sourced from @zerodev/sdk gasTokenAddresses.
+ * Client-safe — no process.env access.
+ */
+export function getUsdcGasTokenAddress(chainId: number): `0x${string}` | undefined {
+  const addresses: Record<number, `0x${string}`> = {
+    1: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",       // Ethereum
+    10: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",      // OP Mainnet
+    137: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",     // Polygon
+    8453: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",    // Base
+    42161: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",   // Arbitrum One
+    11155111: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", // Ethereum Sepolia
+  };
+  return addresses[chainId];
+}
