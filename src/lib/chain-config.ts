@@ -400,3 +400,19 @@ export function resolveValidChainId(
 
 // Backward-compatible alias — deprecated, use getDefaultChainConfig()
 export const chainConfig: ChainConfig = getDefaultChainConfig();
+
+// ── ZeroDev RPC helpers ────────────────────────────────────────────
+
+function getZeroDevProjectId(): string {
+  const id = process.env.ZERODEV_PROJECT_ID;
+  if (!id) throw new Error("Missing required env var: ZERODEV_PROJECT_ID");
+  return id;
+}
+
+export function getZeroDevBundlerRpc(chainId: number): string {
+  return `https://rpc.zerodev.app/api/v3/${getZeroDevProjectId()}/chain/${chainId}`;
+}
+
+export function getZeroDevPaymasterRpc(chainId: number): string {
+  return `https://rpc.zerodev.app/api/v3/${getZeroDevProjectId()}/chain/${chainId}`;
+}

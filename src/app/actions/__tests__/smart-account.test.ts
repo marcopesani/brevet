@@ -236,23 +236,23 @@ describe("sendBundlerRequest server action", () => {
     ).rejects.toThrow("Unauthorized");
   });
 
-  it("throws when PIMLICO_API_KEY is not set", async () => {
+  it("throws when ZERODEV_PROJECT_ID is not set", async () => {
     const { getAuthenticatedUser } = await import("@/lib/auth");
     vi.mocked(getAuthenticatedUser).mockResolvedValue({
       userId: TEST_USER_ID,
       walletAddress: TEST_WALLET,
     });
 
-    const originalKey = process.env.PIMLICO_API_KEY;
-    delete process.env.PIMLICO_API_KEY;
+    const originalId = process.env.ZERODEV_PROJECT_ID;
+    delete process.env.ZERODEV_PROJECT_ID;
 
     try {
       const { sendBundlerRequest } = await import("../smart-account");
       await expect(
         sendBundlerRequest(84532, "eth_sendUserOperation", []),
-      ).rejects.toThrow("PIMLICO_API_KEY is not set");
+      ).rejects.toThrow("ZERODEV_PROJECT_ID");
     } finally {
-      if (originalKey) process.env.PIMLICO_API_KEY = originalKey;
+      if (originalId) process.env.ZERODEV_PROJECT_ID = originalId;
     }
   });
 });

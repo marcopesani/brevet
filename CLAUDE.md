@@ -189,7 +189,7 @@ This project uses **React 19.2.3** with the **React Compiler enabled** (`reactCo
 
 Copy `.env.example` to `.env.local`. Required variables:
 - `MONGODB_URI` — MongoDB connection string (default: `mongodb://localhost:27017/brevet`)
-- `PIMLICO_API_KEY` — Pimlico bundler/paymaster key for smart account operations (from https://dashboard.pimlico.io)
+- `ZERODEV_PROJECT_ID` — ZeroDev project ID for bundler/paymaster operations (from https://dashboard.zerodev.app)
 - `NEXTAUTH_SECRET` — session encryption key
 - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` — from https://dashboard.reown.com
 

@@ -1,10 +1,7 @@
 import { createPublicClient, http, type Hex, type Address } from "viem";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
-import { toKernelSmartAccount } from "permissionless/accounts";
-import {
-  createKernelAccount,
-  addressToEmptyAccount,
-} from "@zerodev/sdk";
+import { createKernelAccount } from "@zerodev/sdk";
+import { getKernelAddressFromECDSA } from "@zerodev/ecdsa-validator";
 import { toPermissionValidator } from "@zerodev/permissions";
 import { toECDSASigner } from "@zerodev/permissions/signers";
 import { deserializePermissionAccount } from "@zerodev/permissions";
@@ -15,8 +12,8 @@ import type { ClientEvmSigner } from "@/lib/x402/types";
 
 /**
  * Compute the deterministic CREATE2 address for a Kernel v3.3 smart account
- * owned by the given address. No on-chain transaction is needed — uses the
- * entry point's getSenderAddress to derive the counterfactual address.
+ * owned by the given address. No on-chain transaction is needed — uses
+ * CREATE2 address derivation from the ECDSA validator plugin.
  */
 export async function computeSmartAccountAddress(
   ownerAddress: Address,
@@ -32,20 +29,13 @@ export async function computeSmartAccountAddress(
     transport: http(),
   });
 
-  // addressToEmptyAccount creates a stub LocalAccount with the given address.
-  // toKernelSmartAccount only uses owner.address (not the private key) for
-  // counterfactual address computation via the entry point factory.
-  const emptyOwner = addressToEmptyAccount(ownerAddress);
-
-  const kernelAccount = await toKernelSmartAccount({
-    client: publicClient,
-    owners: [emptyOwner],
-    version: KERNEL_VERSION,
+  return getKernelAddressFromECDSA({
+    publicClient,
     entryPoint: ENTRY_POINT,
+    kernelVersion: KERNEL_VERSION,
+    eoaAddress: ownerAddress,
     index: BigInt(0),
   });
-
-  return kernelAccount.address;
 }
 
 /**
@@ -75,6 +65,7 @@ export async function createSmartAccountSigner(
   smartAccountAddress: Address,
   chainId: number,
   expiryTimestamp: number,
+  spendLimitPerTx?: bigint,
 ): Promise<ClientEvmSigner> {
   const config = getChainConfig(chainId);
   if (!config) {
@@ -94,7 +85,7 @@ export async function createSmartAccountSigner(
 
   const permissionValidator = await toPermissionValidator(publicClient, {
     signer: ecdsaSigner,
-    policies: buildSessionKeyPolicies(config.usdcAddress, expiryTimestamp),
+    policies: buildSessionKeyPolicies(config.usdcAddress, expiryTimestamp, spendLimitPerTx),
     entryPoint: ENTRY_POINT,
     kernelVersion: KERNEL_VERSION,
   });

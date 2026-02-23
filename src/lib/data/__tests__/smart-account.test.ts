@@ -34,8 +34,8 @@ vi.mock("@/lib/smart-account", () => ({
   }),
 }));
 
-// Set PIMLICO_API_KEY for withdrawal tests
-process.env.PIMLICO_API_KEY = process.env.PIMLICO_API_KEY || "test-pimlico-key";
+// Set ZERODEV_PROJECT_ID for withdrawal tests
+process.env.ZERODEV_PROJECT_ID = process.env.ZERODEV_PROJECT_ID || "test-project-id";
 
 // Mock ZeroDev SDK modules
 const mockSendUserOperation = vi.fn().mockResolvedValue("0x" + "bb".repeat(32));
@@ -61,17 +61,10 @@ vi.mock("@zerodev/permissions/signers", () => ({
 vi.mock("@zerodev/sdk", () => ({
   createKernelAccountClient: vi.fn().mockReturnValue({
     sendUserOperation: (...args: unknown[]) => mockSendUserOperation(...args),
-  }),
-}));
-
-vi.mock("permissionless/clients/pimlico", () => ({
-  createPimlicoClient: vi.fn().mockReturnValue({
-    getUserOperationGasPrice: vi.fn().mockResolvedValue({
-      fast: { maxFeePerGas: BigInt(1), maxPriorityFeePerGas: BigInt(1) },
-    }),
     waitForUserOperationReceipt: (...args: unknown[]) => mockWaitForUserOperationReceipt(...args),
-    getPaymasterData: vi.fn(),
-    getPaymasterStubData: vi.fn(),
+  }),
+  createZeroDevPaymasterClient: vi.fn().mockReturnValue({
+    sponsorUserOperation: vi.fn(),
   }),
 }));
 

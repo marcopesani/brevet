@@ -14,7 +14,7 @@ import {
   activateSessionKey,
 } from "@/lib/data/smart-account";
 import { decryptPrivateKey, encryptPrivateKey } from "@/lib/hot-wallet";
-import { getChainConfig } from "@/lib/chain-config";
+import { getChainConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";
 import {
   SESSION_KEY_MAX_SPEND_PER_TX,
   SESSION_KEY_MAX_SPEND_DAILY,
@@ -66,9 +66,10 @@ export async function getAllSmartAccountsAction() {
 const ALLOWED_BUNDLER_METHODS = new Set([
   "eth_sendUserOperation",
   "eth_estimateUserOperationGas",
-  "pimlico_getUserOperationGasPrice",
+  "zd_getUserOperationGasPrice",
   "pm_getPaymasterData",
   "pm_getPaymasterStubData",
+  "pm_sponsorUserOperation",
   "eth_getUserOperationReceipt",
 ]);
 
@@ -100,7 +101,7 @@ export async function prepareSessionKeyAuth(chainId: number) {
 }
 
 /**
- * Step 2: Proxy JSON-RPC calls to the Pimlico bundler/paymaster.
+ * Step 2: Proxy JSON-RPC calls to the ZeroDev bundler/paymaster.
  * Only allows a strict set of methods — no arbitrary RPC forwarding.
  */
 export async function sendBundlerRequest(
@@ -130,11 +131,9 @@ export async function sendBundlerRequest(
     }
   }
 
-  const apiKey = process.env.PIMLICO_API_KEY;
-  if (!apiKey) throw new Error("PIMLICO_API_KEY is not set");
-  const bundlerUrl = `https://api.pimlico.io/v2/${chainId}/rpc?apikey=${apiKey}`;
+  const rpcUrl = getZeroDevBundlerRpc(chainId);
 
-  const response = await fetch(bundlerUrl, {
+  const response = await fetch(rpcUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
