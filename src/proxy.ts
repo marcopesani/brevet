@@ -36,16 +36,24 @@ function buildCsp(nonce: string): string {
     ...(isVercelPreview ? ["https://vercel.live"] : []),
   ].join(" ");
 
-  const vercelPreview = isVercelPreview ? " https://vercel.live" : "";
+  /**
+   * Vercel toolbar domains for preview deployments.
+   * @see https://vercel.com/docs/workflow-collaboration/vercel-toolbar/managing-toolbar#using-a-content-security-policy
+   */
+  const vtConnect = isVercelPreview ? " https://vercel.live wss://ws-us3.pusher.com" : "";
+  const vtFrame   = isVercelPreview ? " https://vercel.live" : "";
+  const vtImg     = isVercelPreview ? " https://vercel.live https://vercel.com" : "";
+  const vtStyle   = isVercelPreview ? " https://vercel.live" : "";
+  const vtFont    = isVercelPreview ? " https://vercel.live https://assets.vercel.com" : "";
 
   const directives: string[] = [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
-    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
-    `img-src 'self' data: blob: ${WC_WILDCARDS} https://tokens-data.1inch.io https://tokens.1inch.io https://ipfs.io https://cdn.zerion.io`,
-    `font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://fonts.reown.com`,
-    `connect-src 'self' ${WC_WILDCARDS} wss: wss://www.walletlink.org https://cca-lite.coinbase.com`,
-    `frame-src 'self' ${WC_WILDCARDS}${vercelPreview}`,
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com${vtStyle}`,
+    `img-src 'self' data: blob: ${WC_WILDCARDS} https://tokens-data.1inch.io https://tokens.1inch.io https://ipfs.io https://cdn.zerion.io${vtImg}`,
+    `font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://fonts.reown.com${vtFont}`,
+    `connect-src 'self' ${WC_WILDCARDS} wss: wss://www.walletlink.org https://cca-lite.coinbase.com${vtConnect}`,
+    `frame-src 'self' ${WC_WILDCARDS}${vtFrame}`,
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
