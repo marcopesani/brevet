@@ -84,6 +84,8 @@ const VERCEL_PREVIEW_SOURCES: CspSources = {
 
 const DEV_SOURCES: CspSources = {
   "script-src": ["'unsafe-eval'"],
+  // Cursor debug instrumentation ingest (development only)
+  "connect-src": ["http://127.0.0.1:7245"],
 };
 
 // ---------------------------------------------------------------------------
