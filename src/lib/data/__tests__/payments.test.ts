@@ -81,19 +81,21 @@ describe("getPendingPayment", () => {
 });
 
 describe("createPendingPayment", () => {
-  it("creates a payment with default expiry and method", async () => {
+  it("creates a payment with provided expiry and default method", async () => {
     const userId = uid();
+    const expiresAt = new Date(Date.now() + 3600_000);
     const payment = await createPendingPayment({
       userId,
       url: "https://api.example.com",
       amount: 0.5,
       paymentRequirements: '{"test": true}',
+      expiresAt,
     });
 
     expect(payment.id).toBeDefined();
     expect(payment.method).toBe("GET");
     expect(payment.expiresAt).toBeInstanceOf(Date);
-    expect(payment.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    expect(payment.expiresAt.getTime()).toBe(expiresAt.getTime());
   });
 
   it("uses provided method and expiry", async () => {
@@ -119,6 +121,7 @@ describe("createPendingPayment", () => {
       url: "https://api.example.com",
       amount: 1,
       paymentRequirements: "{}",
+      expiresAt: new Date(Date.now() + 3600_000),
       body: '{"query": "test"}',
       headers: { "Content-Type": "application/json", "Authorization": "Bearer token" },
     });
@@ -134,6 +137,7 @@ describe("createPendingPayment", () => {
       url: "https://api.example.com",
       amount: 1,
       paymentRequirements: "{}",
+      expiresAt: new Date(Date.now() + 3600_000),
     });
 
     expect(payment.requestBody).toBeNull();
@@ -520,6 +524,7 @@ describe("chainId filtering", () => {
       amount: 0.5,
       chainId: 42161,
       paymentRequirements: "{}",
+      expiresAt: new Date(Date.now() + 3600_000),
     });
 
     expect(payment.chainId).toBe(42161);
@@ -532,6 +537,7 @@ describe("chainId filtering", () => {
       url: "https://api.example.com",
       amount: 0.5,
       paymentRequirements: "{}",
+      expiresAt: new Date(Date.now() + 3600_000),
     });
 
     expect(payment.chainId).toBeDefined();

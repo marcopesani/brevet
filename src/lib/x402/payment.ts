@@ -321,6 +321,7 @@ export async function executePayment(
       amountRaw: getRequirementAmount(selectedRequirement) ?? "",
       asset: selectedRequirement.asset,
       chainId: selectedChainId,
+      maxTimeoutSeconds: selectedRequirement.maxTimeoutSeconds,
     };
   }
 
@@ -361,6 +362,7 @@ export async function executePayment(
       amountRaw: getRequirementAmount(selectedRequirement) ?? "",
       asset: selectedRequirement.asset,
       chainId: selectedChainId,
+      maxTimeoutSeconds: selectedRequirement.maxTimeoutSeconds,
     };
   }
 

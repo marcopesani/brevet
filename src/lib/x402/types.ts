@@ -55,6 +55,8 @@ export type PaymentResult =
       asset?: string;
       /** The chain ID selected for this payment. */
       chainId?: number;
+      /** Maximum timeout in seconds from the payment requirement. */
+      maxTimeoutSeconds: number;
       error?: undefined;
       response?: undefined;
       settlement?: undefined;
