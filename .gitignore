@@ -61,3 +61,8 @@ next-env.d.ts
 # docker
 docker-compose.override.yml
 
+# playwright / synpress
+/playwright-report/
+/test-results/
+.cache-synpress/
+

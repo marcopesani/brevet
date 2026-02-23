@@ -11,6 +11,9 @@
     "test:run": "vitest run",
     "test:e2e": "vitest run --project e2e",
     "test:integration": "bash scripts/integration-test.sh",
+    "test:synpress": "npx playwright test",
+    "test:synpress:headed": "npx playwright test --headed",
+    "synpress:cache": "npx synpress e2e/wallet-setup",
     "migrate:data": "npx tsx scripts/migrate-pg-to-mongo.ts",
     "migrate:chainid": "npx tsx scripts/migrate-add-chainid.ts",
     "postinstall": "patch-package"
@@ -56,6 +59,8 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@synthetixio/synpress": "^4.1.2",
     "@tailwindcss/postcss": "^4",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
