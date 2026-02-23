@@ -17,33 +17,16 @@ const MOCK_SA_ADDRESS: Address =
   "0xc7B29D24De8F48186106E9Fd42584776D2a915e8";
 const MOCK_SIGNATURE: Hex = "0xdeadbeef";
 
-// Mock permissionless — toKernelSmartAccount (used by computeSmartAccountAddress)
-vi.mock("permissionless/accounts", () => ({
-  toKernelSmartAccount: vi.fn(async () => ({
-    address: MOCK_SA_ADDRESS,
-  })),
+// Mock @zerodev/ecdsa-validator — getKernelAddressFromECDSA (used by computeSmartAccountAddress)
+vi.mock("@zerodev/ecdsa-validator", () => ({
+  getKernelAddressFromECDSA: vi.fn(async () => MOCK_SA_ADDRESS),
 }));
 
-// Mock @zerodev/sdk — createKernelAccount + addressToEmptyAccount
+// Mock @zerodev/sdk — createKernelAccount
 vi.mock("@zerodev/sdk", () => ({
   createKernelAccount: vi.fn(async (_client: unknown, opts: { address?: Address }) => ({
     address: opts?.address ?? MOCK_SA_ADDRESS,
     signTypedData: vi.fn(async () => MOCK_SIGNATURE),
-  })),
-  addressToEmptyAccount: vi.fn((address: Address) => ({
-    type: "local" as const,
-    address,
-    publicKey: "0x",
-    source: "empty",
-    signMessage: async () => {
-      throw new Error("not supported");
-    },
-    signTransaction: async () => {
-      throw new Error("not supported");
-    },
-    signTypedData: async () => {
-      throw new Error("not supported");
-    },
   })),
 }));
 
@@ -57,6 +40,11 @@ vi.mock("@zerodev/permissions", () => ({
     address: MOCK_SA_ADDRESS,
     signTypedData: vi.fn(async () => MOCK_SIGNATURE),
   })),
+  PolicyFlags: {
+    FOR_ALL_VALIDATION: "0x0000",
+    NOT_FOR_VALIDATE_USEROP: "0x0001",
+    NOT_FOR_VALIDATE_SIG: "0x0002",
+  },
 }));
 
 // Mock @zerodev/permissions/signers
@@ -72,6 +60,8 @@ vi.mock("@zerodev/permissions/policies", () => ({
   toCallPolicy: vi.fn(() => ({})),
   CallPolicyVersion: { V0_0_4: "0.0.4" },
   toTimestampPolicy: vi.fn(() => ({})),
+  toGasPolicy: vi.fn(() => ({})),
+  ParamCondition: { LESS_THAN_OR_EQUAL: 4 },
 }));
 
 // Mock viem to avoid real RPC calls (publicClient creation)
@@ -148,12 +138,17 @@ describe("smart-account", () => {
       expect(addr1).toBe(addr2);
     });
 
-    it("should pass the owner address to addressToEmptyAccount", async () => {
-      const { addressToEmptyAccount } = await import("@zerodev/sdk");
+    it("should pass the owner address to getKernelAddressFromECDSA", async () => {
+      const { getKernelAddressFromECDSA } = await import("@zerodev/ecdsa-validator");
       const ownerAddress: Address =
         "0x947Af7ad155f299a768874F73B3223f4a93260C6";
       await computeSmartAccountAddress(ownerAddress, 84532);
-      expect(addressToEmptyAccount).toHaveBeenCalledWith(ownerAddress);
+      expect(getKernelAddressFromECDSA).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eoaAddress: ownerAddress,
+          index: BigInt(0),
+        }),
+      );
     });
 
     it("should throw for unsupported chain", async () => {

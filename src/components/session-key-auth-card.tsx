@@ -11,7 +11,6 @@ import { createKernelAccount, createKernelAccountClient } from "@zerodev/sdk";
 import { signerToEcdsaValidator } from "@zerodev/ecdsa-validator";
 import { toPermissionValidator, serializePermissionAccount } from "@zerodev/permissions";
 import { toECDSASigner } from "@zerodev/permissions/signers";
-import { createPimlicoClient } from "permissionless/clients/pimlico";
 import { ENTRY_POINT, KERNEL_VERSION, buildSessionKeyPolicies } from "@/lib/smart-account-policies";
 import {
   Card,
@@ -127,9 +126,17 @@ export default function SessionKeyAuthCard({
         Date.now() / 1000 + parseInt(expiryDays, 10) * 24 * 60 * 60,
       );
 
+      const spendLimitPerTxMicro = BigInt(
+        Math.round((parseFloat(spendLimitPerTx) || 50) * 1e6),
+      );
+
       const permissionValidator = await toPermissionValidator(publicClient, {
         signer: ecdsaSigner,
-        policies: buildSessionKeyPolicies(config.usdcAddress as Address, expiryTimestamp),
+        policies: buildSessionKeyPolicies(
+          config.usdcAddress as Address,
+          expiryTimestamp,
+          spendLimitPerTxMicro,
+        ),
         entryPoint: ENTRY_POINT,
         kernelVersion: KERNEL_VERSION,
       });
@@ -145,30 +152,16 @@ export default function SessionKeyAuthCard({
         address: saAddress as Address,
       });
 
-      // 5. Build kernel client with proxied bundler transport
+      // 5. Build kernel client with proxied bundler transport.
+      // No paymaster client — the enable UserOp is paid from the smart account's ETH balance.
+      // (The call policy uses NOT_FOR_VALIDATE_USEROP so no enforcePaymaster is required.)
       const bundlerTransport = createBundlerTransport(chainId);
-
-      const pimlicoClient = createPimlicoClient({
-        chain: config.chain,
-        transport: bundlerTransport,
-        entryPoint: ENTRY_POINT,
-      });
 
       const kernelClient = createKernelAccountClient({
         account: kernelAccount,
         chain: config.chain,
         bundlerTransport,
         client: publicClient,
-        paymaster: {
-          getPaymasterData: pimlicoClient.getPaymasterData,
-          getPaymasterStubData: pimlicoClient.getPaymasterStubData,
-        },
-        userOperation: {
-          estimateFeesPerGas: async () => {
-            const gasPrice = await pimlicoClient.getUserOperationGasPrice();
-            return gasPrice.fast;
-          },
-        },
       });
 
       // 6. Send UserOp — triggers WalletConnect popup for owner signature
@@ -181,7 +174,7 @@ export default function SessionKeyAuthCard({
 
       // 7. Wait for on-chain confirmation
       setStatus("confirming");
-      const receipt = await pimlicoClient.waitForUserOperationReceipt({
+      const receipt = await kernelClient.waitForUserOperationReceipt({
         hash: userOpHash,
         timeout: 120_000,
       });
@@ -201,7 +194,7 @@ export default function SessionKeyAuthCard({
         chainId,
         grantTxHash,
         serialized,
-        Math.round((parseFloat(spendLimitPerTx) || 50) * 1e6),
+        Number(spendLimitPerTxMicro),
         Math.round((parseFloat(spendLimitDaily) || 500) * 1e6),
         parseInt(expiryDays, 10) || 30,
       );
