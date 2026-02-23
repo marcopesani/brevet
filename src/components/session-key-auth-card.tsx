@@ -7,11 +7,10 @@ import { toast } from "sonner";
 import { useWalletClient } from "wagmi";
 import { createPublicClient, http, custom, zeroAddress, type Hex, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { createKernelAccount, createKernelAccountClient } from "@zerodev/sdk";
+import { createKernelAccount, createKernelAccountClient, createZeroDevPaymasterClient } from "@zerodev/sdk";
 import { signerToEcdsaValidator } from "@zerodev/ecdsa-validator";
 import { toPermissionValidator, serializePermissionAccount } from "@zerodev/permissions";
 import { toECDSASigner } from "@zerodev/permissions/signers";
-import { createPimlicoClient } from "permissionless/clients/pimlico";
 import { ENTRY_POINT, KERNEL_VERSION, buildSessionKeyPolicies } from "@/lib/smart-account-policies";
 import {
   Card,
@@ -36,7 +35,7 @@ import {
   sendBundlerRequest,
   finalizeSessionKey,
 } from "@/app/actions/smart-account";
-import { getChainById } from "@/lib/chain-config";
+import { getChainById, getUsdcGasTokenAddress } from "@/lib/chain-config";
 
 interface SessionKeyAuthCardProps {
   smartAccountAddress?: string;
@@ -127,9 +126,17 @@ export default function SessionKeyAuthCard({
         Date.now() / 1000 + parseInt(expiryDays, 10) * 24 * 60 * 60,
       );
 
+      const spendLimitPerTxMicro = BigInt(
+        Math.round((parseFloat(spendLimitPerTx) || 50) * 1e6),
+      );
+
       const permissionValidator = await toPermissionValidator(publicClient, {
         signer: ecdsaSigner,
-        policies: buildSessionKeyPolicies(config.usdcAddress as Address, expiryTimestamp),
+        policies: buildSessionKeyPolicies(
+          config.usdcAddress as Address,
+          expiryTimestamp,
+          spendLimitPerTxMicro,
+        ),
         entryPoint: ENTRY_POINT,
         kernelVersion: KERNEL_VERSION,
       });
@@ -145,14 +152,16 @@ export default function SessionKeyAuthCard({
         address: saAddress as Address,
       });
 
-      // 5. Build kernel client with proxied bundler transport
+      // 5. Build kernel client with proxied bundler transport + smart paymaster.
+      // Strategy: try free gas sponsorship first (ZeroDev gas policy). If the
+      // paymaster rejects (no policy configured), fall back to ERC-20 paymaster
+      // paying gas in USDC from the smart account balance.
       const bundlerTransport = createBundlerTransport(chainId);
-
-      const pimlicoClient = createPimlicoClient({
+      const paymasterClient = createZeroDevPaymasterClient({
         chain: config.chain,
         transport: bundlerTransport,
-        entryPoint: ENTRY_POINT,
       });
+      const gasToken = getUsdcGasTokenAddress(chainId);
 
       const kernelClient = createKernelAccountClient({
         account: kernelAccount,
@@ -160,13 +169,28 @@ export default function SessionKeyAuthCard({
         bundlerTransport,
         client: publicClient,
         paymaster: {
-          getPaymasterData: pimlicoClient.getPaymasterData,
-          getPaymasterStubData: pimlicoClient.getPaymasterStubData,
-        },
-        userOperation: {
-          estimateFeesPerGas: async () => {
-            const gasPrice = await pimlicoClient.getUserOperationGasPrice();
-            return gasPrice.fast;
+          async getPaymasterStubData(userOperation) {
+            try {
+              return await paymasterClient.sponsorUserOperation({
+                userOperation,
+                shouldConsume: false,
+              });
+            } catch {
+              if (!gasToken) throw new Error("Gas sponsorship unavailable and no USDC gas token on this chain. Fund your smart account with ETH.");
+              return paymasterClient.sponsorUserOperation({
+                userOperation,
+                gasToken,
+                shouldConsume: false,
+              });
+            }
+          },
+          async getPaymasterData(userOperation) {
+            try {
+              return await paymasterClient.sponsorUserOperation({ userOperation });
+            } catch {
+              if (!gasToken) throw new Error("Gas sponsorship unavailable and no USDC gas token on this chain. Fund your smart account with ETH.");
+              return paymasterClient.sponsorUserOperation({ userOperation, gasToken });
+            }
           },
         },
       });
@@ -181,7 +205,7 @@ export default function SessionKeyAuthCard({
 
       // 7. Wait for on-chain confirmation
       setStatus("confirming");
-      const receipt = await pimlicoClient.waitForUserOperationReceipt({
+      const receipt = await kernelClient.waitForUserOperationReceipt({
         hash: userOpHash,
         timeout: 120_000,
       });
@@ -201,7 +225,7 @@ export default function SessionKeyAuthCard({
         chainId,
         grantTxHash,
         serialized,
-        Math.round((parseFloat(spendLimitPerTx) || 50) * 1e6),
+        Number(spendLimitPerTxMicro),
         Math.round((parseFloat(spendLimitDaily) || 500) * 1e6),
         parseInt(expiryDays, 10) || 30,
       );
@@ -210,9 +234,13 @@ export default function SessionKeyAuthCard({
     },
     onSuccess: (result) => {
       setStatus(null);
-      toast.success("Session key authorized successfully!");
       queryClient.invalidateQueries({ queryKey: ["smart-account", chainId] });
       queryClient.invalidateQueries({ queryKey: ["smart-accounts-all"] });
+      if (!result.success) {
+        toast.error(result.error ?? "Session key authorization failed.");
+        return;
+      }
+      toast.success("Session key authorized successfully!");
       if (result.grantTxHash) {
         toast.info(`Grant tx: ${result.grantTxHash.slice(0, 10)}...`);
       }
@@ -327,7 +355,8 @@ export default function SessionKeyAuthCard({
             <Shield className="mr-1 inline h-3 w-3" />
             This will submit a transaction to install the session key permission
             module on your smart account. You will be asked to approve the
-            transaction in your wallet. Gas is sponsored on testnets.
+            transaction in your wallet. Gas is sponsored when available,
+            otherwise paid in USDC from your smart account.
           </p>
         </div>
       </CardContent>

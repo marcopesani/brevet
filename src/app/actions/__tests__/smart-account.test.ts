@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { resetTestDb } from "@/test/helpers/db";
 import { User } from "@/lib/models/user";
 import { SmartAccount } from "@/lib/models/smart-account";
@@ -29,13 +29,13 @@ vi.mock("@/lib/smart-account", () => ({
   }),
 }));
 
-// Mock viem's createPublicClient for finalizeSessionKey tx verification
+// Mock chain-config to intercept createChainPublicClient for finalizeSessionKey tx verification
 const mockGetTransactionReceipt = vi.fn();
-vi.mock("viem", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("viem")>();
+vi.mock("@/lib/chain-config", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/chain-config")>();
   return {
     ...actual,
-    createPublicClient: vi.fn(() => ({
+    createChainPublicClient: vi.fn(() => ({
       getTransactionReceipt: mockGetTransactionReceipt,
     })),
   };
@@ -236,23 +236,23 @@ describe("sendBundlerRequest server action", () => {
     ).rejects.toThrow("Unauthorized");
   });
 
-  it("throws when PIMLICO_API_KEY is not set", async () => {
+  it("throws when ZERODEV_PROJECT_ID is not set", async () => {
     const { getAuthenticatedUser } = await import("@/lib/auth");
     vi.mocked(getAuthenticatedUser).mockResolvedValue({
       userId: TEST_USER_ID,
       walletAddress: TEST_WALLET,
     });
 
-    const originalKey = process.env.PIMLICO_API_KEY;
-    delete process.env.PIMLICO_API_KEY;
+    const originalId = process.env.ZERODEV_PROJECT_ID;
+    delete process.env.ZERODEV_PROJECT_ID;
 
     try {
       const { sendBundlerRequest } = await import("../smart-account");
       await expect(
         sendBundlerRequest(84532, "eth_sendUserOperation", []),
-      ).rejects.toThrow("PIMLICO_API_KEY is not set");
+      ).rejects.toThrow("ZERODEV_PROJECT_ID");
     } finally {
-      if (originalKey) process.env.PIMLICO_API_KEY = originalKey;
+      if (originalId) process.env.ZERODEV_PROJECT_ID = originalId;
     }
   });
 });
@@ -470,6 +470,135 @@ describe("finalizeSessionKey server action", () => {
 
     expect(result.success).toBe(false);
     expect("error" in result && result.error).toContain("Invalid input");
+  });
+});
+
+describe("sendBundlerRequest paymaster method allowlisting", () => {
+  let originalProjectId: string | undefined;
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    await resetTestDb();
+    originalProjectId = process.env.ZERODEV_PROJECT_ID;
+    process.env.ZERODEV_PROJECT_ID = "test-project-id";
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({ jsonrpc: "2.0", id: 1, result: "0x" }),
+    });
+  });
+
+  afterEach(() => {
+    if (originalProjectId !== undefined) {
+      process.env.ZERODEV_PROJECT_ID = originalProjectId;
+    } else {
+      delete process.env.ZERODEV_PROJECT_ID;
+    }
+    globalThis.fetch = originalFetch;
+  });
+
+  const PAYMASTER_METHODS = [
+    "pm_getPaymasterData",
+    "pm_getPaymasterStubData",
+    "pm_sponsorUserOperation",
+    "zd_sponsorUserOperation",
+  ];
+
+  for (const method of PAYMASTER_METHODS) {
+    it(`allows paymaster method: ${method}`, async () => {
+      const { getAuthenticatedUser } = await import("@/lib/auth");
+      vi.mocked(getAuthenticatedUser).mockResolvedValue({
+        userId: TEST_USER_ID,
+        walletAddress: TEST_WALLET,
+      });
+
+      const { sendBundlerRequest } = await import("../smart-account");
+      const result = await sendBundlerRequest(84532, method, []);
+      expect(result).toBe("0x");
+    });
+  }
+
+  const BUNDLER_METHODS = [
+    "eth_sendUserOperation",
+    "eth_estimateUserOperationGas",
+    "zd_getUserOperationGasPrice",
+    "eth_getUserOperationReceipt",
+  ];
+
+  for (const method of BUNDLER_METHODS) {
+    it(`allows bundler method: ${method}`, async () => {
+      const { getAuthenticatedUser } = await import("@/lib/auth");
+      vi.mocked(getAuthenticatedUser).mockResolvedValue({
+        userId: TEST_USER_ID,
+        walletAddress: TEST_WALLET,
+      });
+
+      const { sendBundlerRequest } = await import("../smart-account");
+      const result = await sendBundlerRequest(84532, method, []);
+      expect(result).toBe("0x");
+    });
+  }
+
+  it("rejects arbitrary RPC methods", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: TEST_WALLET,
+    });
+
+    const { sendBundlerRequest } = await import("../smart-account");
+    const disallowed = ["eth_call", "eth_getBalance", "eth_sendTransaction", "personal_sign"];
+    for (const method of disallowed) {
+      await expect(
+        sendBundlerRequest(84532, method, []),
+      ).rejects.toThrow(`Method not allowed: ${method}`);
+    }
+  });
+
+  it("propagates bundler/paymaster JSON-RPC errors", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: TEST_WALLET,
+    });
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve({
+        jsonrpc: "2.0",
+        id: 1,
+        error: { code: -32000, message: "AA21 didn't pay prefund" },
+      }),
+    });
+
+    const { sendBundlerRequest } = await import("../smart-account");
+    await expect(
+      sendBundlerRequest(84532, "eth_sendUserOperation", []),
+    ).rejects.toThrow("AA21 didn't pay prefund");
+  });
+
+  it("sends correct JSON-RPC payload to bundler URL", async () => {
+    const { getAuthenticatedUser } = await import("@/lib/auth");
+    vi.mocked(getAuthenticatedUser).mockResolvedValue({
+      userId: TEST_USER_ID,
+      walletAddress: TEST_WALLET,
+    });
+
+    const { sendBundlerRequest } = await import("../smart-account");
+    await sendBundlerRequest(84532, "pm_getPaymasterData", [{ foo: "bar" }]);
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("rpc.zerodev.app"),
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "pm_getPaymasterData",
+          params: [{ foo: "bar" }],
+        }),
+      }),
+    );
   });
 });
 

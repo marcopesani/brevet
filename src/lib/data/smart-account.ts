@@ -1,16 +1,15 @@
 import { Types } from "mongoose";
-import { createPublicClient, http, isAddress, parseUnits, parseAbi, encodeFunctionData, type Hex, type Address } from "viem";
+import { http, isAddress, parseUnits, parseAbi, encodeFunctionData, type Hex, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { createKernelAccountClient } from "@zerodev/sdk";
+import { createKernelAccountClient, createZeroDevPaymasterClient } from "@zerodev/sdk";
 import { toECDSASigner } from "@zerodev/permissions/signers";
 import { deserializePermissionAccount } from "@zerodev/permissions";
-import { createPimlicoClient } from "permissionless/clients/pimlico";
 import { SmartAccount } from "@/lib/models/smart-account";
 import { connectDB } from "@/lib/db";
 import { getUsdcBalance, decryptPrivateKey } from "@/lib/hot-wallet";
 import { computeSmartAccountAddress, createSessionKey } from "@/lib/smart-account";
 import { ENTRY_POINT, KERNEL_VERSION } from "@/lib/smart-account-constants";
-import { getChainById, getDefaultChainConfig, getUsdcConfig } from "@/lib/chain-config";
+import { createChainPublicClient, getChainById, getDefaultChainConfig, getUsdcConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";
 import { createTransaction } from "@/lib/data/transactions";
 
 /** Serialize a lean SmartAccount doc for the Server→Client boundary. */
@@ -253,7 +252,7 @@ const USDC_TRANSFER_ABI = parseAbi([
 
 /**
  * Withdraw USDC from the user's smart account to a destination address.
- * Uses the session key to sign and submit a UserOp via Pimlico bundler.
+ * Uses the session key to sign and submit a UserOp via ZeroDev bundler.
  */
 export async function withdrawFromSmartAccount(
   userId: string,
@@ -313,10 +312,7 @@ export async function withdrawFromSmartAccount(
   const serializedAccount = decryptPrivateKey(account.serializedAccount);
 
   // Build kernel account from serialized permission account
-  const publicClient = createPublicClient({
-    chain: config.chain,
-    transport: http(),
-  });
+  const publicClient = createChainPublicClient(resolvedChainId);
 
   const sessionKeyAccount = privateKeyToAccount(sessionKeyHex);
   const ecdsaSigner = await toECDSASigner({
@@ -331,17 +327,13 @@ export async function withdrawFromSmartAccount(
     ecdsaSigner,
   );
 
-  // Build Pimlico bundler transport (server-side direct fetch)
-  const apiKey = process.env.PIMLICO_API_KEY;
-  if (!apiKey) throw new Error("PIMLICO_API_KEY is not set");
-  const bundlerUrl = `https://api.pimlico.io/v2/${resolvedChainId}/rpc?apikey=${apiKey}`;
+  // Build ZeroDev bundler and paymaster transports (unified v3 endpoint)
+  const zerodevRpcUrl = getZeroDevBundlerRpc(resolvedChainId);
+  const bundlerTransport = http(zerodevRpcUrl);
 
-  const bundlerTransport = http(bundlerUrl);
-
-  const pimlicoClient = createPimlicoClient({
+  const paymasterClient = createZeroDevPaymasterClient({
     chain: config.chain,
-    transport: bundlerTransport,
-    entryPoint: ENTRY_POINT,
+    transport: http(zerodevRpcUrl),
   });
 
   const kernelClient = createKernelAccountClient({
@@ -349,16 +341,7 @@ export async function withdrawFromSmartAccount(
     chain: config.chain,
     bundlerTransport,
     client: publicClient,
-    paymaster: {
-      getPaymasterData: pimlicoClient.getPaymasterData,
-      getPaymasterStubData: pimlicoClient.getPaymasterStubData,
-    },
-    userOperation: {
-      estimateFeesPerGas: async () => {
-        const gasPrice = await pimlicoClient.getUserOperationGasPrice();
-        return gasPrice.fast;
-      },
-    },
+    paymaster: paymasterClient,
   });
 
   // Encode USDC transfer calldata
@@ -376,7 +359,7 @@ export async function withdrawFromSmartAccount(
   });
 
   // Wait for receipt
-  const receipt = await pimlicoClient.waitForUserOperationReceipt({
+  const receipt = await kernelClient.waitForUserOperationReceipt({
     hash: userOpHash,
     timeout: 120_000,
   });

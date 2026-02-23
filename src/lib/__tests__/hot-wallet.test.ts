@@ -16,19 +16,34 @@ import { Transaction } from "@/lib/models/transaction";
 import mongoose from "mongoose";
 import { createTestHotWallet } from "../../test/helpers/fixtures";
 
-// Mock viem to avoid real RPC calls
+// Mock viem — only createWalletClient is needed (createPublicClient now
+// comes from createChainPublicClient in chain-config, mocked separately)
 vi.mock("viem", async (importOriginal) => {
   const actual = await importOriginal<typeof import("viem")>();
   return {
     ...actual,
-    createPublicClient: vi.fn(() => ({
-      readContract: vi.fn(),
-    })),
     createWalletClient: vi.fn(() => ({
       writeContract: vi.fn(),
     })),
   };
 });
+
+// Mock chain-config to intercept createChainPublicClient (used by getUsdcBalance)
+vi.mock("@/lib/chain-config", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/chain-config")>();
+  return {
+    ...actual,
+    createChainPublicClient: vi.fn(() => ({
+      readContract: vi.fn(),
+    })),
+  };
+});
+
+// Mock rpc-health to avoid side effects in tests
+vi.mock("@/lib/rpc-health", () => ({
+  reportRpcError: vi.fn(),
+  reportRpcSuccess: vi.fn(),
+}));
 
 describe("hot-wallet", () => {
   describe("encryptPrivateKey / decryptPrivateKey", () => {
@@ -177,12 +192,12 @@ describe("hot-wallet", () => {
     it("should throw if insufficient balance", async () => {
       const { user } = await seedTestUser();
 
-      // Mock getUsdcBalance via the public client readContract
-      const { createPublicClient } = await import("viem");
+      // Mock getUsdcBalance via createChainPublicClient (chain-config)
+      const { createChainPublicClient } = await import("@/lib/chain-config");
       const mockReadContract = vi.fn().mockResolvedValue(BigInt(500000)); // 0.5 USDC
-      vi.mocked(createPublicClient).mockReturnValue({
+      vi.mocked(createChainPublicClient).mockReturnValue({
         readContract: mockReadContract,
-      } as unknown as ReturnType<typeof createPublicClient>);
+      } as unknown as ReturnType<typeof createChainPublicClient>);
 
       const validAddress = "0x" + "1".repeat(40);
       await expect(
@@ -196,13 +211,14 @@ describe("hot-wallet", () => {
       const mockTxHash = "0x" + "f".repeat(64);
 
       // Mock public client for balance check
-      const { createPublicClient, createWalletClient } = await import("viem");
+      const { createChainPublicClient } = await import("@/lib/chain-config");
+      const { createWalletClient } = await import("viem");
       const mockReadContract = vi
         .fn()
         .mockResolvedValue(BigInt(10_000_000)); // 10 USDC
-      vi.mocked(createPublicClient).mockReturnValue({
+      vi.mocked(createChainPublicClient).mockReturnValue({
         readContract: mockReadContract,
-      } as unknown as ReturnType<typeof createPublicClient>);
+      } as unknown as ReturnType<typeof createChainPublicClient>);
 
       // Mock wallet client for transfer
       const mockWriteContract = vi.fn().mockResolvedValue(mockTxHash);
@@ -242,10 +258,11 @@ describe("hot-wallet", () => {
 
       const mockTxHash = "0x" + "a".repeat(64);
 
-      const { createPublicClient, createWalletClient } = await import("viem");
-      vi.mocked(createPublicClient).mockReturnValue({
+      const { createChainPublicClient } = await import("@/lib/chain-config");
+      const { createWalletClient } = await import("viem");
+      vi.mocked(createChainPublicClient).mockReturnValue({
         readContract: vi.fn().mockResolvedValue(BigInt(10_000_000)),
-      } as unknown as ReturnType<typeof createPublicClient>);
+      } as unknown as ReturnType<typeof createChainPublicClient>);
       vi.mocked(createWalletClient).mockReturnValue({
         writeContract: vi.fn().mockResolvedValue(mockTxHash),
       } as unknown as ReturnType<typeof createWalletClient>);

@@ -781,6 +781,71 @@ describe("E2E: Session Key Policy Enforcement", () => {
       console.log("Policies compose correctly: confirmed");
     });
 
+    it("should include per-tx spend limit args constraints when spendLimitPerTx is provided", async () => {
+      const futureExpiry = Math.floor(Date.now() / 1000) + 3600;
+      const sessionKeyAccount = privateKeyToAccount(sessionKeyPrivateKey);
+      const ecdsaSigner = await toECDSASigner({ signer: sessionKeyAccount });
+
+      // 50 USDC in micro-units
+      const spendLimitPerTx = BigInt(50 * 1_000_000);
+
+      // Policy with spend limit — produces a different ID than without
+      const limitedPolicies = buildSessionKeyPolicies(
+        baseChainConfig.usdcAddress,
+        futureExpiry,
+        spendLimitPerTx,
+      );
+
+      // Policy without spend limit
+      const unlimitedPolicies = buildSessionKeyPolicies(
+        baseChainConfig.usdcAddress,
+        futureExpiry,
+      );
+
+      const limitedValidator = await toPermissionValidator(publicClient as any, {
+        signer: ecdsaSigner,
+        policies: limitedPolicies,
+        entryPoint: ENTRY_POINT,
+        kernelVersion: KERNEL_VERSION,
+      });
+
+      const unlimitedValidator = await toPermissionValidator(publicClient as any, {
+        signer: ecdsaSigner,
+        policies: unlimitedPolicies,
+        entryPoint: ENTRY_POINT,
+        kernelVersion: KERNEL_VERSION,
+      });
+
+      // Different spend limit configs must produce different permission identifiers
+      const limitedId = limitedValidator.getIdentifier();
+      const unlimitedId = unlimitedValidator.getIdentifier();
+
+      expect(limitedId).not.toBe(unlimitedId);
+
+      // Sign a USDC transferWithAuthorization with the limited policy
+      const limitedAccount = await createSessionKeyAccount(
+        publicClient,
+        sessionKeyPrivateKey,
+        DEPLOYED_SA_ADDRESS,
+        limitedPolicies,
+      );
+
+      const auth = buildTransferAuth(DEPLOYED_SA_ADDRESS, RECIPIENT, BigInt(1));
+      const sig = await limitedAccount.signTypedData({
+        domain: baseChainConfig.usdcDomain,
+        types: AUTHORIZATION_TYPES,
+        primaryType: "TransferWithAuthorization",
+        message: auth,
+      });
+
+      expect(sig).toMatch(/^0x[0-9a-fA-F]+$/);
+      expect((sig.length - 2) / 2).toBeGreaterThan(65);
+
+      console.log("Per-tx spend limit policy ID:", limitedId);
+      console.log("Unlimited policy ID:", unlimitedId);
+      console.log("Spend limit constraint included in policy: confirmed");
+    });
+
     it("should reject expired key even for valid USDC call", async () => {
       // Create two accounts: one expired, one valid — both targeting USDC
       const pastExpiry = Math.floor(Date.now() / 1000) - 60; // 1 minute ago

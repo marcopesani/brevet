@@ -383,11 +383,15 @@ export async function executePayment(
       const expiryTs = smartAccount.sessionKeyExpiry
         ? Math.floor(new Date(smartAccount.sessionKeyExpiry).getTime() / 1000)
         : Math.floor(Date.now() / 1000 + SESSION_KEY_DEFAULT_EXPIRY_DAYS * 24 * 60 * 60);
+      const spendLimitPerTx = smartAccount.spendLimitPerTx !== undefined
+        ? BigInt(smartAccount.spendLimitPerTx)
+        : undefined;
       signer = await createSmartAccountSigner(
         sessionKeyHex,
         smartAccount.smartAccountAddress as `0x${string}`,
         selectedChainId,
         expiryTs,
+        spendLimitPerTx,
       );
     }
   } catch (err) {

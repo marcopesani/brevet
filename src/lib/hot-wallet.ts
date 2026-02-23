@@ -1,6 +1,5 @@
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
-  createPublicClient,
   createWalletClient,
   http,
   formatUnits,
@@ -12,7 +11,8 @@ import { connectDB } from "@/lib/db";
 import { HotWallet as HotWalletModel } from "@/lib/models/hot-wallet";
 import { createTransaction } from "@/lib/data/transactions";
 import { Types } from "mongoose";
-import { getChainById, getDefaultChainConfig, getUsdcConfig } from "@/lib/chain-config";
+import { createChainPublicClient, getChainById, getDefaultChainConfig, getUsdcConfig } from "@/lib/chain-config";
+import { reportRpcError, reportRpcSuccess } from "@/lib/rpc-health";
 
 const USDC_ABI = [
   {
@@ -97,16 +97,9 @@ function resolveChainConfig(chainId?: number) {
   return config;
 }
 
-function getPublicClient(chainId?: number) {
-  const config = resolveChainConfig(chainId);
-  return createPublicClient({
-    chain: config.chain,
-    transport: http(),
-  });
-}
-
 /**
  * Returns true if the error is from the RPC returning 429 (over rate limit).
+ * Kept for backward-compatibility; prefer isRateLimitError from rpc-health.
  */
 export function isRpcRateLimitError(error: unknown): boolean {
   let e: unknown = error;
@@ -125,16 +118,23 @@ export async function getUsdcBalance(
   chainId?: number,
 ): Promise<string> {
   const config = resolveChainConfig(chainId);
-  const client = getPublicClient(chainId);
-  const usdcToken = getUsdcConfig(config.chain.id);
+  const resolvedChainId = config.chain.id;
+  const client = createChainPublicClient(resolvedChainId);
+  const usdcToken = getUsdcConfig(resolvedChainId);
   const decimals = usdcToken?.decimals ?? 6;
-  const balance = await client.readContract({
-    address: config.usdcAddress,
-    abi: USDC_ABI,
-    functionName: "balanceOf",
-    args: [address as `0x${string}`],
-  });
-  return formatUnits(balance, decimals);
+  try {
+    const balance = await client.readContract({
+      address: config.usdcAddress,
+      abi: USDC_ABI,
+      functionName: "balanceOf",
+      args: [address as `0x${string}`],
+    });
+    reportRpcSuccess(resolvedChainId);
+    return formatUnits(balance, decimals);
+  } catch (error) {
+    reportRpcError(resolvedChainId, error);
+    throw error;
+  }
 }
 
 export async function withdrawFromHotWallet(

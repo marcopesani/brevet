@@ -10,7 +10,7 @@ import {
   polygon,
   polygonAmoy,
 } from "viem/chains";
-import { formatUnits, parseUnits } from "viem";
+import { createPublicClient, formatUnits, http, parseUnits } from "viem";
 import type { Chain } from "viem";
 import type { TypedDataDomain } from "viem";
 
@@ -400,3 +400,83 @@ export function resolveValidChainId(
 
 // Backward-compatible alias — deprecated, use getDefaultChainConfig()
 export const chainConfig: ChainConfig = getDefaultChainConfig();
+
+// ── Alchemy RPC helpers ────────────────────────────────────────────
+
+const ALCHEMY_SUBDOMAINS: Record<number, string> = {
+  1:        "eth-mainnet",
+  11155111: "eth-sepolia",
+  8453:     "base-mainnet",
+  84532:    "base-sepolia",
+  42161:    "arb-mainnet",
+  421614:   "arb-sepolia",
+  10:       "opt-mainnet",
+  11155420: "opt-sepolia",
+  137:      "polygon-mainnet",
+  80002:    "polygon-amoy",
+};
+
+/**
+ * Returns the Alchemy RPC URL for the given chain if ALCHEMY_API_KEY is set,
+ * otherwise undefined (viem will fall back to chain defaults).
+ * Server-only — never access process.env.ALCHEMY_API_KEY in client code.
+ */
+export function getAlchemyRpcUrl(chainId: number): string | undefined {
+  const key = process.env.ALCHEMY_API_KEY;
+  if (!key) return undefined;
+  const subdomain = ALCHEMY_SUBDOMAINS[chainId];
+  if (!subdomain) return undefined;
+  return `https://${subdomain}.g.alchemy.com/v2/${key}`;
+}
+
+/**
+ * Creates a viem public client for the given chain, using Alchemy RPC when
+ * ALCHEMY_API_KEY is set, falling back to viem's built-in chain defaults.
+ * This is the single place to configure public RPC transport for all
+ * server-side chain reads.
+ */
+export function createChainPublicClient(chainId: number) {
+  const config = CHAIN_CONFIGS[chainId];
+  if (!config) throw new Error(`Unsupported chain: ${chainId}`);
+  return createPublicClient({
+    chain: config.chain,
+    transport: http(getAlchemyRpcUrl(chainId)),
+  });
+}
+
+// ── ZeroDev RPC helpers ────────────────────────────────────────────
+
+function getZeroDevProjectId(): string {
+  const id = process.env.ZERODEV_PROJECT_ID;
+  if (!id) throw new Error("Missing required env var: ZERODEV_PROJECT_ID");
+  return id;
+}
+
+export function getZeroDevBundlerRpc(chainId: number): string {
+  return `https://rpc.zerodev.app/api/v3/${getZeroDevProjectId()}/chain/${chainId}`;
+}
+
+export function getZeroDevPaymasterRpc(chainId: number): string {
+  return `https://rpc.zerodev.app/api/v3/${getZeroDevProjectId()}/chain/${chainId}`;
+}
+
+/**
+ * Returns the ZeroDev ERC-20 gas token address for USDC on a given chain.
+ * Used by the session key authorization flow to pay gas in USDC when free
+ * gas sponsorship is unavailable. Returns undefined for chains where ZeroDev
+ * does not support USDC as a gas token (most testnets).
+ *
+ * Addresses sourced from @zerodev/sdk gasTokenAddresses.
+ * Client-safe — no process.env access.
+ */
+export function getUsdcGasTokenAddress(chainId: number): `0x${string}` | undefined {
+  const addresses: Record<number, `0x${string}`> = {
+    1: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",       // Ethereum
+    10: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",      // OP Mainnet
+    137: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",     // Polygon
+    8453: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",    // Base
+    42161: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",   // Arbitrum One
+    11155111: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", // Ethereum Sepolia
+  };
+  return addresses[chainId];
+}

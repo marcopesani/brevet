@@ -558,9 +558,15 @@ describe("x402_check_balance tool — multi-chain", () => {
       sessionKeyStatus: "active",
     });
 
-    (getUsdcBalance as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce("10.0")
-      .mockResolvedValueOnce("20.0");
+    const BASE_SA_ADDRESS = "0x" + "b".repeat(40);
+    const ARBITRUM_SA_ADDRESS = "0x" + "d".repeat(40);
+    (getUsdcBalance as ReturnType<typeof vi.fn>).mockImplementation(
+      async (address: string) => {
+        if (address === BASE_SA_ADDRESS) return "10.0";
+        if (address === ARBITRUM_SA_ADDRESS) return "20.0";
+        return "0";
+      },
+    );
 
     const result = (await callTool(server, "x402_check_balance", {})) as ToolResult;
     const parsed = parseToolResult(result);
