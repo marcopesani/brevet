@@ -347,6 +347,26 @@ export function isChainSupported(chainId: number): boolean {
   return chainId in CHAIN_CONFIGS;
 }
 
+/**
+ * All HTTP RPC URLs from supported chains (viem chain.rpcUrls).
+ * Used by CSP connect-src so browser can allow viem/wagmi RPC calls.
+ */
+export function getChainRpcUrlsForCsp(): string[] {
+  const seen = new Set<string>();
+  for (const config of SUPPORTED_CHAINS) {
+    const urls = config.chain.rpcUrls;
+    for (const key of Object.keys(urls)) {
+      const entry = urls[key as keyof typeof urls];
+      if (entry?.http) {
+        for (const url of entry.http) {
+          if (url && typeof url === "string") seen.add(url);
+        }
+      }
+    }
+  }
+  return [...seen];
+}
+
 const defaultChainId = parseInt(
   process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
   10

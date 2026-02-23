@@ -76,6 +76,11 @@ describe("buildCsp", () => {
     expect(csp).toContain("https://cca-lite.coinbase.com");
   });
 
+  it("includes viem chain RPC URLs in connect-src (from chain-config)", () => {
+    expect(csp).toContain("https://mainnet.base.org");
+    expect(csp).toContain("https://sepolia.base.org");
+  });
+
   it("produces a different CSP for a different nonce", () => {
     const other = buildCsp("other-nonce");
     expect(other).toContain("'nonce-other-nonce'");

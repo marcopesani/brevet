@@ -11,6 +11,7 @@
  * @see https://vercel.com/docs/workflow-collaboration/vercel-toolbar/managing-toolbar#using-a-content-security-policy
  */
 import { NextRequest, NextResponse } from "next/server";
+import { getChainRpcUrlsForCsp } from "@/lib/chain-config";
 
 // ---------------------------------------------------------------------------
 // Environment flags
@@ -67,6 +68,11 @@ const REOWN_SOURCES: CspSources = {
   "frame-src":    [WC],
 };
 
+// RPC endpoints from all supported viem chains (session key auth, chainId, etc.).
+const CHAIN_RPC_SOURCES: CspSources = {
+  "connect-src": getChainRpcUrlsForCsp(),
+};
+
 const VERCEL_PREVIEW_SOURCES: CspSources = {
   "script-src":   ["https://vercel.live"],
   "style-src":    ["https://vercel.live"],
@@ -97,6 +103,7 @@ function mergeCspSources(...layers: CspSources[]): CspSources {
 const activeLayers: CspSources[] = [
   BASE_SOURCES,
   REOWN_SOURCES,
+  CHAIN_RPC_SOURCES,
   ...(isVercelPreview ? [VERCEL_PREVIEW_SOURCES] : []),
   ...(isDev ? [DEV_SOURCES] : []),
 ];

@@ -17,6 +17,7 @@ import {
   getEnvironmentChains,
   isChainSupported,
   getNetworkIdentifiers,
+  getChainRpcUrlsForCsp,
 } from "../chain-config";
 
 describe("getChainById", () => {
@@ -258,6 +259,28 @@ describe("getNetworkIdentifiers", () => {
     const optimism = getChainById(10)!;
     const optIds = getNetworkIdentifiers(optimism);
     expect(optIds).toContain("op-mainnet");
+  });
+});
+
+describe("getChainRpcUrlsForCsp", () => {
+  it("returns unique RPC URLs from all supported viem chains", () => {
+    const urls = getChainRpcUrlsForCsp();
+    expect(urls.length).toBeGreaterThan(0);
+    expect(new Set(urls).size).toBe(urls.length);
+
+    const baseConfig = getChainById(8453)!;
+    const baseRpc = baseConfig.chain.rpcUrls.default.http[0];
+    expect(urls).toContain(baseRpc);
+
+    const baseSepoliaConfig = getChainById(84532)!;
+    const baseSepoliaRpc = baseSepoliaConfig.chain.rpcUrls.default.http[0];
+    expect(urls).toContain(baseSepoliaRpc);
+  });
+
+  it("includes one URL per supported chain at least (default RPC)", () => {
+    const urls = getChainRpcUrlsForCsp();
+    const chains = getAllChains();
+    expect(urls.length).toBeGreaterThanOrEqual(chains.length);
   });
 });
 
