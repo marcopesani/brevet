@@ -254,18 +254,17 @@ describe("executePayment", () => {
     expect(result.maxTimeoutSeconds).toBe(3600);
   });
 
-  it("returns undefined maxTimeoutSeconds when requirement lacks it", async () => {
+  it("rejects when maxTimeoutSeconds is 0", async () => {
     await SmartAccount.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
 
-    const requirementWithoutTimeout = { ...DEFAULT_REQUIREMENT };
-    delete (requirementWithoutTimeout as Record<string, unknown>).maxTimeoutSeconds;
-    mockFetch.mockResolvedValueOnce(make402Response([requirementWithoutTimeout]));
+    const zeroTimeoutRequirement = { ...DEFAULT_REQUIREMENT, maxTimeoutSeconds: 0 };
+    mockFetch.mockResolvedValueOnce(make402Response([zeroTimeoutRequirement]));
 
     const result = await executePayment("https://api.example.com/resource", userId);
 
     expect(result.success).toBe(false);
-    expect(result.status).toBe("pending_approval");
-    expect(result.maxTimeoutSeconds).toBeUndefined();
+    expect(result.status).toBe("rejected");
+    expect(result.error).toContain("maxTimeoutSeconds is 0");
   });
 
   it("rejects with expired session key and updates status to expired", async () => {

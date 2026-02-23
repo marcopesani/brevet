@@ -132,7 +132,7 @@ const BASE_V1_MAX_AMOUNT_REQUIREMENTS = JSON.stringify({
   ],
 });
 
-// Requirement without maxTimeoutSeconds — should fall back to 600s
+// Requirement without maxTimeoutSeconds — should show error
 const BASE_NO_TIMEOUT_REQUIREMENTS = JSON.stringify({
   accepts: [
     {
@@ -141,6 +141,20 @@ const BASE_NO_TIMEOUT_REQUIREMENTS = JSON.stringify({
       amount: "100000",
       asset: BASE_USDC_ADDRESS,
       payTo: "0x43a2a720cd0911690c248075f4a29a5e7716f758",
+    },
+  ],
+});
+
+// Requirement with maxTimeoutSeconds=0 — should show error
+const BASE_ZERO_TIMEOUT_REQUIREMENTS = JSON.stringify({
+  accepts: [
+    {
+      scheme: "exact",
+      network: "base",
+      amount: "100000",
+      asset: BASE_USDC_ADDRESS,
+      payTo: "0x43a2a720cd0911690c248075f4a29a5e7716f758",
+      maxTimeoutSeconds: 0,
     },
   ],
 });
@@ -384,29 +398,41 @@ describe("PendingPaymentCard validAfter/validBefore", () => {
     vi.restoreAllMocks();
   });
 
-  it("falls back to 600s when maxTimeoutSeconds is missing", async () => {
-    const fakeNow = 1700000000;
-    vi.spyOn(Date, "now").mockReturnValue(fakeNow * 1000);
-
+  it("shows error when requirement has no maxTimeoutSeconds", async () => {
     const payment = createPayment({
       chainId: 8453,
       paymentRequirements: BASE_NO_TIMEOUT_REQUIREMENTS,
     });
 
-    mockSignTypedDataAsync.mockResolvedValueOnce("0xsignature");
     renderCard(payment);
 
     const approveButton = screen.getAllByRole("button").find((b) => b.textContent?.includes("Approve"));
     fireEvent.click(approveButton!);
 
     await waitFor(() => {
-      expect(mockSignTypedDataAsync).toHaveBeenCalled();
+      expect(mockToastError).toHaveBeenCalledWith("Payment endpoint missing maxTimeoutSeconds; cannot approve");
     });
 
-    const signMessage = mockSignTypedDataAsync.mock.calls[0][0].message;
-    expect(signMessage.validAfter).toBe(BigInt(fakeNow - 600));
-    expect(signMessage.validBefore).toBe(BigInt(fakeNow + 600));
+    expect(mockSignTypedDataAsync).not.toHaveBeenCalled();
+    expect(mockApprovePendingPayment).not.toHaveBeenCalled();
+  });
 
-    vi.restoreAllMocks();
+  it("shows error when requirement has maxTimeoutSeconds=0", async () => {
+    const payment = createPayment({
+      chainId: 8453,
+      paymentRequirements: BASE_ZERO_TIMEOUT_REQUIREMENTS,
+    });
+
+    renderCard(payment);
+
+    const approveButton = screen.getAllByRole("button").find((b) => b.textContent?.includes("Approve"));
+    fireEvent.click(approveButton!);
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith("Payment endpoint timeout is 0; cannot approve payment");
+    });
+
+    expect(mockSignTypedDataAsync).not.toHaveBeenCalled();
+    expect(mockApprovePendingPayment).not.toHaveBeenCalled();
   });
 });

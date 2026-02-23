@@ -167,7 +167,15 @@ export default function PendingPaymentCard({
         }
       }
 
-      const maxTimeout = BigInt(requirement.maxTimeoutSeconds ?? 600);
+      if (requirement.maxTimeoutSeconds == null) {
+        toast.error("Payment endpoint missing maxTimeoutSeconds; cannot approve");
+        return;
+      }
+      if (requirement.maxTimeoutSeconds === 0) {
+        toast.error("Payment endpoint timeout is 0; cannot approve payment");
+        return;
+      }
+      const maxTimeout = BigInt(requirement.maxTimeoutSeconds);
       const authorization = {
         from: walletAddress as Hex, // WalletConnect guarantees hex address
         to: requirement.payTo as Hex, // x402 protocol guarantees hex address

@@ -56,9 +56,7 @@ export function registerX402Pay(server: McpServer, userId: string): void {
         );
 
         if (result.status === "pending_approval") {
-          const expiresAt = result.maxTimeoutSeconds
-            ? new Date(Date.now() + result.maxTimeoutSeconds * 1000)
-            : undefined;
+          const expiresAt = new Date(Date.now() + result.maxTimeoutSeconds * 1000);
 
           const pendingPayment = await createPendingPayment({
             userId,

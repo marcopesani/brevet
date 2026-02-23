@@ -298,6 +298,15 @@ export async function executePayment(
 
   // If no smart account on this chain OR session key not active → fall back to manual approval
   if (!smartAccount || smartAccount.sessionKeyStatus !== "active") {
+    if (selectedRequirement.maxTimeoutSeconds === 0) {
+      return {
+        success: false,
+        status: "rejected",
+        signingStrategy: "rejected",
+        error: "Payment endpoint maxTimeoutSeconds is 0; cannot complete payment",
+      };
+    }
+
     const reason = !smartAccount ? "No smart account on selected chain" : "Session key not active";
     logger.info(`${reason}, requires manual approval`, { userId, url, action: "pending_approval", chainId: selectedChainId, amount: amountUsd });
     return {
@@ -340,6 +349,15 @@ export async function executePayment(
 
   // Manual approval path: return pending_approval for caller to create PendingPayment
   if (signingStrategy === "manual_approval") {
+    if (selectedRequirement.maxTimeoutSeconds === 0) {
+      return {
+        success: false,
+        status: "rejected",
+        signingStrategy: "rejected",
+        error: "Payment endpoint maxTimeoutSeconds is 0; cannot complete payment",
+      };
+    }
+
     logger.info("Payment requires manual approval", { userId, url, action: "pending_approval", amount: amountUsd, chainId: selectedChainId });
     return {
       success: false,

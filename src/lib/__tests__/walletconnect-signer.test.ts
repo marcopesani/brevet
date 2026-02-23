@@ -69,12 +69,7 @@ describe("createSigningRequest", () => {
     expect(request.message.validAfter).toBe(BigInt(fakeNow - 600));
   });
 
-  it("falls back to 600s when maxTimeoutSeconds is missing", () => {
-    const fakeNow = 1700000000;
-    vi.spyOn(Date, "now").mockReturnValue(fakeNow * 1000);
-
-    // Mock getRequirementAmount so the amount extraction works even though
-    // the object lacks maxTimeoutSeconds (which Zod requires for V1/V2).
+  it("throws when maxTimeoutSeconds is missing", () => {
     vi.spyOn(requirements, "getRequirementAmount").mockReturnValue("1100");
 
     const noTimeout = {
@@ -82,11 +77,21 @@ describe("createSigningRequest", () => {
       network: "eip155:84532",
       payTo: "0x" + "b".repeat(40),
       asset: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-      // maxTimeoutSeconds intentionally omitted
     } as unknown as PaymentRequirements;
 
-    const request = createSigningRequest(noTimeout, USER_ADDRESS, 84532);
-    expect(request.message.validBefore).toBe(BigInt(fakeNow + 600));
-    expect(request.message.validAfter).toBe(BigInt(fakeNow - 600));
+    expect(() =>
+      createSigningRequest(noTimeout, USER_ADDRESS, 84532),
+    ).toThrow("Payment endpoint missing valid maxTimeoutSeconds");
+  });
+
+  it("throws when maxTimeoutSeconds is 0", () => {
+    const zeroTimeout = {
+      ...V1_REQUIREMENT,
+      maxTimeoutSeconds: 0,
+    } as unknown as PaymentRequirements;
+
+    expect(() =>
+      createSigningRequest(zeroTimeout, USER_ADDRESS, 84532),
+    ).toThrow("Payment endpoint maxTimeoutSeconds is 0; cannot complete payment");
   });
 });

@@ -57,7 +57,7 @@ export type PaymentResult =
       /** The chain ID selected for this payment. */
       chainId?: number;
       /** Protocol-defined validity window in seconds. */
-      maxTimeoutSeconds?: number;
+      maxTimeoutSeconds: number;
       error?: undefined;
       response?: undefined;
       settlement?: undefined;

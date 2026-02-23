@@ -47,6 +47,13 @@ export function createSigningRequest(
   const chainConfig = chainId ? getChainConfig(chainId) : undefined;
   const usdcDomain = chainConfig?.usdcDomain ?? getDefaultChainConfig().usdcDomain;
 
+  if (requirement.maxTimeoutSeconds == null) {
+    throw new Error("Payment endpoint missing valid maxTimeoutSeconds");
+  }
+  if (requirement.maxTimeoutSeconds === 0) {
+    throw new Error("Payment endpoint maxTimeoutSeconds is 0; cannot complete payment");
+  }
+
   const amountStr = getRequirementAmount(requirement);
   if (amountStr == null || amountStr === "") {
     throw new Error("Payment requirement has no amount");
@@ -54,7 +61,7 @@ export function createSigningRequest(
   const amountWei = BigInt(amountStr);
   const nonce = `0x${crypto.randomBytes(32).toString("hex")}` as Hex; // Constructed hex string
   const now = BigInt(Math.floor(Date.now() / 1_000));
-  const timeoutSeconds = BigInt(requirement.maxTimeoutSeconds ?? 600);
+  const timeoutSeconds = BigInt(requirement.maxTimeoutSeconds);
 
   return {
     domain: usdcDomain,
