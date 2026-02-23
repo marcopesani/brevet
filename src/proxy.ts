@@ -19,55 +19,12 @@ const isDev = process.env.NODE_ENV === "development";
 const isVercelPreview = process.env.VERCEL_ENV === "preview";
 
 /**
- * CSP sources required by Reown AppKit / WalletConnect.
+ * Wildcard domains for Reown AppKit / WalletConnect services.
+ * Third-party origins (Coinbase, 1inch, Zerion, IPFS, Google Fonts) are
+ * listed explicitly because they fall outside the WalletConnect umbrella.
  * @see https://docs.reown.com/advanced/security/content-security-policy
  */
-const REOWN_CONNECT = [
-  "https://rpc.walletconnect.com",
-  "https://rpc.walletconnect.org",
-  "https://relay.walletconnect.com",
-  "https://relay.walletconnect.org",
-  "wss://relay.walletconnect.com",
-  "wss://relay.walletconnect.org",
-  "https://pulse.walletconnect.com",
-  "https://pulse.walletconnect.org",
-  "https://api.web3modal.com",
-  "https://api.web3modal.org",
-  "https://keys.walletconnect.com",
-  "https://keys.walletconnect.org",
-  "https://notify.walletconnect.com",
-  "https://notify.walletconnect.org",
-  "https://echo.walletconnect.com",
-  "https://echo.walletconnect.org",
-  "https://push.walletconnect.com",
-  "https://push.walletconnect.org",
-  "wss://www.walletlink.org",
-  "https://cca-lite.coinbase.com",
-];
-
-const REOWN_IMG = [
-  "https://walletconnect.org",
-  "https://walletconnect.com",
-  "https://secure.walletconnect.com",
-  "https://secure.walletconnect.org",
-  "https://tokens-data.1inch.io",
-  "https://tokens.1inch.io",
-  "https://ipfs.io",
-  "https://cdn.zerion.io",
-];
-
-const REOWN_FONT = [
-  "https://fonts.googleapis.com",
-  "https://fonts.gstatic.com",
-  "https://fonts.reown.com",
-];
-
-const REOWN_FRAME = [
-  "https://verify.walletconnect.com",
-  "https://verify.walletconnect.org",
-  "https://secure.walletconnect.com",
-  "https://secure.walletconnect.org",
-];
+const WC_WILDCARDS = "*.walletconnect.com *.walletconnect.org *.web3modal.com *.web3modal.org *.reown.com";
 
 function buildCsp(nonce: string): string {
   const scriptSrc = [
@@ -79,14 +36,16 @@ function buildCsp(nonce: string): string {
     ...(isVercelPreview ? ["https://vercel.live"] : []),
   ].join(" ");
 
+  const vercelPreview = isVercelPreview ? " https://vercel.live" : "";
+
   const directives: string[] = [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
-    `img-src 'self' data: blob: ${REOWN_IMG.join(" ")}`,
-    `font-src 'self' ${REOWN_FONT.join(" ")}`,
-    `connect-src 'self' ${REOWN_CONNECT.join(" ")} wss:`,
-    `frame-src 'self' ${REOWN_FRAME.join(" ")}${isVercelPreview ? " https://vercel.live" : ""}`,
+    `img-src 'self' data: blob: ${WC_WILDCARDS} https://tokens-data.1inch.io https://tokens.1inch.io https://ipfs.io https://cdn.zerion.io`,
+    `font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://fonts.reown.com`,
+    `connect-src 'self' ${WC_WILDCARDS} wss: wss://www.walletlink.org https://cca-lite.coinbase.com`,
+    `frame-src 'self' ${WC_WILDCARDS}${vercelPreview}`,
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",
