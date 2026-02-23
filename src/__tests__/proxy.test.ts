@@ -141,6 +141,14 @@ describe("proxy", () => {
   });
 
   describe("config matcher", () => {
+    function getMatcherSourceString(
+      matcher: (string | { source: string; missing?: unknown[] })[]
+    ): string {
+      return matcher
+        .map((m) => (typeof m === "string" ? m : m.source))
+        .join(" ");
+    }
+
     it("exports a config object with a matcher array", () => {
       expect(config).toBeDefined();
       expect(config.matcher).toBeDefined();
@@ -149,24 +157,17 @@ describe("proxy", () => {
     });
 
     it("excludes /api paths", () => {
-      // Matcher patterns should exclude API routes via negative lookahead
-      const matchers = config.matcher as string[];
-      const matcherStr = matchers.join(" ");
+      const matcherStr = getMatcherSourceString(config.matcher);
       expect(matcherStr).toContain("api");
     });
 
     it("excludes /_next paths", () => {
-      const matchers = config.matcher as string[];
-      const hasNextExclusion = matchers.some(
-        (m) => m.includes("_next") || m.includes("(?!.*_next)")
-      );
-      expect(hasNextExclusion).toBe(true);
+      const matcherStr = getMatcherSourceString(config.matcher);
+      expect(matcherStr).toContain("_next");
     });
 
     it("excludes static file extensions", () => {
-      const matchers = config.matcher as string[];
-      const matcherStr = matchers.join(" ");
-      // Should exclude common static files (ico, svg, etc.)
+      const matcherStr = getMatcherSourceString(config.matcher);
       expect(matcherStr).toMatch(/ico|svg|png|jpg/);
     });
   });

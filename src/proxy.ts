@@ -1,3 +1,9 @@
+/**
+ * Next.js 16 Proxy: auth redirects + security headers (including CSP).
+ * Convention: proxy.ts at project root or in src/ (same level as app/).
+ * @see https://nextjs.org/docs/app/getting-started/proxy
+ * @see https://nextjs.org/docs/app/guides/content-security-policy
+ */
 import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE_NAMES = [
@@ -8,9 +14,18 @@ const SESSION_COOKIE_NAMES = [
 const isDev = process.env.NODE_ENV === "development";
 
 function buildCsp(): string {
+  const scriptSrc = [
+    "'self'",
+    "*.walletconnect.com",
+    "*.reown.com",
+    "blob:",
+    ...(isDev
+      ? ["'unsafe-eval'", "'unsafe-inline'", "https://vercel.live"]
+      : []),
+  ].join(" ");
   const directives: string[] = [
     "default-src 'self'",
-    `script-src 'self'${isDev ? " 'unsafe-eval'" : ""} *.walletconnect.com *.reown.com blob:`,
+    `script-src ${scriptSrc}`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: *.walletconnect.com *.reown.com",
     "font-src 'self'",
@@ -20,6 +35,7 @@ function buildCsp(): string {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
+    "frame-ancestors 'none'",
   ];
   return directives.join("; ");
 }
@@ -65,6 +81,12 @@ export function proxy(request: NextRequest): NextResponse {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
+    {
+      source: "/((?!api|_next/static|_next/image|favicon\\.ico|sitemap\\.xml|robots\\.txt).*)",
+      missing: [
+        { type: "header", key: "next-router-prefetch" },
+        { type: "header", key: "purpose", value: "prefetch" },
+      ],
+    },
   ],
 };
