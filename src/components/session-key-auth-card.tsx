@@ -234,9 +234,13 @@ export default function SessionKeyAuthCard({
     },
     onSuccess: (result) => {
       setStatus(null);
-      toast.success("Session key authorized successfully!");
       queryClient.invalidateQueries({ queryKey: ["smart-account", chainId] });
       queryClient.invalidateQueries({ queryKey: ["smart-accounts-all"] });
+      if (!result.success) {
+        toast.error(result.error ?? "Session key authorization failed.");
+        return;
+      }
+      toast.success("Session key authorized successfully!");
       if (result.grantTxHash) {
         toast.info(`Grant tx: ${result.grantTxHash.slice(0, 10)}...`);
       }
