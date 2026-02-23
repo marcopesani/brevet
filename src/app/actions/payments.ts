@@ -196,6 +196,7 @@ export async function approvePendingPayment(
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/pending");
     revalidatePath("/dashboard/transactions");
+    revalidatePath("/dapp/dapp");
 
     return {
       success: paidResponse.ok,
@@ -230,6 +231,7 @@ export async function approvePendingPayment(
     revalidatePath("/dashboard");
     revalidatePath("/dashboard/pending");
     revalidatePath("/dashboard/transactions");
+    revalidatePath("/dapp/dapp");
 
     return {
       success: false,
@@ -254,6 +256,7 @@ export async function rejectPendingPayment(paymentId: string) {
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/pending");
+  revalidatePath("/dapp/dapp");
 
   return { success: true, status: "rejected" };
 }

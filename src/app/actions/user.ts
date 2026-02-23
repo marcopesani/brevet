@@ -21,5 +21,6 @@ export async function updateEnabledChainsAction(
 
   const result = await _setUserEnabledChains(auth.userId, chainIds);
   revalidatePath("/dashboard/settings");
+  revalidatePath("/dapp/dapp");
   return result;
 }
