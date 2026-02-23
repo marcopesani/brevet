@@ -42,7 +42,11 @@ const WC = "*.walletconnect.com *.walletconnect.org *.web3modal.com *.web3modal.
 
 const BASE_SOURCES: CspSources = {
   "default-src":      ["'self'"],
-  "script-src":       ["'self'", "'strict-dynamic'", "blob:"],
+  "script-src": [
+    "'self'",
+    ...(isVercelPreview ? [] : ["'strict-dynamic'"]),
+    "blob:",
+  ],
   "style-src":        ["'self'", "'unsafe-inline'"],
   "img-src":          ["'self'", "data:", "blob:"],
   "font-src":         ["'self'"],
