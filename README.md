@@ -209,6 +209,45 @@ npx vitest run -t "test name pattern"
 
 Tests require MongoDB — start it with `docker compose up -d mongodb` or point `MONGODB_URI` to an existing instance. The test setup uses `mongodb-memory-server` for in-memory MongoDB.
 
+### Browser E2E (Synpress + Playwright + MetaMask)
+
+The repository also includes browser E2E tests for wallet happy paths using Synpress and Playwright.
+
+#### Prerequisites
+
+- Running app at `http://127.0.0.1:3000` (or set `E2E_BASE_URL`)
+- `NEXT_PUBLIC_TEST_MODE=true` enabled on the app (required for deterministic test user provisioning)
+- Chrome/Chromium dependencies available for Playwright
+
+#### Setup
+
+```bash
+# Install Chromium for Playwright
+npm run test:e2e:browser:install
+
+# Build Synpress wallet cache from e2e/wallet-setup/basic.setup.mjs
+npm run test:e2e:browser:cache
+```
+
+#### Run
+
+```bash
+# Full browser E2E suite (headless by default in CI)
+npm run test:e2e:browser
+
+# Run the MetaMask login proof-of-capability only
+npm run test:e2e:browser:poc
+
+# Run headed for local debugging
+npm run test:e2e:browser:headed
+```
+
+#### Optional env vars
+
+- `E2E_BASE_URL` (default: `http://127.0.0.1:3000`)
+- `E2E_METAMASK_SEED_PHRASE` (default: Hardhat test mnemonic)
+- `E2E_METAMASK_PASSWORD` (default: `Password123!`)
+
 | Layer | What is covered |
 |-------|-----------------|
 | Unit | EIP-712 signing, x402 header parsing, payment flow logic, policy enforcement, hot wallet crypto, rate limiter, chain config |

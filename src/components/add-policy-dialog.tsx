@@ -75,6 +75,7 @@ export function AddPolicyDialog({
               placeholder="https://api.example.com/*"
               value={endpointPattern}
               onChange={(e) => setEndpointPattern(e.target.value)}
+              data-testid="policy-endpoint-pattern-input"
               required
             />
           </div>
@@ -100,7 +101,11 @@ export function AddPolicyDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting || !endpointPattern}>
+            <Button
+              type="submit"
+              disabled={submitting || !endpointPattern}
+              data-testid="policy-create-button"
+            >
               {submitting ? "Creating..." : "Create Policy"}
             </Button>
           </DialogFooter>
