@@ -1,13 +1,13 @@
 /**
  * E2E Integration Test: Full Smart Account Payment Pipeline
  *
- * Proves the complete production code path for smart account payments on Base Sepolia:
+ * Validates the complete production code path for smart account payments on Base Sepolia:
  * 1. createSmartAccountSigner() from src/lib/smart-account.ts
  * 2. EIP-712 typed data signing via the Kernel v3.3 permission validator
  * 3. On-chain USDC transferWithAuthorization with ERC-1271 signature
  *
- * This test uses the deployed Kernel v3.3 smart account at
- * 0xc7B29D24De8F48186106E9Fd42584776D2a915e8 on Base Sepolia.
+ * Requires a deployed Kernel v3.3 smart account at DEPLOYED_SA_ADDRESS on Base Sepolia.
+ * Fund it with testnet USDC and the owner EOA with testnet ETH before running.
  *
  * Environment requirements:
  * - RPC_URL: Base Sepolia RPC endpoint (defaults to https://sepolia.base.org)
@@ -32,7 +32,8 @@ import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import crypto from "crypto";
 import { CHAIN_CONFIGS } from "@/lib/chain-config";
 import { createSmartAccountSigner } from "@/lib/smart-account";
-import { toKernelSmartAccount } from "permissionless/accounts";
+import { createKernelAccount } from "@zerodev/sdk";
+import { signerToEcdsaValidator } from "@zerodev/ecdsa-validator";
 import { entryPoint07Address } from "viem/account-abstraction";
 
 // ---------------------------------------------------------------------------
@@ -44,7 +45,7 @@ const chainConfig = CHAIN_CONFIGS[BASE_SEPOLIA_CHAIN_ID];
 const USDC_ADDRESS = chainConfig.usdcAddress;
 const USDC_DOMAIN = chainConfig.usdcDomain;
 
-// Dedicated testnet-only EOA key (same as spike tests — never holds real funds)
+// Dedicated testnet-only EOA key — never holds real funds.
 // EOA address: 0x947Af7ad155f299a768874F73B3223f4a93260C6
 const DEFAULT_TEST_KEY: Hex =
   "0xcfb0b3a1352e19a27df8bd158acf7eced224bfb9e68a76da9ef04091402b92a9";
@@ -52,7 +53,7 @@ const DEFAULT_TEST_KEY: Hex =
 const ownerPrivateKey = (process.env.TEST_EOA_PRIVATE_KEY as Hex) || DEFAULT_TEST_KEY;
 const rpcUrl = process.env.RPC_URL || "https://sepolia.base.org";
 
-// The deployed Kernel v3.3 smart account from spike 1
+// The deployed Kernel v3.3 smart account on Base Sepolia (testnet)
 const DEPLOYED_SA_ADDRESS: Address = "0xc7B29D24De8F48186106E9Fd42584776D2a915e8";
 
 // Burn address — safe recipient for testnet transfers
@@ -115,6 +116,7 @@ describe("E2E: Smart Account Payment Pipeline", () => {
 
   let isDeployed = false;
   let saUsdcBalance = BigInt(0);
+  let eoaEthBalance = BigInt(0);
 
   beforeAll(async () => {
     console.log("=== E2E: Smart Account Payment Pipeline ===");
@@ -137,11 +139,19 @@ describe("E2E: Smart Account Payment Pipeline", () => {
 
     isDeployed = code !== undefined && code !== "0x";
     saUsdcBalance = saUsdc;
+    eoaEthBalance = eoaEth;
 
     console.log("Smart account deployed:", isDeployed);
     console.log(`Owner EOA ETH: ${formatEther(eoaEth)}`);
     console.log(`Smart account USDC: ${(Number(saUsdc) / 1e6).toFixed(6)}`);
     console.log("");
+  });
+
+  // -------------------------------------------------------------------------
+  // Prerequisite: Verify smart account is deployed
+  // -------------------------------------------------------------------------
+  it("should have a deployed smart account on Base Sepolia", () => {
+    expect(isDeployed, `Smart account at ${DEPLOYED_SA_ADDRESS} is not deployed. Deploy it first (see CLAUDE.md for setup).`).toBe(true);
   });
 
   // -------------------------------------------------------------------------
@@ -196,7 +206,7 @@ describe("E2E: Smart Account Payment Pipeline", () => {
   // -------------------------------------------------------------------------
   // Test 3: Full on-chain transferWithAuthorization with owner-key ERC-1271
   //
-  // Uses the Kernel owner key (toKernelSmartAccount) for on-chain signing.
+  // Uses the Kernel owner key (createKernelAccount + ECDSA validator) for on-chain signing.
   // Session key signing (createSmartAccountSigner) is validated off-chain
   // in tests 1, 2, and 4. On-chain session key transfer requires the
   // permission module to be installed via bundler UserOperation (separate
@@ -205,32 +215,34 @@ describe("E2E: Smart Account Payment Pipeline", () => {
   it(
     "should complete on-chain transferWithAuthorization with owner-key ERC-1271 signature",
     { timeout: 120_000 },
-    async () => {
+    async ({ skip }) => {
       if (!isDeployed) {
         console.log("SKIP: Smart account not deployed on Base Sepolia.");
+        skip();
         return;
       }
       if (saUsdcBalance === BigInt(0)) {
         console.log("SKIP: Smart account has no USDC. Fund it first.");
+        skip();
         return;
       }
-
-      // Check EOA has ETH for gas (needed to submit the transfer tx)
-      const eoaEth = await publicClient.getBalance({ address: ownerAccount.address });
-      if (eoaEth === BigInt(0)) {
+      if (eoaEthBalance === BigInt(0)) {
         console.log("SKIP: EOA has no ETH for gas.");
+        skip();
         return;
       }
 
       // Step 1: Create Kernel smart account with owner key (ERC-1271 signer)
-      const kernelAccount = await toKernelSmartAccount({
-        client: publicClient,
-        owners: [ownerAccount],
-        version: "0.3.3",
-        entryPoint: {
-          address: entryPoint07Address,
-          version: "0.7",
-        },
+      const entryPoint = { address: entryPoint07Address, version: "0.7" as const };
+      const ecdsaValidator = await signerToEcdsaValidator(publicClient, {
+        signer: ownerAccount,
+        entryPoint,
+        kernelVersion: "0.3.3",
+      });
+      const kernelAccount = await createKernelAccount(publicClient, {
+        entryPoint,
+        kernelVersion: "0.3.3",
+        plugins: { sudo: ecdsaValidator },
         index: BigInt(0),
       });
 
@@ -312,7 +324,7 @@ describe("E2E: Smart Account Payment Pipeline", () => {
       console.log("");
       console.log("=== SUCCESS ===");
       console.log("Full smart account payment pipeline verified on-chain:");
-      console.log("  1. toKernelSmartAccount() → owner-key ERC-1271 signer");
+      console.log("  1. createKernelAccount() → owner-key ERC-1271 signer");
       console.log("  2. signTypedData() → ERC-1271 signature produced");
       console.log("  3. transferWithAuthorization → on-chain success");
       console.log("  4. USDC balance change → verified");
