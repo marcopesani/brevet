@@ -1,5 +1,5 @@
 import { Types } from "mongoose";
-import { createPublicClient, http, isAddress, parseUnits, parseAbi, encodeFunctionData, type Hex, type Address } from "viem";
+import { http, isAddress, parseUnits, parseAbi, encodeFunctionData, type Hex, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { createKernelAccountClient, createZeroDevPaymasterClient } from "@zerodev/sdk";
 import { toECDSASigner } from "@zerodev/permissions/signers";
@@ -9,7 +9,7 @@ import { connectDB } from "@/lib/db";
 import { getUsdcBalance, decryptPrivateKey } from "@/lib/hot-wallet";
 import { computeSmartAccountAddress, createSessionKey } from "@/lib/smart-account";
 import { ENTRY_POINT, KERNEL_VERSION } from "@/lib/smart-account-constants";
-import { getChainById, getDefaultChainConfig, getUsdcConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";
+import { createChainPublicClient, getChainById, getDefaultChainConfig, getUsdcConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";
 import { createTransaction } from "@/lib/data/transactions";
 
 /** Serialize a lean SmartAccount doc for the Server→Client boundary. */
@@ -312,10 +312,7 @@ export async function withdrawFromSmartAccount(
   const serializedAccount = decryptPrivateKey(account.serializedAccount);
 
   // Build kernel account from serialized permission account
-  const publicClient = createPublicClient({
-    chain: config.chain,
-    transport: http(),
-  });
+  const publicClient = createChainPublicClient(resolvedChainId);
 
   const sessionKeyAccount = privateKeyToAccount(sessionKeyHex);
   const ecdsaSigner = await toECDSASigner({

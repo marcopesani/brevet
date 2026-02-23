@@ -64,12 +64,13 @@ vi.mock("@zerodev/permissions/policies", () => ({
   ParamCondition: { LESS_THAN_OR_EQUAL: 4 },
 }));
 
-// Mock viem to avoid real RPC calls (publicClient creation)
-vi.mock("viem", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("viem")>();
+// Mock chain-config to intercept createChainPublicClient (smart-account.ts
+// no longer imports createPublicClient from viem directly)
+vi.mock("@/lib/chain-config", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/chain-config")>();
   return {
     ...actual,
-    createPublicClient: vi.fn(() => ({
+    createChainPublicClient: vi.fn(() => ({
       readContract: vi.fn(),
       getCode: vi.fn(),
       call: vi.fn(),

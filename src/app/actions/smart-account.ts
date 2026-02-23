@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createPublicClient, http, type Hex } from "viem";
+import { type Hex } from "viem";
 import { z } from "zod/v4";
 import { getAuthenticatedUser } from "@/lib/auth";
 import {
@@ -14,7 +14,7 @@ import {
   activateSessionKey,
 } from "@/lib/data/smart-account";
 import { decryptPrivateKey, encryptPrivateKey } from "@/lib/hot-wallet";
-import { getChainConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";
+import { createChainPublicClient, getChainConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";
 import {
   SESSION_KEY_MAX_SPEND_PER_TX,
   SESSION_KEY_MAX_SPEND_DAILY,
@@ -188,10 +188,7 @@ export async function finalizeSessionKey(
   const config = getChainConfig(chainId);
   if (!config) return { success: false as const, error: `Unsupported chain: ${chainId}` };
 
-  const publicClient = createPublicClient({
-    chain: config.chain,
-    transport: http(),
-  });
+  const publicClient = createChainPublicClient(chainId);
   const receipt = await publicClient.getTransactionReceipt({
     hash: grantTxHash as Hex,
   });

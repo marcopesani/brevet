@@ -68,11 +68,12 @@ vi.mock("@zerodev/sdk", () => ({
   }),
 }));
 
-vi.mock("viem", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("viem")>();
+// Mock chain-config to intercept createChainPublicClient
+vi.mock("@/lib/chain-config", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/chain-config")>();
   return {
     ...actual,
-    createPublicClient: vi.fn(() => ({
+    createChainPublicClient: vi.fn(() => ({
       readContract: vi.fn(),
       chain: { id: 84532 },
     })),

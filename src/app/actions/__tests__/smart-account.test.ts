@@ -29,13 +29,13 @@ vi.mock("@/lib/smart-account", () => ({
   }),
 }));
 
-// Mock viem's createPublicClient for finalizeSessionKey tx verification
+// Mock chain-config to intercept createChainPublicClient for finalizeSessionKey tx verification
 const mockGetTransactionReceipt = vi.fn();
-vi.mock("viem", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("viem")>();
+vi.mock("@/lib/chain-config", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/chain-config")>();
   return {
     ...actual,
-    createPublicClient: vi.fn(() => ({
+    createChainPublicClient: vi.fn(() => ({
       getTransactionReceipt: mockGetTransactionReceipt,
     })),
   };

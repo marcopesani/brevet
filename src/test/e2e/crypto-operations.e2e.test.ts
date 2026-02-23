@@ -368,7 +368,16 @@ describe("E2E: Crypto Operations", () => {
     it("should call writeContract with correct USDC transfer params", async () => {
       const { user } = await seedTestUser();
 
-      // Mock viem clients
+      // Mock createChainPublicClient (chain reads) and createWalletClient (writes)
+      vi.doMock("@/lib/chain-config", async (importOriginal) => {
+        const actual = await importOriginal<typeof import("@/lib/chain-config")>();
+        return {
+          ...actual,
+          createChainPublicClient: () => ({
+            readContract: vi.fn().mockResolvedValue(BigInt(10_000_000)),
+          }),
+        };
+      });
       vi.doMock("viem", async (importOriginal) => {
         const actual = await importOriginal<typeof import("viem")>();
         return {
@@ -378,16 +387,13 @@ describe("E2E: Crypto Operations", () => {
               "0x" + "d".repeat(64),
             ),
           }),
-          createPublicClient: () => ({
-            readContract: vi.fn().mockResolvedValue(BigInt(10_000_000)),
-          }),
         };
       });
 
       // Balance check should return enough
       mockGetUsdcBalance.mockResolvedValue("10.000000");
 
-      // Re-import to pick up mocked viem
+      // Re-import to pick up mocked modules
       const { withdrawFromHotWallet } = await import("@/lib/hot-wallet");
 
       const recipientAddress =
@@ -415,14 +421,25 @@ describe("E2E: Crypto Operations", () => {
       expect(txDocs[0].amount).toBe(1.0);
       expect(txDocs[0].endpoint).toBe(`withdrawal:${recipientAddress}`);
 
+      vi.doUnmock("@/lib/chain-config");
       vi.doUnmock("viem");
     });
 
     it("should reject withdrawal with insufficient balance", async () => {
       const { user } = await seedTestUser();
 
-      // The previous test mocked viem's createPublicClient to return 10 USDC.
-      // Request more than 10 USDC to trigger the insufficient balance error.
+      // Mock createChainPublicClient to return 10 USDC so the balance check
+      // gives a known value, then request 100 USDC to trigger the error.
+      vi.doMock("@/lib/chain-config", async (importOriginal) => {
+        const actual = await importOriginal<typeof import("@/lib/chain-config")>();
+        return {
+          ...actual,
+          createChainPublicClient: () => ({
+            readContract: vi.fn().mockResolvedValue(BigInt(10_000_000)),
+          }),
+        };
+      });
+
       const { withdrawFromHotWallet } = await import("@/lib/hot-wallet");
 
       await expect(
@@ -432,6 +449,8 @@ describe("E2E: Crypto Operations", () => {
           "0x1234567890abcdef1234567890abcdef12345678",
         ),
       ).rejects.toThrow("Insufficient balance");
+
+      vi.doUnmock("@/lib/chain-config");
     });
 
     it("should reject withdrawal with invalid address", async () => {

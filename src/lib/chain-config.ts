@@ -10,7 +10,7 @@ import {
   polygon,
   polygonAmoy,
 } from "viem/chains";
-import { formatUnits, parseUnits } from "viem";
+import { createPublicClient, formatUnits, http, parseUnits } from "viem";
 import type { Chain } from "viem";
 import type { TypedDataDomain } from "viem";
 
@@ -400,6 +400,49 @@ export function resolveValidChainId(
 
 // Backward-compatible alias — deprecated, use getDefaultChainConfig()
 export const chainConfig: ChainConfig = getDefaultChainConfig();
+
+// ── Alchemy RPC helpers ────────────────────────────────────────────
+
+const ALCHEMY_SUBDOMAINS: Record<number, string> = {
+  1:        "eth-mainnet",
+  11155111: "eth-sepolia",
+  8453:     "base-mainnet",
+  84532:    "base-sepolia",
+  42161:    "arb-mainnet",
+  421614:   "arb-sepolia",
+  10:       "opt-mainnet",
+  11155420: "opt-sepolia",
+  137:      "polygon-mainnet",
+  80002:    "polygon-amoy",
+};
+
+/**
+ * Returns the Alchemy RPC URL for the given chain if ALCHEMY_API_KEY is set,
+ * otherwise undefined (viem will fall back to chain defaults).
+ * Server-only — never access process.env.ALCHEMY_API_KEY in client code.
+ */
+export function getAlchemyRpcUrl(chainId: number): string | undefined {
+  const key = process.env.ALCHEMY_API_KEY;
+  if (!key) return undefined;
+  const subdomain = ALCHEMY_SUBDOMAINS[chainId];
+  if (!subdomain) return undefined;
+  return `https://${subdomain}.g.alchemy.com/v2/${key}`;
+}
+
+/**
+ * Creates a viem public client for the given chain, using Alchemy RPC when
+ * ALCHEMY_API_KEY is set, falling back to viem's built-in chain defaults.
+ * This is the single place to configure public RPC transport for all
+ * server-side chain reads.
+ */
+export function createChainPublicClient(chainId: number) {
+  const config = CHAIN_CONFIGS[chainId];
+  if (!config) throw new Error(`Unsupported chain: ${chainId}`);
+  return createPublicClient({
+    chain: config.chain,
+    transport: http(getAlchemyRpcUrl(chainId)),
+  });
+}
 
 // ── ZeroDev RPC helpers ────────────────────────────────────────────
 

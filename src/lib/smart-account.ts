@@ -1,4 +1,4 @@
-import { createPublicClient, http, type Hex, type Address } from "viem";
+import { type Hex, type Address } from "viem";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { createKernelAccount } from "@zerodev/sdk";
 import { getKernelAddressFromECDSA } from "@zerodev/ecdsa-validator";
@@ -6,7 +6,7 @@ import { toPermissionValidator } from "@zerodev/permissions";
 import { toECDSASigner } from "@zerodev/permissions/signers";
 import { deserializePermissionAccount } from "@zerodev/permissions";
 import { encryptPrivateKey } from "@/lib/hot-wallet";
-import { getChainConfig } from "@/lib/chain-config";
+import { createChainPublicClient, getChainConfig } from "@/lib/chain-config";
 import { ENTRY_POINT, KERNEL_VERSION, buildSessionKeyPolicies } from "@/lib/smart-account-constants";
 import type { ClientEvmSigner } from "@/lib/x402/types";
 
@@ -24,10 +24,7 @@ export async function computeSmartAccountAddress(
     throw new Error(`Unsupported chain: ${chainId}`);
   }
 
-  const publicClient = createPublicClient({
-    chain: config.chain,
-    transport: http(),
-  });
+  const publicClient = createChainPublicClient(chainId);
 
   return getKernelAddressFromECDSA({
     publicClient,
@@ -72,10 +69,7 @@ export async function createSmartAccountSigner(
     throw new Error(`Unsupported chain: ${chainId}`);
   }
 
-  const publicClient = createPublicClient({
-    chain: config.chain,
-    transport: http(),
-  });
+  const publicClient = createChainPublicClient(chainId);
 
   const sessionKeyAccount = privateKeyToAccount(sessionKeyHex);
 
@@ -126,10 +120,7 @@ export async function createSmartAccountSignerFromSerialized(
     throw new Error(`Unsupported chain: ${chainId}`);
   }
 
-  const publicClient = createPublicClient({
-    chain: config.chain,
-    transport: http(),
-  });
+  const publicClient = createChainPublicClient(chainId);
 
   const sessionKeyAccount = privateKeyToAccount(sessionKeyHex);
 
