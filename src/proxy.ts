@@ -18,31 +18,75 @@ const SESSION_COOKIE_NAMES = [
 const isDev = process.env.NODE_ENV === "development";
 const isVercelPreview = process.env.VERCEL_ENV === "preview";
 
+/**
+ * CSP sources required by Reown AppKit / WalletConnect.
+ * @see https://docs.reown.com/advanced/security/content-security-policy
+ */
+const REOWN_CONNECT = [
+  "https://rpc.walletconnect.com",
+  "https://rpc.walletconnect.org",
+  "https://relay.walletconnect.com",
+  "https://relay.walletconnect.org",
+  "wss://relay.walletconnect.com",
+  "wss://relay.walletconnect.org",
+  "https://pulse.walletconnect.com",
+  "https://pulse.walletconnect.org",
+  "https://api.web3modal.com",
+  "https://api.web3modal.org",
+  "https://keys.walletconnect.com",
+  "https://keys.walletconnect.org",
+  "https://notify.walletconnect.com",
+  "https://notify.walletconnect.org",
+  "https://echo.walletconnect.com",
+  "https://echo.walletconnect.org",
+  "https://push.walletconnect.com",
+  "https://push.walletconnect.org",
+  "wss://www.walletlink.org",
+  "https://cca-lite.coinbase.com",
+];
+
+const REOWN_IMG = [
+  "https://walletconnect.org",
+  "https://walletconnect.com",
+  "https://secure.walletconnect.com",
+  "https://secure.walletconnect.org",
+  "https://tokens-data.1inch.io",
+  "https://tokens.1inch.io",
+  "https://ipfs.io",
+  "https://cdn.zerion.io",
+];
+
+const REOWN_FONT = [
+  "https://fonts.googleapis.com",
+  "https://fonts.gstatic.com",
+  "https://fonts.reown.com",
+];
+
+const REOWN_FRAME = [
+  "https://verify.walletconnect.com",
+  "https://verify.walletconnect.org",
+  "https://secure.walletconnect.com",
+  "https://secure.walletconnect.org",
+];
+
 function buildCsp(nonce: string): string {
   const scriptSrc = [
     "'self'",
     `'nonce-${nonce}'`,
     "'strict-dynamic'",
-    "*.walletconnect.com",
-    "*.reown.com",
     "blob:",
     ...(isDev ? ["'unsafe-eval'"] : []),
     ...(isVercelPreview ? ["https://vercel.live"] : []),
   ].join(" ");
 
-  const styleSrc = [
-    "'self'",
-    "'unsafe-inline'",
-  ].join(" ");
-
   const directives: string[] = [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
-    `style-src ${styleSrc}`,
-    "img-src 'self' data: *.walletconnect.com *.reown.com",
-    "font-src 'self'",
-    "connect-src 'self' *.walletconnect.com *.walletconnect.org *.reown.com wss:",
-    "frame-src 'self' *.walletconnect.com *.reown.com",
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
+    `img-src 'self' data: blob: ${REOWN_IMG.join(" ")}`,
+    `font-src 'self' ${REOWN_FONT.join(" ")}`,
+    `connect-src 'self' ${REOWN_CONNECT.join(" ")} wss:`,
+    `frame-src 'self' ${REOWN_FRAME.join(" ")}${isVercelPreview ? " https://vercel.live" : ""}`,
     "worker-src 'self' blob:",
     "object-src 'none'",
     "base-uri 'self'",

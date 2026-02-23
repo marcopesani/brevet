@@ -171,8 +171,17 @@ describe("proxy", () => {
       expect(csp).toContain("object-src 'none'");
       expect(csp).toContain("base-uri 'self'");
       expect(csp).toContain("frame-ancestors 'none'");
-      expect(csp).toContain("*.walletconnect.com");
-      expect(csp).toContain("*.reown.com");
+    });
+
+    it("includes Reown AppKit domains per official CSP guide", () => {
+      const request = makeRequest("/");
+      const response = proxy(request);
+      const csp = response.headers.get("Content-Security-Policy")!;
+
+      expect(csp).toContain("https://api.web3modal.com");
+      expect(csp).toContain("https://relay.walletconnect.com");
+      expect(csp).toContain("https://verify.walletconnect.com");
+      expect(csp).toContain("https://fonts.reown.com");
     });
   });
 
