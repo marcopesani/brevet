@@ -36,7 +36,7 @@ import {
   sendBundlerRequest,
   finalizeSessionKey,
 } from "@/app/actions/smart-account";
-import { getChainConfig } from "@/lib/chain-config";
+import { getChainById } from "@/lib/chain-config";
 
 interface SessionKeyAuthCardProps {
   smartAccountAddress?: string;
@@ -69,11 +69,14 @@ const STATUS_LABELS: Record<NonNullable<AuthStatus>, string> = {
 };
 
 function createBundlerTransport(chainId: number) {
-  return custom({
-    async request({ method, params }: { method: string; params?: unknown }) {
-      return sendBundlerRequest(chainId, method, (params ?? []) as unknown[]);
+  return custom(
+    {
+      async request({ method, params }: { method: string; params?: unknown }) {
+        return sendBundlerRequest(chainId, method, (params ?? []) as unknown[]);
+      },
     },
-  });
+    { retryCount: 0 },
+  );
 }
 
 export default function SessionKeyAuthCard({
@@ -102,12 +105,13 @@ export default function SessionKeyAuthCard({
       setStatus("building");
 
       // 3. Build validators
-      const config = getChainConfig(chainId);
+      const config = getChainById(chainId);
       if (!config) throw new Error(`Unsupported chain: ${chainId}`);
 
       const publicClient = createPublicClient({
         chain: config.chain,
-        transport: http(),
+        transport: http(undefined, { batch: { wait: 50 }, retryCount: 0 }),
+        batch: { multicall: true },
       });
 
       const ecdsaValidator = await signerToEcdsaValidator(publicClient, {
