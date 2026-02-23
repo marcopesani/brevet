@@ -44,6 +44,7 @@ export async function createPolicy(data: {
   }
 
   revalidatePath("/dashboard/policies");
+  revalidatePath("/dapp/dapp");
   return { success: true as const, policy };
 }
 
@@ -66,6 +67,7 @@ export async function updatePolicy(
   if (!policy) throw new Error("A policy for this endpoint pattern already exists");
 
   revalidatePath("/dashboard/policies");
+  revalidatePath("/dapp/dapp");
   return policy;
 }
 
@@ -80,6 +82,7 @@ export async function activatePolicy(policyId: string) {
   const policy = await _activatePolicy(policyId, auth.userId);
 
   revalidatePath("/dashboard/policies");
+  revalidatePath("/dapp/dapp");
   return policy;
 }
 
@@ -94,6 +97,7 @@ export async function toggleAutoSign(policyId: string, autoSign: boolean) {
   const policy = await _toggleAutoSign(policyId, auth.userId, autoSign);
 
   revalidatePath("/dashboard/policies");
+  revalidatePath("/dapp/dapp");
   return policy;
 }
 
@@ -110,6 +114,7 @@ export async function archivePolicy(policyId: string) {
   const policy = await _archivePolicy(policyId, auth.userId);
 
   revalidatePath("/dashboard/policies");
+  revalidatePath("/dapp/dapp");
   return policy;
 }
 
@@ -126,5 +131,6 @@ export async function unarchivePolicy(policyId: string) {
   const policy = await _unarchivePolicy(policyId, auth.userId);
 
   revalidatePath("/dashboard/policies");
+  revalidatePath("/dapp/dapp");
   return policy;
 }

@@ -22,6 +22,7 @@ export async function regenerateApiKey() {
   const { rawKey } = await _rotateApiKey(auth.userId);
 
   revalidatePath("/dashboard/settings");
+  revalidatePath("/dapp/dapp");
 
   return { rawKey };
 }

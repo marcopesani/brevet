@@ -22,6 +22,7 @@ export async function withdrawFromWallet(amount: number, toAddress: string, chai
 
   revalidatePath("/dashboard/wallet");
   revalidatePath("/dashboard/transactions");
+  revalidatePath("/dapp/dapp");
 
   return result;
 }

@@ -1,20 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { useSignTypedData, useAccount, useSwitchChain } from "wagmi";
+import { useMemo, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { authorizationTypes } from "@x402/evm";
-import type { PaymentRequirements } from "@x402/core/types";
 import { useChain } from "@/contexts/chain-context";
-import { getChainById, getNetworkIdentifiers } from "@/lib/chain-config";
 import { formatAmountForDisplay } from "@/lib/x402/display";
 import { getRequirementAmount, getRequirementAmountFromLike } from "@/lib/x402/requirements";
-import type { Hex } from "viem";
-import { toast } from "sonner";
-import {
-  approvePendingPayment,
-  rejectPendingPayment,
-} from "@/app/actions/payments";
+import { usePaymentSigning, type PendingPayment as HookPendingPayment } from "@/hooks/use-payment-signing";
 import { PENDING_PAYMENTS_QUERY_KEY } from "@/hooks/use-pending-payments";
 import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
 import {
@@ -28,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Clock, Check, X, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 export interface PendingPayment {
   id: string;
@@ -47,15 +39,6 @@ interface PendingPaymentCardProps {
   walletAddress: string;
   disabled: boolean;
   onAction: () => void;
-}
-
-function generateNonce(): Hex {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  const hex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  return `0x${hex}` as Hex;
 }
 
 function useCountdown(expiresAt: string) {
@@ -93,23 +76,33 @@ function getUrgencyVariant(
   return "secondary";
 }
 
+import { useState, useEffect } from "react";
+
 export default function PendingPaymentCard({
   payment,
   walletAddress,
   disabled,
   onAction,
 }: PendingPaymentCardProps) {
-  const [actionInProgress, setActionInProgress] = useState<
-    "approve" | "reject" | null
-  >(null);
-  const { signTypedDataAsync } = useSignTypedData();
-  const { chainId: walletChainId } = useAccount();
-  const { switchChainAsync } = useSwitchChain();
-  const queryClient = useQueryClient();
   const { activeChain } = useChain();
   const remaining = useCountdown(payment.expiresAt);
   const isExpired = remaining <= 0;
+  const queryClient = useQueryClient();
 
+  const handleComplete = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: PENDING_PAYMENTS_QUERY_KEY });
+    queryClient.invalidateQueries({ queryKey: WALLET_BALANCE_QUERY_KEY });
+    onAction();
+  }, [queryClient, onAction]);
+
+  const { status, approve, reject, amountLabel, paymentChainConfig } =
+    usePaymentSigning(payment as HookPendingPayment, walletAddress, activeChain, handleComplete);
+
+  const urgencyVariant = getUrgencyVariant(remaining);
+  const isProcessing = status === "switching" || status === "signing" || status === "submitting";
+  const isSuccess = status === "success";
+
+  // Display amount from requirement (amountRaw + asset) or legacy payment.amount
   const parsedRequirements = useMemo(() => {
     try {
       return JSON.parse(payment.paymentRequirements);
@@ -118,149 +111,50 @@ export default function PendingPaymentCard({
     }
   }, [payment.paymentRequirements]);
 
-  // Use the payment's stored chainId if available, otherwise fall back to active chain
-  const paymentChainConfig = payment.chainId !== undefined
-    ? getChainById(payment.chainId) ?? activeChain
-    : activeChain;
-
-  function invalidateAndNotify() {
-    queryClient.invalidateQueries({ queryKey: PENDING_PAYMENTS_QUERY_KEY });
-    queryClient.invalidateQueries({ queryKey: WALLET_BALANCE_QUERY_KEY });
-    onAction();
-  }
-
-  async function handleApprove() {
-    setActionInProgress("approve");
-    try {
-      const requirements: PaymentRequirements[] = parsedRequirements
-        ? (Array.isArray(parsedRequirements) ? parsedRequirements : parsedRequirements.accepts)
-        : [];
-      const acceptedNetworks = getNetworkIdentifiers(paymentChainConfig);
-      const requirement = requirements.find(
-        (r) => r.scheme === "exact" && r.network != null && acceptedNetworks.includes(r.network)
-      );
-
-      if (!requirement) {
-        toast.error("No supported payment requirement found");
-        return;
-      }
-      if (!requirement.payTo) {
-        toast.error("Payment requirement missing payTo address");
-        return;
-      }
-      const amountStr = getRequirementAmount(requirement) ?? getRequirementAmountFromLike(requirement);
-      if (amountStr == null || amountStr === "") {
-        toast.error("Payment requirement has no amount; cannot approve");
-        return;
-      }
-
-      const amountWei = BigInt(amountStr);
-      const nonce = generateNonce();
-      const now = BigInt(Math.floor(Date.now() / 1_000));
-
-      if (walletChainId !== paymentChainConfig.chain.id) {
-        try {
-          await switchChainAsync({ chainId: paymentChainConfig.chain.id });
-        } catch {
-          toast.error("Failed to switch network");
-          return;
-        }
-      }
-
-      const authorization = {
-        from: walletAddress as Hex,
-        to: requirement.payTo as Hex,
-        value: amountWei,
-        validAfter: BigInt(0),
-        validBefore: now + BigInt(300),
-        nonce,
-      };
-
-      const signature = await signTypedDataAsync({
-        domain: paymentChainConfig.usdcDomain,
-        types: authorizationTypes,
-        primaryType: "TransferWithAuthorization",
-        message: {
-          from: authorization.from,
-          to: authorization.to,
-          value: authorization.value,
-          validAfter: authorization.validAfter,
-          validBefore: authorization.validBefore,
-          nonce: authorization.nonce,
-        },
-      });
-
-      const result = await approvePendingPayment(
-        payment.id,
-        signature,
-        {
-          from: authorization.from,
-          to: authorization.to,
-          value: authorization.value.toString(),
-          validAfter: authorization.validAfter.toString(),
-          validBefore: authorization.validBefore.toString(),
-          nonce: authorization.nonce,
-        },
-      );
-
-      if (result.success) {
-        toast.success("Payment approved and submitted");
-      } else {
-        toast.error("Payment submitted but server returned an error");
-      }
-      invalidateAndNotify();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to sign transaction"
-      );
-    } finally {
-      setActionInProgress(null);
-    }
-  }
-
-  async function handleReject() {
-    setActionInProgress("reject");
-    try {
-      await rejectPendingPayment(payment.id);
-      toast.success("Payment rejected");
-      invalidateAndNotify();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to reject payment"
-      );
-    } finally {
-      setActionInProgress(null);
-    }
-  }
-
-  const urgencyVariant = getUrgencyVariant(remaining);
-  const isActioning = actionInProgress !== null;
-
-  // Display amount from requirement (amountRaw + asset) or legacy payment.amount
-  const requirements: PaymentRequirements[] = parsedRequirements
+  const requirements = parsedRequirements
     ? (Array.isArray(parsedRequirements) ? parsedRequirements : parsedRequirements.accepts ?? [])
     : [];
-  const acceptedNetworks = getNetworkIdentifiers(paymentChainConfig);
-  const displayRequirement = requirements.find(
-    (r) => r.scheme === "exact" && r.network != null && acceptedNetworks.includes(r.network),
-  );
-  const displayAmountRaw =
-    displayRequirement &&
-    (payment.amountRaw ?? getRequirementAmount(displayRequirement) ?? getRequirementAmountFromLike(displayRequirement));
-  const amountForDisplay =
-    displayAmountRaw != null && displayAmountRaw !== ""
-      ? formatAmountForDisplay(
-          displayAmountRaw,
-          payment.asset ?? displayRequirement?.asset,
-          payment.chainId ?? paymentChainConfig.chain.id,
-        )
-      : payment.amount != null && payment.amount > 0
-        ? { displayAmount: payment.amount.toFixed(6), symbol: "USDC" }
-        : { displayAmount: "—", symbol: "" };
-  const amountLabel =
+
+  const amountForDisplay = payment.amount != null && payment.amount > 0
+    ? { displayAmount: payment.amount.toFixed(6), symbol: "USDC" }
+    : { displayAmount: "—", symbol: "" };
+
+  const amountLabelFallback =
     amountForDisplay.displayAmount === "—"
       ? "Unknown"
       : `${amountForDisplay.displayAmount} ${amountForDisplay.symbol}`.trim();
+
+  const finalAmountLabel = amountLabel !== "Unknown" ? amountLabel : amountLabelFallback;
+
+  if (isSuccess) {
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/10">
+              <Check className="h-4 w-4 text-green-500" />
+            </div>
+            <CardTitle className="text-sm">Payment Approved</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">{finalAmountLabel}</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isExpired) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm text-muted-foreground">
+            Payment Expired
+          </CardTitle>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -278,7 +172,7 @@ export default function PendingPaymentCard({
       <CardContent className="space-y-2">
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <div className="text-muted-foreground">Amount</div>
-          <div className="font-medium">{amountLabel}</div>
+          <div className="font-medium">{finalAmountLabel}</div>
           <div className="text-muted-foreground">Chain</div>
           <div>{paymentChainConfig.displayName}</div>
           <div className="text-muted-foreground">Created</div>
@@ -290,14 +184,14 @@ export default function PendingPaymentCard({
       </CardContent>
       <CardFooter className="gap-2">
         <Button
-          onClick={handleApprove}
-          disabled={disabled || isActioning || isExpired}
+          onClick={approve}
+          disabled={disabled || isProcessing}
           size="sm"
         >
-          {actionInProgress === "approve" ? (
+          {isProcessing ? (
             <>
               <Loader2 className="animate-spin" />
-              Signing...
+              Processing...
             </>
           ) : (
             <>
@@ -308,21 +202,12 @@ export default function PendingPaymentCard({
         </Button>
         <Button
           variant="outline"
-          onClick={handleReject}
-          disabled={disabled || isActioning || isExpired}
+          onClick={reject}
+          disabled={disabled || isProcessing}
           size="sm"
         >
-          {actionInProgress === "reject" ? (
-            <>
-              <Loader2 className="animate-spin" />
-              Rejecting...
-            </>
-          ) : (
-            <>
-              <X />
-              Reject
-            </>
-          )}
+          <X />
+          Reject
         </Button>
       </CardFooter>
     </Card>
