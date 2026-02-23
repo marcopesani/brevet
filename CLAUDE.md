@@ -195,7 +195,7 @@ Copy `.env.example` to `.env.local`. Required variables:
 
 Optional:
 - `HOT_WALLET_ENCRYPTION_KEY` — 64-char hex, only needed for legacy hot wallet migration
-- `ALCHEMY_API_KEY` — Alchemy API key for reliable server-side RPC. When set, all chain reads (balance checks, smart account operations, transaction receipts) use Alchemy endpoints instead of public viem defaults. A single key covers all supported chains. Without it the app falls back to public RPC which may return 429 under load; the dashboard header shows a status indicator when this happens. Get one at https://dashboard.alchemy.com
+- `ALCHEMY_API_KEY` — Alchemy API key for reliable server-side RPC. When set, all chain reads (balance checks, smart account operations, transaction receipts) use Alchemy endpoints instead of public viem defaults. Without it the app falls back to public RPC which may return 429 under load; the dashboard header shows a status indicator when this happens. Get one at https://dashboard.alchemy.com
 
 ### Local Development with Docker
 
