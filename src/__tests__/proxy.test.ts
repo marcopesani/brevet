@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { NextRequest } from "next/server";
-import { proxy, config } from "@/proxy";
+import { proxy, buildCsp, config } from "@/proxy";
 
 const BASE_URL = "http://localhost:3000";
 
@@ -13,6 +13,8 @@ function makeRequest(path: string, cookies?: Record<string, string>): NextReques
   }
   return request;
 }
+
+// ── Security headers (non-CSP) ──────────────────────────────────────────
 
 const SECURITY_HEADERS = {
   "X-Frame-Options": "DENY",
@@ -27,32 +29,78 @@ function expectSecurityHeaders(response: Response) {
   for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
     expect(response.headers.get(header)).toBe(value);
   }
-  const csp = response.headers.get("Content-Security-Policy");
-  expect(csp).toBeTruthy();
+  expect(response.headers.get("Content-Security-Policy")).toBeTruthy();
 }
+
+// ── buildCsp (unit) ─────────────────────────────────────────────────────
+
+describe("buildCsp", () => {
+  const csp = buildCsp("test-nonce-123");
+
+  it("injects the nonce into script-src", () => {
+    expect(csp).toContain("'nonce-test-nonce-123'");
+  });
+
+  it("includes strict-dynamic alongside the nonce", () => {
+    expect(csp).toMatch(/script-src[^;]*'nonce-test-nonce-123'[^;]*'strict-dynamic'/);
+  });
+
+  it("includes all required base directives", () => {
+    for (const directive of [
+      "default-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+      "worker-src 'self' blob:",
+    ]) {
+      expect(csp).toContain(directive);
+    }
+  });
+
+  it("includes Reown AppKit wildcard domains", () => {
+    for (const wildcard of [
+      "*.walletconnect.com",
+      "*.walletconnect.org",
+      "*.web3modal.com",
+      "*.web3modal.org",
+      "*.reown.com",
+    ]) {
+      expect(csp).toContain(wildcard);
+    }
+  });
+
+  it("includes Reown third-party sources", () => {
+    expect(csp).toContain("https://fonts.reown.com");
+    expect(csp).toContain("https://fonts.googleapis.com");
+    expect(csp).toContain("https://cca-lite.coinbase.com");
+  });
+
+  it("produces a different CSP for a different nonce", () => {
+    const other = buildCsp("other-nonce");
+    expect(other).toContain("'nonce-other-nonce'");
+    expect(other).not.toContain("'nonce-test-nonce-123'");
+  });
+});
+
+// ── proxy (integration) ─────────────────────────────────────────────────
 
 describe("proxy", () => {
   describe("auth redirect — unauthenticated", () => {
     it("redirects /dashboard to /login with 307", () => {
-      const request = makeRequest("/dashboard");
-      const response = proxy(request);
-
+      const response = proxy(makeRequest("/dashboard"));
       expect(response.status).toBe(307);
       expect(new URL(response.headers.get("Location")!).pathname).toBe("/login");
     });
 
     it("redirects /dashboard/wallet to /login with 307", () => {
-      const request = makeRequest("/dashboard/wallet");
-      const response = proxy(request);
-
+      const response = proxy(makeRequest("/dashboard/wallet"));
       expect(response.status).toBe(307);
       expect(new URL(response.headers.get("Location")!).pathname).toBe("/login");
     });
 
     it("redirects /dashboard/settings to /login with 307", () => {
-      const request = makeRequest("/dashboard/settings");
-      const response = proxy(request);
-
+      const response = proxy(makeRequest("/dashboard/settings"));
       expect(response.status).toBe(307);
       expect(new URL(response.headers.get("Location")!).pathname).toBe("/login");
     });
@@ -60,100 +108,65 @@ describe("proxy", () => {
 
   describe("auth redirect — authenticated", () => {
     it("passes through /dashboard with next-auth.session-token cookie", () => {
-      const request = makeRequest("/dashboard", {
+      const response = proxy(makeRequest("/dashboard", {
         "next-auth.session-token": "some-session-value",
-      });
-      const response = proxy(request);
-
+      }));
       expect(response.status).not.toBe(307);
       expect(response.headers.get("Location")).toBeNull();
     });
 
     it("passes through /dashboard with __Secure-next-auth.session-token cookie", () => {
-      const request = makeRequest("/dashboard", {
+      const response = proxy(makeRequest("/dashboard", {
         "__Secure-next-auth.session-token": "some-session-value",
-      });
-      const response = proxy(request);
-
+      }));
       expect(response.status).not.toBe(307);
       expect(response.headers.get("Location")).toBeNull();
     });
 
     it("includes security headers on authenticated dashboard response", () => {
-      const request = makeRequest("/dashboard", {
+      const response = proxy(makeRequest("/dashboard", {
         "next-auth.session-token": "some-session-value",
-      });
-      const response = proxy(request);
-
+      }));
       expectSecurityHeaders(response);
     });
   });
 
   describe("non-dashboard routes — pass through", () => {
     it("passes through /login without redirect", () => {
-      const request = makeRequest("/login");
-      const response = proxy(request);
-
+      const response = proxy(makeRequest("/login"));
       expect(response.status).not.toBe(307);
       expect(response.headers.get("Location")).toBeNull();
     });
 
     it("passes through / (marketing page) without redirect", () => {
-      const request = makeRequest("/");
-      const response = proxy(request);
-
+      const response = proxy(makeRequest("/"));
       expect(response.status).not.toBe(307);
       expect(response.headers.get("Location")).toBeNull();
     });
   });
 
   describe("security headers", () => {
-    it("includes all security headers on /login response", () => {
-      const request = makeRequest("/login");
-      const response = proxy(request);
-
-      expectSecurityHeaders(response);
+    it.each(["/login", "/", "/some-page"])("applies all headers on %s", (path) => {
+      expectSecurityHeaders(proxy(makeRequest(path)));
     });
 
-    it("includes all security headers on / response", () => {
-      const request = makeRequest("/");
-      const response = proxy(request);
-
-      expectSecurityHeaders(response);
-    });
-
-    it("includes all security headers on authenticated /dashboard response", () => {
-      const request = makeRequest("/dashboard", {
+    it("applies headers on authenticated /dashboard", () => {
+      expectSecurityHeaders(proxy(makeRequest("/dashboard", {
         "next-auth.session-token": "session-value",
-      });
-      const response = proxy(request);
-
-      expectSecurityHeaders(response);
+      })));
     });
 
-    it("includes security headers on redirect responses", () => {
-      const request = makeRequest("/dashboard");
-      const response = proxy(request);
-
+    it("applies headers on redirect responses", () => {
+      const response = proxy(makeRequest("/dashboard"));
       expect(response.status).toBe(307);
       expectSecurityHeaders(response);
     });
   });
 
-  describe("nonce-based CSP", () => {
-    it("includes a nonce in the CSP script-src directive", () => {
-      const request = makeRequest("/login");
-      const response = proxy(request);
-      const csp = response.headers.get("Content-Security-Policy")!;
-
-      expect(csp).toMatch(/script-src[^;]*'nonce-[A-Za-z0-9+/=]+'[^;]*'strict-dynamic'/);
-    });
-
+  describe("nonce", () => {
     it("generates a unique nonce per request", () => {
-      const r1 = proxy(makeRequest("/login"));
-      const r2 = proxy(makeRequest("/login"));
-      const csp1 = r1.headers.get("Content-Security-Policy")!;
-      const csp2 = r2.headers.get("Content-Security-Policy")!;
+      const csp1 = proxy(makeRequest("/")).headers.get("Content-Security-Policy")!;
+      const csp2 = proxy(makeRequest("/")).headers.get("Content-Security-Policy")!;
 
       const nonce1 = csp1.match(/'nonce-([A-Za-z0-9+/=]+)'/)?.[1];
       const nonce2 = csp2.match(/'nonce-([A-Za-z0-9+/=]+)'/)?.[1];
@@ -161,70 +174,31 @@ describe("proxy", () => {
       expect(nonce2).toBeDefined();
       expect(nonce1).not.toBe(nonce2);
     });
+  });
+});
 
-    it("includes required CSP directives", () => {
-      const request = makeRequest("/");
-      const response = proxy(request);
-      const csp = response.headers.get("Content-Security-Policy")!;
+// ── config matcher ──────────────────────────────────────────────────────
 
-      expect(csp).toContain("default-src 'self'");
-      expect(csp).toContain("object-src 'none'");
-      expect(csp).toContain("base-uri 'self'");
-      expect(csp).toContain("frame-ancestors 'none'");
-    });
+describe("config matcher", () => {
+  function matcherSource(): string {
+    return config.matcher
+      .map((m) => (typeof m === "string" ? m : m.source))
+      .join(" ");
+  }
 
-    it("includes Reown AppKit wildcard domains per official CSP guide", () => {
-      const request = makeRequest("/");
-      const response = proxy(request);
-      const csp = response.headers.get("Content-Security-Policy")!;
-
-      expect(csp).toContain("*.walletconnect.com");
-      expect(csp).toContain("*.walletconnect.org");
-      expect(csp).toContain("*.web3modal.com");
-      expect(csp).toContain("*.web3modal.org");
-      expect(csp).toContain("*.reown.com");
-      expect(csp).toContain("https://fonts.reown.com");
-    });
+  it("exports a non-empty matcher array", () => {
+    expect(Array.isArray(config.matcher)).toBe(true);
+    expect(config.matcher.length).toBeGreaterThan(0);
   });
 
-  describe("config matcher", () => {
-    function getMatcherSourceString(
-      matcher: (string | { source: string; missing?: unknown[] })[]
-    ): string {
-      return matcher
-        .map((m) => (typeof m === "string" ? m : m.source))
-        .join(" ");
-    }
+  it.each(["api", "_next", "ico"])("excludes %s paths", (token) => {
+    expect(matcherSource()).toContain(token);
+  });
 
-    it("exports a config object with a matcher array", () => {
-      expect(config).toBeDefined();
-      expect(config.matcher).toBeDefined();
-      expect(Array.isArray(config.matcher)).toBe(true);
-      expect(config.matcher.length).toBeGreaterThan(0);
-    });
-
-    it("excludes /api paths", () => {
-      const matcherStr = getMatcherSourceString(config.matcher);
-      expect(matcherStr).toContain("api");
-    });
-
-    it("excludes /_next paths", () => {
-      const matcherStr = getMatcherSourceString(config.matcher);
-      expect(matcherStr).toContain("_next");
-    });
-
-    it("excludes static file extensions", () => {
-      const matcherStr = getMatcherSourceString(config.matcher);
-      expect(matcherStr).toMatch(/ico|svg|png|jpg/);
-    });
-
-    it("skips prefetch requests via missing headers", () => {
-      const matcher = config.matcher[0];
-      expect(typeof matcher).toBe("object");
-      const obj = matcher as { source: string; missing: { type: string; key: string }[] };
-      const keys = obj.missing.map((m) => m.key);
-      expect(keys).toContain("next-router-prefetch");
-      expect(keys).toContain("purpose");
-    });
+  it("skips prefetch requests via missing headers", () => {
+    const obj = config.matcher[0] as { missing: { key: string }[] };
+    const keys = obj.missing.map((m) => m.key);
+    expect(keys).toContain("next-router-prefetch");
+    expect(keys).toContain("purpose");
   });
 });
