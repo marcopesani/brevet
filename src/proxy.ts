@@ -1,6 +1,10 @@
 /**
- * Next.js 16 Proxy: auth redirects + security headers (including CSP).
- * Convention: proxy.ts at project root or in src/ (same level as app/).
+ * Next.js 16 Proxy: auth redirects + security headers with nonce-based CSP.
+ *
+ * Nonces allow Next.js inline scripts (hydration, etc.) to execute under a
+ * strict CSP without 'unsafe-inline'. Next.js automatically attaches the nonce
+ * to framework scripts, page bundles, and <Script> components.
+ *
  * @see https://nextjs.org/docs/app/getting-started/proxy
  * @see https://nextjs.org/docs/app/guides/content-security-policy
  */
@@ -12,21 +16,29 @@ const SESSION_COOKIE_NAMES = [
 ];
 
 const isDev = process.env.NODE_ENV === "development";
+const isVercelPreview = process.env.VERCEL_ENV === "preview";
 
-function buildCsp(): string {
+function buildCsp(nonce: string): string {
   const scriptSrc = [
     "'self'",
+    `'nonce-${nonce}'`,
+    "'strict-dynamic'",
     "*.walletconnect.com",
     "*.reown.com",
     "blob:",
-    ...(isDev
-      ? ["'unsafe-eval'", "'unsafe-inline'", "https://vercel.live"]
-      : []),
+    ...(isDev ? ["'unsafe-eval'"] : []),
+    ...(isVercelPreview ? ["https://vercel.live"] : []),
   ].join(" ");
+
+  const styleSrc = [
+    "'self'",
+    "'unsafe-inline'",
+  ].join(" ");
+
   const directives: string[] = [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
-    "style-src 'self' 'unsafe-inline'",
+    `style-src ${styleSrc}`,
     "img-src 'self' data: *.walletconnect.com *.reown.com",
     "font-src 'self'",
     "connect-src 'self' *.walletconnect.com *.walletconnect.org *.reown.com wss:",
@@ -40,9 +52,15 @@ function buildCsp(): string {
   return directives.join("; ");
 }
 
-const csp = buildCsp();
+function addSecurityHeaders(
+  request: NextRequest,
+  response: NextResponse,
+  csp: string,
+  nonce: string,
+): NextResponse {
+  request.headers.set("x-nonce", nonce);
+  request.headers.set("Content-Security-Policy", csp);
 
-function addSecurityHeaders(response: NextResponse): NextResponse {
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set(
@@ -67,16 +85,27 @@ function hasSessionCookie(request: NextRequest): boolean {
 }
 
 export function proxy(request: NextRequest): NextResponse {
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const csp = buildCsp(nonce);
+
   const { pathname } = request.nextUrl;
 
   if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
     if (!hasSessionCookie(request)) {
       const loginUrl = new URL("/login", request.url);
-      return addSecurityHeaders(NextResponse.redirect(loginUrl, 307));
+      const response = NextResponse.redirect(loginUrl, 307);
+      return addSecurityHeaders(request, response, csp, nonce);
     }
   }
 
-  return addSecurityHeaders(NextResponse.next());
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+
+  const response = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+  return addSecurityHeaders(request, response, csp, nonce);
 }
 
 export const config = {

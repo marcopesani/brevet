@@ -27,8 +27,8 @@ function expectSecurityHeaders(response: Response) {
   for (const [header, value] of Object.entries(SECURITY_HEADERS)) {
     expect(response.headers.get(header)).toBe(value);
   }
-  // CSP is present but we don't assert the exact value
-  expect(response.headers.get("Content-Security-Policy")).toBeTruthy();
+  const csp = response.headers.get("Content-Security-Policy");
+  expect(csp).toBeTruthy();
 }
 
 describe("proxy", () => {
@@ -140,6 +140,42 @@ describe("proxy", () => {
     });
   });
 
+  describe("nonce-based CSP", () => {
+    it("includes a nonce in the CSP script-src directive", () => {
+      const request = makeRequest("/login");
+      const response = proxy(request);
+      const csp = response.headers.get("Content-Security-Policy")!;
+
+      expect(csp).toMatch(/script-src[^;]*'nonce-[A-Za-z0-9+/=]+'[^;]*'strict-dynamic'/);
+    });
+
+    it("generates a unique nonce per request", () => {
+      const r1 = proxy(makeRequest("/login"));
+      const r2 = proxy(makeRequest("/login"));
+      const csp1 = r1.headers.get("Content-Security-Policy")!;
+      const csp2 = r2.headers.get("Content-Security-Policy")!;
+
+      const nonce1 = csp1.match(/'nonce-([A-Za-z0-9+/=]+)'/)?.[1];
+      const nonce2 = csp2.match(/'nonce-([A-Za-z0-9+/=]+)'/)?.[1];
+      expect(nonce1).toBeDefined();
+      expect(nonce2).toBeDefined();
+      expect(nonce1).not.toBe(nonce2);
+    });
+
+    it("includes required CSP directives", () => {
+      const request = makeRequest("/");
+      const response = proxy(request);
+      const csp = response.headers.get("Content-Security-Policy")!;
+
+      expect(csp).toContain("default-src 'self'");
+      expect(csp).toContain("object-src 'none'");
+      expect(csp).toContain("base-uri 'self'");
+      expect(csp).toContain("frame-ancestors 'none'");
+      expect(csp).toContain("*.walletconnect.com");
+      expect(csp).toContain("*.reown.com");
+    });
+  });
+
   describe("config matcher", () => {
     function getMatcherSourceString(
       matcher: (string | { source: string; missing?: unknown[] })[]
@@ -169,6 +205,15 @@ describe("proxy", () => {
     it("excludes static file extensions", () => {
       const matcherStr = getMatcherSourceString(config.matcher);
       expect(matcherStr).toMatch(/ico|svg|png|jpg/);
+    });
+
+    it("skips prefetch requests via missing headers", () => {
+      const matcher = config.matcher[0];
+      expect(typeof matcher).toBe("object");
+      const obj = matcher as { source: string; missing: { type: string; key: string }[] };
+      const keys = obj.missing.map((m) => m.key);
+      expect(keys).toContain("next-router-prefetch");
+      expect(keys).toContain("purpose");
     });
   });
 });
