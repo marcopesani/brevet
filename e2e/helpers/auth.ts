@@ -482,7 +482,7 @@ async function signInViaInjectedProvider(
   }
 
   const accounts = requestAccountsResult.accounts;
-  const address = accounts[0];
+  const address = accounts?.[0];
   if (!address) throw new Error("No account returned from injected provider");
 
   const chainIdHex = await withActivePage(async (currentPage) =>
