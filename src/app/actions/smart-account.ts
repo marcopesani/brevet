@@ -33,7 +33,6 @@ export async function setupSmartAccount(chainId: number) {
 
   revalidatePath("/dashboard/wallet");
   revalidatePath("/dashboard");
-  revalidatePath("/dapp/dapp");
   return {
     id: account.id,
     smartAccountAddress: account.smartAccountAddress,
@@ -217,7 +216,6 @@ export async function finalizeSessionKey(
 
   revalidatePath("/dashboard/wallet");
   revalidatePath("/dashboard");
-  revalidatePath("/dapp/dapp");
 
   return {
     success: true as const,
