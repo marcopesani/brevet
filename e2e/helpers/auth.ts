@@ -193,11 +193,17 @@ export async function signInWithMetaMask(page: Page, metamask: MetaMask) {
   await connectWalletButton.click();
 
   try {
-    await selectMetaMaskInAppKit(activePage);
-    await metamask.connectToDapp();
-    await metamask.confirmSignature();
-    await activePage.waitForURL("**/dashboard", { timeout: 90_000 });
+    await attemptWalletSignIn(activePage, metamask);
   } catch {
+    try {
+      await prepareMetaMask(metamask);
+      await attemptWalletSignIn(activePage, metamask);
+      await expect(activePage).toHaveURL(/\/dashboard/);
+      return;
+    } catch {
+      // Continue to injected-provider fallback.
+    }
+
     if (activePage.isClosed()) {
       const candidatePage = metamask.context
         .pages()
@@ -211,4 +217,17 @@ export async function signInWithMetaMask(page: Page, metamask: MetaMask) {
   }
 
   await expect(activePage).toHaveURL(/\/dashboard/);
+}
+
+async function attemptWalletSignIn(page: Page, metamask: MetaMask) {
+  const appKitModal = page.locator("w3m-modal.open");
+  const hasOpenAppKitModal = (await appKitModal.count()) > 0;
+
+  if (hasOpenAppKitModal) {
+    await selectMetaMaskInAppKit(page);
+  }
+
+  await metamask.connectToDapp();
+  await metamask.confirmSignature();
+  await page.waitForURL("**/dashboard", { timeout: 90_000 });
 }
