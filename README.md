@@ -209,6 +209,54 @@ npx vitest run -t "test name pattern"
 
 Tests require MongoDB — start it with `docker compose up -d mongodb` or point `MONGODB_URI` to an existing instance. The test setup uses `mongodb-memory-server` for in-memory MongoDB.
 
+### Browser E2E (Synpress + Playwright + MetaMask)
+
+The repository also includes browser E2E tests for wallet happy paths using Synpress and Playwright.
+
+#### Prerequisites
+
+- Chrome/Chromium dependencies available for Playwright
+
+> The Playwright config starts its own dedicated E2E app server automatically.  
+> If `MONGODB_URI` is not set, E2E startup uses an in-memory MongoDB instance.
+
+#### Setup
+
+```bash
+# Install Chromium for Playwright
+npm run test:e2e:browser:install
+
+# Build Synpress wallet cache from e2e/wallet-setup/basic.setup.mjs
+npm run test:e2e:browser:cache
+```
+
+#### Run
+
+```bash
+# Full browser E2E suite (headless by default in CI)
+npm run test:e2e:browser
+
+# Run the MetaMask login proof-of-capability only
+npm run test:e2e:browser:poc
+
+# Run headed for local debugging
+npm run test:e2e:browser:headed
+```
+
+#### Optional env vars
+
+- `E2E_BASE_URL` (default: `http://127.0.0.1:3000`)
+- `E2E_CHAIN_ID` (default: `80002`)
+- `E2E_METAMASK_SEED_PHRASE` (default: Hardhat test mnemonic)
+- `E2E_METAMASK_PASSWORD` (default: `Password123!`)
+- `E2E_WALLETCONNECT_PROJECT_ID` (used by Playwright webServer if `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is not already set)
+- `E2E_ZERODEV_PROJECT_ID` (used by Playwright webServer if `ZERODEV_PROJECT_ID` is not already set)
+- `E2E_MONGODB_URI` (optional explicit DB URI for Playwright webServer)
+- `E2E_REAL_METAMASK=true` (optional: force real MetaMask popup approvals instead of deterministic test-mode signing fallback)
+- `E2E_REAL_METAMASK_STRICT=true` (optional: with `E2E_REAL_METAMASK`, fail instead of falling back to deterministic signing)
+
+> Note: for wallet-connection happy paths, use a valid WalletConnect/Reown project ID. Placeholder IDs allow app startup but can fail at runtime wallet handshake.
+
 | Layer | What is covered |
 |-------|-----------------|
 | Unit | EIP-712 signing, x402 header parsing, payment flow logic, policy enforcement, hot wallet crypto, rate limiter, chain config |

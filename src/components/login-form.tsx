@@ -62,6 +62,7 @@ export function LoginForm({
                 onClick={() => open()}
                 className="w-full"
                 size="lg"
+                data-testid="connect-wallet-button"
               >
                 <Wallet className="mr-2 size-4" />
                 Connect Wallet

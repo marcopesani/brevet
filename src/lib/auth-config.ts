@@ -4,7 +4,7 @@ import {
   getAddressFromMessage,
   getChainIdFromMessage,
 } from "@reown/appkit-siwe";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, http, verifyMessage as verifyMessageLocally } from "viem";
 import { connectDB } from "@/lib/db";
 import { User } from "@/lib/models/user";
 import { ensureApiKey } from "@/lib/data/users";
@@ -59,6 +59,14 @@ export async function verifySignature(
   signature: string,
   chainId: string,
 ): Promise<boolean> {
+  if (process.env.NEXT_PUBLIC_TEST_MODE === "true") {
+    return verifyMessageLocally({
+      message,
+      address: address as `0x${string}`,
+      signature: signature as `0x${string}`,
+    });
+  }
+
   const publicClient = createPublicClient({
     transport: http(
       `https://rpc.walletconnect.org/v1/?chainId=${chainId}&projectId=${projectId}`,

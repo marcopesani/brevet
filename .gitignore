@@ -13,6 +13,9 @@
 
 # testing
 /coverage
+/playwright-report
+/test-results
+/.cache-synpress
 
 # next.js
 /.next/

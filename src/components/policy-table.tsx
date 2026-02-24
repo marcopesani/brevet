@@ -165,7 +165,11 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
           Endpoint Policies{chainName ? ` — ${chainName}` : ""}
         </CardTitle>
         <CardAction>
-          <Button size="sm" onClick={() => setDialogOpen(true)}>
+          <Button
+            size="sm"
+            onClick={() => setDialogOpen(true)}
+            data-testid="open-add-policy-dialog-button"
+          >
             <Plus className="size-4" />
             Add Policy
           </Button>

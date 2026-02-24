@@ -3,12 +3,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock viem before importing the module under test
 vi.mock("viem", () => {
   const mockVerifyMessage = vi.fn();
+  const mockVerifyMessageLocally = vi.fn();
   return {
     createPublicClient: vi.fn(() => ({
       verifyMessage: mockVerifyMessage,
     })),
+    verifyMessage: mockVerifyMessageLocally,
     http: vi.fn((url: string) => url),
     __mockVerifyMessage: mockVerifyMessage,
+    __mockVerifyMessageLocally: mockVerifyMessageLocally,
   };
 });
 
@@ -44,6 +47,9 @@ import { resetTestDb } from "../../test/helpers/db";
 const mockVerifyMessage = (
   (await import("viem")) as unknown as { __mockVerifyMessage: ReturnType<typeof vi.fn> }
 ).__mockVerifyMessage;
+const mockVerifyMessageLocally = (
+  (await import("viem")) as unknown as { __mockVerifyMessageLocally: ReturnType<typeof vi.fn> }
+).__mockVerifyMessageLocally;
 
 describe("extractCredentials", () => {
   it("returns message and signature when both are provided", () => {
@@ -89,7 +95,9 @@ describe("verifySignature", () => {
   beforeEach(() => {
     vi.mocked(createPublicClient).mockClear();
     mockVerifyMessage.mockReset();
+    mockVerifyMessageLocally.mockReset();
     vi.mocked(http).mockClear();
+    delete process.env.NEXT_PUBLIC_TEST_MODE;
   });
 
   it("returns true for a valid signature", async () => {
@@ -137,6 +145,26 @@ describe("verifySignature", () => {
     expect(http).toHaveBeenCalledWith(
       expect.stringContaining("rpc.walletconnect.org"),
     );
+  });
+
+  it("uses local signature verification in test mode", async () => {
+    process.env.NEXT_PUBLIC_TEST_MODE = "true";
+    mockVerifyMessageLocally.mockResolvedValue(true);
+
+    const result = await verifySignature(
+      "siwe message",
+      "0xAbC123",
+      "0xsignature",
+      "eip155:1",
+    );
+
+    expect(result).toBe(true);
+    expect(mockVerifyMessageLocally).toHaveBeenCalledWith({
+      message: "siwe message",
+      address: "0xAbC123",
+      signature: "0xsignature",
+    });
+    expect(createPublicClient).not.toHaveBeenCalled();
   });
 });
 
