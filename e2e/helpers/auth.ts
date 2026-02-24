@@ -8,6 +8,11 @@ import { prepareMetaMask } from "./metamask";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const appBaseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
 
+function isClosedTargetError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /Target page, context or browser has been closed/i.test(error.message);
+}
+
 function startNotificationAutoApprover(metamask: MetaMask, timeoutMs = 30_000) {
   let active = true;
   const extensionPrefix = metamask.extensionId
@@ -211,12 +216,34 @@ async function signInViaInjectedProvider(
     }
   };
 
+  const withActivePage = async <T>(
+    operation: (activePage: Page) => Promise<T>,
+    retries = 3,
+  ): Promise<T> => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < retries; attempt += 1) {
+      const currentPage = await ensureActivePageOrOpen();
+      try {
+        return await operation(currentPage);
+      } catch (error) {
+        if (!isClosedTargetError(error)) {
+          throw error;
+        }
+        lastError = error;
+        await sleep(150);
+      }
+    }
+
+    throw lastError ?? new Error("Failed to run operation on active page");
+  };
+
   const fallbackPage = await ensureActivePageOrOpen();
   const origin = new URL(fallbackPage.url()).origin;
   const host = new URL(fallbackPage.url()).host;
   const autoApprover = startNotificationAutoApprover(metamask);
 
-  await (await ensureActivePageOrOpen()).evaluate(() => {
+  await withActivePage(async (currentPage) =>
+    currentPage.evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const windowWithState = window as any;
     windowWithState.__e2eRequestAccountsResult = undefined;
@@ -274,29 +301,36 @@ async function signInViaInjectedProvider(
     });
 
     document.body.appendChild(triggerButton);
-  });
+    }),
+  );
 
-  const existingAccounts = await (await ensureActivePageOrOpen()).evaluate(async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const provider = (window as any).ethereum;
-    if (!provider) return [] as string[];
-    return provider.request({ method: "eth_accounts" }) as Promise<string[]>;
-  });
+  const existingAccounts = await withActivePage(async (currentPage) =>
+    currentPage.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const provider = (window as any).ethereum;
+      if (!provider) return [] as string[];
+      return provider.request({ method: "eth_accounts" }) as Promise<string[]>;
+    }),
+  );
 
   if (existingAccounts[0]) {
     autoApprover.stop();
     await autoApprover.done;
-    const chainIdHex = await (await ensureActivePageOrOpen()).evaluate(async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const provider = (window as any).ethereum;
-      return provider.request({ method: "eth_chainId" }) as Promise<string>;
-    });
+    const chainIdHex = await withActivePage(async (currentPage) =>
+      currentPage.evaluate(async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const provider = (window as any).ethereum;
+        return provider.request({ method: "eth_chainId" }) as Promise<string>;
+      }),
+    );
     const chainId = parseInt(chainIdHex, 16);
     if (!Number.isFinite(chainId)) {
       throw new Error(`Invalid chainId from provider: ${chainIdHex}`);
     }
 
-    const csrfResponse = await (await ensureActivePageOrOpen()).request.get(`${origin}/api/auth/csrf`);
+    const csrfResponse = await withActivePage(async (currentPage) =>
+      currentPage.request.get(`${origin}/api/auth/csrf`),
+    );
     const csrfJson = (await csrfResponse.json()) as { csrfToken?: string };
     const nonce = csrfJson.csrfToken;
     if (!nonce) throw new Error("Could not fetch CSRF token for credentials sign-in");
@@ -309,21 +343,22 @@ async function signInViaInjectedProvider(
       nonce,
     });
 
-    const signature = await (await ensureActivePageOrOpen()).evaluate(
-      async ({ messageToSign, account }) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const provider = (window as any).ethereum;
-        return provider.request({
-          method: "personal_sign",
-          params: [messageToSign, account],
-        }) as Promise<string>;
-      },
-      { messageToSign: message, account: existingAccounts[0] },
+    const signature = await withActivePage((currentPage) =>
+      currentPage.evaluate(
+        async ({ messageToSign, account }) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const provider = (window as any).ethereum;
+          return provider.request({
+            method: "personal_sign",
+            params: [messageToSign, account],
+          }) as Promise<string>;
+        },
+        { messageToSign: message, account: existingAccounts[0] },
+      ),
     );
 
-    const callbackResponse = await (await ensureActivePageOrOpen()).request.post(
-      `${origin}/api/auth/callback/credentials?json=true`,
-      {
+    const callbackResponse = await withActivePage((currentPage) =>
+      currentPage.request.post(`${origin}/api/auth/callback/credentials?json=true`, {
         form: {
           csrfToken: nonce,
           message,
@@ -331,7 +366,7 @@ async function signInViaInjectedProvider(
           callbackUrl: `${origin}/dashboard`,
           json: "true",
         },
-      },
+      }),
     );
 
     if (!callbackResponse.ok()) {
@@ -340,28 +375,30 @@ async function signInViaInjectedProvider(
       );
     }
 
-    await (await ensureActivePageOrOpen()).goto("/dashboard");
+    await withActivePage((currentPage) => currentPage.goto("/dashboard"));
     return;
   }
 
   async function triggerRequestAccounts() {
-    const currentPage = await ensureActivePageOrOpen();
-    await currentPage.evaluate(() => {
+    await withActivePage((currentPage) =>
+      currentPage.evaluate(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__e2eRequestAccountsResult = undefined;
-    });
-    await currentPage.click("#__e2e-request-accounts-trigger");
+      }),
+    );
+    await withActivePage((currentPage) => currentPage.click("#__e2e-request-accounts-trigger"));
   }
 
   async function waitForRequestResult(timeout: number) {
     try {
-      const currentPage = await ensureActivePageOrOpen();
-      await currentPage.waitForFunction(
-        () =>
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (window as any).__e2eRequestAccountsResult !== undefined,
-        undefined,
-        { timeout },
+      await withActivePage((currentPage) =>
+        currentPage.waitForFunction(
+          () =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (window as any).__e2eRequestAccountsResult !== undefined,
+          undefined,
+          { timeout },
+        ),
       );
       return true;
     } catch {
@@ -389,14 +426,16 @@ async function signInViaInjectedProvider(
   autoApprover.stop();
   await autoApprover.done;
 
-  let requestAccountsResult = await (await ensureActivePageOrOpen()).evaluate(() => {
+  let requestAccountsResult = await withActivePage((currentPage) =>
+    currentPage.evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (window as any).__e2eRequestAccountsResult as {
       ok: boolean;
       accounts?: string[];
       error?: string;
     };
-  });
+    }),
+  );
 
   if (!requestAccountsResult.ok) {
     if (requestAccountsResult.error?.includes("already pending")) {
@@ -406,11 +445,13 @@ async function signInViaInjectedProvider(
         // Best effort: continue with direct account query.
       }
 
-      const pendingRequestAccounts = await (await ensureActivePageOrOpen()).evaluate(async () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const provider = (window as any).ethereum;
-        return provider.request({ method: "eth_accounts" }) as Promise<string[]>;
-      });
+      const pendingRequestAccounts = await withActivePage(async (currentPage) =>
+        currentPage.evaluate(async () => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const provider = (window as any).ethereum;
+          return provider.request({ method: "eth_accounts" }) as Promise<string[]>;
+        }),
+      );
 
       if (pendingRequestAccounts[0]) {
         requestAccountsResult = {
@@ -429,15 +470,19 @@ async function signInViaInjectedProvider(
   const address = accounts[0];
   if (!address) throw new Error("No account returned from injected provider");
 
-  const chainIdHex = await (await ensureActivePageOrOpen()).evaluate(async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const provider = (window as any).ethereum;
-    return provider.request({ method: "eth_chainId" }) as Promise<string>;
-  });
+  const chainIdHex = await withActivePage(async (currentPage) =>
+    currentPage.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const provider = (window as any).ethereum;
+      return provider.request({ method: "eth_chainId" }) as Promise<string>;
+    }),
+  );
   const chainId = parseInt(chainIdHex, 16);
   if (!Number.isFinite(chainId)) throw new Error(`Invalid chainId from provider: ${chainIdHex}`);
 
-  const csrfResponse = await (await ensureActivePageOrOpen()).request.get(`${origin}/api/auth/csrf`);
+  const csrfResponse = await withActivePage(async (currentPage) =>
+    currentPage.request.get(`${origin}/api/auth/csrf`),
+  );
   const csrfJson = (await csrfResponse.json()) as { csrfToken?: string };
   const nonce = csrfJson.csrfToken;
   if (!nonce) throw new Error("Could not fetch CSRF token for credentials sign-in");
@@ -450,16 +495,18 @@ async function signInViaInjectedProvider(
     nonce,
   });
 
-  const signPromise = (await ensureActivePageOrOpen()).evaluate(
-    async ({ messageToSign, account }) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const provider = (window as any).ethereum;
-      return provider.request({
-        method: "personal_sign",
-        params: [messageToSign, account],
-      }) as Promise<string>;
-    },
-    { messageToSign: message, account: address },
+  const signPromise = withActivePage((currentPage) =>
+    currentPage.evaluate(
+      async ({ messageToSign, account }) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const provider = (window as any).ethereum;
+        return provider.request({
+          method: "personal_sign",
+          params: [messageToSign, account],
+        }) as Promise<string>;
+      },
+      { messageToSign: message, account: address },
+    ),
   );
 
   try {
@@ -469,9 +516,8 @@ async function signInViaInjectedProvider(
   }
   const signature = await signPromise;
 
-  const callbackResponse = await (await ensureActivePageOrOpen()).request.post(
-    `${origin}/api/auth/callback/credentials?json=true`,
-    {
+  const callbackResponse = await withActivePage((currentPage) =>
+    currentPage.request.post(`${origin}/api/auth/callback/credentials?json=true`, {
       form: {
         csrfToken: nonce,
         message,
@@ -479,7 +525,7 @@ async function signInViaInjectedProvider(
         callbackUrl: `${origin}/dashboard`,
         json: "true",
       },
-    },
+    }),
   );
 
   if (!callbackResponse.ok()) {
@@ -488,7 +534,7 @@ async function signInViaInjectedProvider(
     );
   }
 
-  await (await ensureActivePageOrOpen()).goto("/dashboard");
+  await withActivePage((currentPage) => currentPage.goto("/dashboard"));
 }
 
 async function signInViaAppKit(page: Page, metamask: MetaMask) {
