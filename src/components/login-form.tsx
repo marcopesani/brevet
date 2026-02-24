@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppKit } from "@reown/appkit/react";
-import { useSession, signIn, signOut, getCsrfToken } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { Wallet, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -23,8 +23,6 @@ export function LoginForm({
   const router = useRouter();
   const { open } = useAppKit();
   const { data: session, status } = useSession();
-  const [isConnectingWallet, setIsConnectingWallet] = useState(false);
-  const isTestMode = process.env.NEXT_PUBLIC_TEST_MODE === "true";
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -36,79 +34,7 @@ export function LoginForm({
     router.push("/dashboard");
   }, [status, session?.address, session?.userId, router]);
 
-  const isLoading = status === "loading" || isConnectingWallet;
-
-  async function connectWalletInTestMode() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const provider = (window as any).ethereum as
-      | { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> }
-      | undefined;
-
-    if (!provider) {
-      await open();
-      return;
-    }
-
-    setIsConnectingWallet(true);
-
-    try {
-      const accounts = (await provider.request({
-        method: "eth_requestAccounts",
-      })) as string[];
-      const address = accounts[0];
-      if (!address) throw new Error("No account returned from wallet provider");
-
-      const chainIdHex = (await provider.request({
-        method: "eth_chainId",
-      })) as string;
-      const chainId = Number.parseInt(chainIdHex, 16);
-      if (!Number.isFinite(chainId)) {
-        throw new Error(`Invalid chain id returned by wallet provider: ${chainIdHex}`);
-      }
-
-      const csrfToken = await getCsrfToken();
-      if (!csrfToken) throw new Error("Unable to fetch CSRF token");
-
-      const origin = window.location.origin;
-      const host = window.location.host;
-      const issuedAt = new Date().toISOString();
-
-      const message = `${host} wants you to sign in with your Ethereum account:
-${address}
-
-Please sign with your account
-
-URI: ${origin}
-Version: 1
-Chain ID: ${chainId}
-Nonce: ${csrfToken}
-Issued At: ${issuedAt}`;
-
-      const signature = (await provider.request({
-        method: "personal_sign",
-        params: [message, address],
-      })) as string;
-
-      const result = await signIn("credentials", {
-        message,
-        signature,
-        redirect: false,
-        callbackUrl: "/dashboard",
-      });
-
-      if (!result?.ok) {
-        throw new Error("Credentials sign-in failed");
-      }
-
-      router.push("/dashboard");
-    } catch (error) {
-      // Fall back to the regular AppKit flow for local manual use.
-      console.warn("Test-mode direct wallet connect failed; falling back to AppKit", error);
-      await open();
-    } finally {
-      setIsConnectingWallet(false);
-    }
-  }
+  const isLoading = status === "loading";
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
@@ -133,14 +59,7 @@ Issued At: ${issuedAt}`;
               </div>
             ) : (
               <Button
-                onClick={() => {
-                  if (isTestMode) {
-                    void connectWalletInTestMode();
-                    return;
-                  }
-
-                  void open();
-                }}
+                onClick={() => open()}
                 className="w-full"
                 size="lg"
                 data-testid="connect-wallet-button"
