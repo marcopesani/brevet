@@ -38,3 +38,9 @@ MetaMask browser extension popups are difficult to interact with via automated t
 5. POST to `/api/auth/callback/credentials` with the CSRF cookie
 
 The default test seed phrase is `test test test test test test test test test test test junk` (Hardhat default), producing address `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`. MetaMask password: `TestPassword123!`.
+
+To inject the resulting session into a browser (for GUI testing), set the cookies via DevTools console on the `localhost:3000` origin, then navigate to `/dashboard`.
+
+### Required secrets
+
+`NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` and `ZERODEV_PROJECT_ID` are provided as environment secrets. With these set in `.env.local`, the AppKit modal properly connects to the WalletConnect relay (no 403 errors) and smart account operations work.
