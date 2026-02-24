@@ -8,6 +8,19 @@ import { prepareMetaMask } from "./metamask";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const appBaseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
 
+const timeoutAfter = (ms: number, label: string) =>
+  new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(label)), ms);
+  });
+
+async function runWithTimeout<T>(
+  operation: () => Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  return Promise.race([operation(), timeoutAfter(ms, label)]);
+}
+
 function isClosedTargetError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   return /Target page, context or browser has been closed/i.test(error.message);
@@ -568,10 +581,18 @@ export async function signInWithMetaMask(page: Page, metamask: MetaMask) {
     await prepareMetaMask(metamask);
     await page.goto(`${appBaseUrl}/login`);
     try {
-      await signInViaAppKit(page, metamask);
+      await runWithTimeout(
+        () => signInViaAppKit(page, metamask),
+        useStrictRealMetaMaskFlow ? 75_000 : 15_000,
+        "Timed out during AppKit MetaMask sign-in flow",
+      );
     } catch (appKitError) {
       try {
-        await signInViaInjectedProvider(page, metamask);
+        await runWithTimeout(
+          () => signInViaInjectedProvider(page, metamask),
+          useStrictRealMetaMaskFlow ? 75_000 : 15_000,
+          "Timed out during injected-provider MetaMask sign-in flow",
+        );
       } catch (injectedError) {
         if (useStrictRealMetaMaskFlow) {
           if (injectedError instanceof Error) throw injectedError;
