@@ -12,6 +12,11 @@ function resolveCachedHash() {
   const cacheRoot = path.join(process.cwd(), ".cache-synpress");
   if (!fs.existsSync(cacheRoot)) return basicSetup.hash;
 
+  const setupHashDir = path.join(cacheRoot, basicSetup.hash);
+  if (fs.existsSync(setupHashDir)) {
+    return basicSetup.hash;
+  }
+
   const hashDir = fs
     .readdirSync(cacheRoot)
     .filter((entry) => /^[a-f0-9]{20}$/.test(entry))

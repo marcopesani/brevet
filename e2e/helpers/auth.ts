@@ -2,8 +2,7 @@ import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import type { MetaMask } from "@synthetixio/synpress/playwright";
 import { selectMetaMaskInAppKit } from "./appkit";
-
-const APPKIT_LOGIN_TIMEOUT_MS = 40_000;
+import { prepareMetaMask } from "./metamask";
 
 function buildSiweMessage({
   host,
@@ -39,15 +38,85 @@ async function signInViaInjectedProvider(
   const origin = new URL(page.url()).origin;
   const host = new URL(page.url()).host;
 
-  const requestAccountsPromise = page.evaluate(async () => {
+  await page.evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const provider = (window as any).ethereum;
-    if (!provider) throw new Error("window.ethereum is not available");
-    return provider.request({ method: "eth_requestAccounts" }) as Promise<string[]>;
+    const windowWithState = window as any;
+    windowWithState.__e2eRequestAccountsResult = undefined;
+
+    const existingButton = document.getElementById("__e2e-request-accounts-trigger");
+    if (existingButton) {
+      return;
+    }
+
+    const triggerButton = document.createElement("button");
+    triggerButton.id = "__e2e-request-accounts-trigger";
+    triggerButton.type = "button";
+    triggerButton.style.position = "fixed";
+    triggerButton.style.bottom = "8px";
+    triggerButton.style.right = "8px";
+    triggerButton.style.opacity = "0.01";
+    triggerButton.style.zIndex = "2147483647";
+    triggerButton.textContent = "request-accounts";
+    triggerButton.addEventListener("click", async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const provider = (window as any).ethereum;
+      if (!provider) {
+        windowWithState.__e2eRequestAccountsResult = {
+          ok: false,
+          error: "window.ethereum is not available",
+        };
+        return;
+      }
+
+      try {
+        const accounts = (await provider.request({
+          method: "eth_requestAccounts",
+        })) as string[];
+        windowWithState.__e2eRequestAccountsResult = { ok: true, accounts };
+      } catch (error) {
+        if (error instanceof Error) {
+          windowWithState.__e2eRequestAccountsResult = {
+            ok: false,
+            error: error.message,
+          };
+          return;
+        }
+        windowWithState.__e2eRequestAccountsResult = {
+          ok: false,
+          error: String(error),
+        };
+      }
+    });
+
+    document.body.appendChild(triggerButton);
   });
 
-  await metamask.connectToDapp();
-  const accounts = await requestAccountsPromise;
+  await page.click("#__e2e-request-accounts-trigger");
+  const connectAttempt = metamask.connectToDapp().catch(() => undefined);
+
+  await page.waitForFunction(
+    () =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__e2eRequestAccountsResult !== undefined,
+    undefined,
+    { timeout: 20_000 },
+  );
+  await connectAttempt;
+
+  const requestAccountsResult = await page.evaluate(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (window as any).__e2eRequestAccountsResult as {
+      ok: boolean;
+      accounts?: string[];
+      error?: string;
+    };
+  });
+
+  if (!requestAccountsResult.ok) {
+    throw new Error(`Failed to request wallet accounts: ${requestAccountsResult.error}`);
+  }
+
+  const accounts = requestAccountsResult.accounts;
   const address = accounts[0];
   if (!address) throw new Error("No account returned from injected provider");
 
@@ -114,37 +183,32 @@ async function signInViaInjectedProvider(
 }
 
 export async function signInWithMetaMask(page: Page, metamask: MetaMask) {
-  const openWalletButton = metamask.page.getByRole("button", {
-    name: /Open wallet/i,
-  });
-  if ((await openWalletButton.count()) > 0 && (await openWalletButton.first().isVisible())) {
-    await openWalletButton.first().click();
-  }
+  await prepareMetaMask(metamask);
+  let activePage = page;
 
-  await page.goto("/login");
+  await activePage.goto("/login");
 
-  const connectWalletButton = page.getByTestId("connect-wallet-button");
+  const connectWalletButton = activePage.getByTestId("connect-wallet-button");
   await expect(connectWalletButton).toBeVisible();
   await connectWalletButton.click();
 
   try {
-    await Promise.race([
-      (async () => {
-        await selectMetaMaskInAppKit(page);
-        await metamask.connectToDapp();
-        await metamask.confirmSignature();
-        await page.waitForURL("**/dashboard", { timeout: 90_000 });
-      })(),
-      new Promise((_, reject) =>
-        setTimeout(
-          () => reject(new Error("AppKit connect/sign flow timed out")),
-          APPKIT_LOGIN_TIMEOUT_MS,
-        ),
-      ),
-    ]);
+    await selectMetaMaskInAppKit(activePage);
+    await metamask.connectToDapp();
+    await metamask.confirmSignature();
+    await activePage.waitForURL("**/dashboard", { timeout: 90_000 });
   } catch {
-    await signInViaInjectedProvider(page, metamask);
+    if (activePage.isClosed()) {
+      const candidatePage = metamask.context
+        .pages()
+        .find((candidate) => candidate.url().startsWith("http"));
+      if (candidatePage) {
+        activePage = candidatePage;
+      }
+    }
+
+    await signInViaInjectedProvider(activePage, metamask);
   }
 
-  await expect(page).toHaveURL(/\/dashboard/);
+  await expect(activePage).toHaveURL(/\/dashboard/);
 }
