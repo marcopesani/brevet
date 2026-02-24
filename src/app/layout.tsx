@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Analytics } from '@vercel/analytics/next';
 import localFont from "next/font/local";
 import { Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
@@ -49,6 +50,7 @@ export default async function RootLayout({
           enabledChains={enabledChains}
         >
           {children}
+          <Analytics />
         </Providers>
       </body>
     </html>
