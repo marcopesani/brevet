@@ -35,10 +35,27 @@ async function signInViaInjectedProvider(
   page: Page,
   metamask: MetaMask,
 ) {
-  const origin = new URL(page.url()).origin;
-  const host = new URL(page.url()).host;
+  let activePage = page;
+  const ensureActivePage = () => {
+    if (!activePage.isClosed()) return activePage;
 
-  await page.evaluate(() => {
+    const httpPage = metamask.context
+      .pages()
+      .find((candidate) => !candidate.isClosed() && candidate.url().startsWith("http"));
+
+    if (!httpPage) {
+      throw new Error("No active dapp page available for injected-provider fallback");
+    }
+
+    activePage = httpPage;
+    return activePage;
+  };
+
+  const fallbackPage = ensureActivePage();
+  const origin = new URL(fallbackPage.url()).origin;
+  const host = new URL(fallbackPage.url()).host;
+
+  await fallbackPage.evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const windowWithState = window as any;
     windowWithState.__e2eRequestAccountsResult = undefined;
@@ -91,19 +108,17 @@ async function signInViaInjectedProvider(
     document.body.appendChild(triggerButton);
   });
 
-  await page.click("#__e2e-request-accounts-trigger");
-  const connectAttempt = metamask.connectToDapp().catch(() => undefined);
+  await ensureActivePage().click("#__e2e-request-accounts-trigger");
 
-  await page.waitForFunction(
+  await ensureActivePage().waitForFunction(
     () =>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__e2eRequestAccountsResult !== undefined,
     undefined,
     { timeout: 20_000 },
   );
-  await connectAttempt;
 
-  const requestAccountsResult = await page.evaluate(() => {
+  const requestAccountsResult = await ensureActivePage().evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (window as any).__e2eRequestAccountsResult as {
       ok: boolean;
@@ -120,7 +135,7 @@ async function signInViaInjectedProvider(
   const address = accounts[0];
   if (!address) throw new Error("No account returned from injected provider");
 
-  const chainIdHex = await page.evaluate(async () => {
+  const chainIdHex = await ensureActivePage().evaluate(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const provider = (window as any).ethereum;
     return provider.request({ method: "eth_chainId" }) as Promise<string>;
@@ -128,7 +143,7 @@ async function signInViaInjectedProvider(
   const chainId = parseInt(chainIdHex, 16);
   if (!Number.isFinite(chainId)) throw new Error(`Invalid chainId from provider: ${chainIdHex}`);
 
-  const csrfResponse = await page.request.get(`${origin}/api/auth/csrf`);
+  const csrfResponse = await ensureActivePage().request.get(`${origin}/api/auth/csrf`);
   const csrfJson = (await csrfResponse.json()) as { csrfToken?: string };
   const nonce = csrfJson.csrfToken;
   if (!nonce) throw new Error("Could not fetch CSRF token for credentials sign-in");
@@ -141,7 +156,7 @@ async function signInViaInjectedProvider(
     nonce,
   });
 
-  const signPromise = page.evaluate(
+  const signPromise = ensureActivePage().evaluate(
     async ({ messageToSign, account }) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const provider = (window as any).ethereum;
@@ -160,7 +175,7 @@ async function signInViaInjectedProvider(
   }
   const signature = await signPromise;
 
-  const callbackResponse = await page.request.post(
+  const callbackResponse = await ensureActivePage().request.post(
     `${origin}/api/auth/callback/credentials?json=true`,
     {
       form: {
@@ -179,7 +194,7 @@ async function signInViaInjectedProvider(
     );
   }
 
-  await page.goto("/dashboard");
+  await ensureActivePage().goto("/dashboard");
 }
 
 export async function signInWithMetaMask(page: Page, metamask: MetaMask) {
