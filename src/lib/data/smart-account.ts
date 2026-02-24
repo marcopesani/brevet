@@ -22,10 +22,9 @@ export async function getSmartAccount(userId: string, chainId: number) {
     userId: new Types.ObjectId(userId),
     chainId,
   })
-    .select("-sessionKeyEncrypted -serializedAccount")
-    .lean();
+    .select("-sessionKeyEncrypted -serializedAccount");
   if (!doc) return null;
-  return serializeSmartAccount(doc);
+  return serializeSmartAccount(doc.toJSON());
 }
 
 /**
@@ -37,9 +36,9 @@ export async function getSmartAccountWithSessionKey(userId: string, chainId: num
   const doc = await SmartAccount.findOne({
     userId: new Types.ObjectId(userId),
     chainId,
-  }).lean();
+  });
   if (!doc) return null;
-  return serializeSmartAccountFull(doc);
+  return serializeSmartAccountFull(doc.toJSON());
 }
 
 /**
@@ -50,9 +49,8 @@ export async function getAllSmartAccounts(userId: string) {
   const docs = await SmartAccount.find({
     userId: new Types.ObjectId(userId),
   })
-    .select("-sessionKeyEncrypted -serializedAccount")
-    .lean();
-  return docs.map((doc) => serializeSmartAccount(doc));
+    .select("-sessionKeyEncrypted -serializedAccount");
+  return docs.map((doc) => serializeSmartAccount(doc.toJSON()));
 }
 
 /**
@@ -66,8 +64,7 @@ export async function getSmartAccountBalance(userId: string, chainId?: number) {
     userId: new Types.ObjectId(userId),
     chainId: resolvedChainId,
   })
-    .select("smartAccountAddress")
-    .lean();
+    .select("smartAccountAddress");
   if (!doc) return null;
   const balance = await getUsdcBalance(doc.smartAccountAddress, resolvedChainId);
   return { balance, address: doc.smartAccountAddress };
@@ -94,7 +91,7 @@ export async function createSmartAccountRecord(data: {
     sessionKeyEncrypted: data.sessionKeyEncrypted,
     sessionKeyStatus: "pending_grant",
   });
-  return serializeSmartAccountFull(doc.toObject());
+  return serializeSmartAccountFull(doc.toJSON());
 }
 
 /**
@@ -112,9 +109,9 @@ export async function ensureSmartAccount(
   const existing = await SmartAccount.findOne({
     userId: userObjectId,
     chainId,
-  }).lean();
+  });
   if (existing) {
-    return serializeSmartAccountFull(existing);
+    return serializeSmartAccountFull(existing.toJSON());
   }
 
   const smartAccountAddress = await computeSmartAccountAddress(
@@ -134,7 +131,7 @@ export async function ensureSmartAccount(
       sessionKeyEncrypted,
       sessionKeyStatus: "pending_grant",
     });
-    return serializeSmartAccountFull(doc.toObject());
+    return serializeSmartAccountFull(doc.toJSON());
   } catch (err: unknown) {
     // Handle race condition: a concurrent request may have created the record between
     // our findOne and create. Re-fetch and return the existing document.
@@ -149,9 +146,9 @@ export async function ensureSmartAccount(
     const existing = await SmartAccount.findOne({
       userId: userObjectId,
       chainId,
-    }).lean();
+    });
     if (!existing) throw err; // Should not happen, but be safe
-    return serializeSmartAccountFull(existing);
+    return serializeSmartAccountFull(existing.toJSON());
   }
 }
 
@@ -169,9 +166,9 @@ export async function storeSerializedAccount(
     { userId: new Types.ObjectId(userId), chainId },
     { $set: { serializedAccount: serializedEncrypted } },
     { returnDocument: "after" },
-  ).lean();
+  );
   if (!doc) return null;
-  return serializeSmartAccountFull(doc);
+  return serializeSmartAccountFull(doc.toJSON());
 }
 
 /**
@@ -200,9 +197,9 @@ export async function activateSessionKey(
       },
     },
     { returnDocument: "after" },
-  ).lean();
+  );
   if (!doc) return null;
-  return serializeSmartAccount(doc);
+  return serializeSmartAccount(doc.toJSON());
 }
 
 /**
@@ -224,9 +221,9 @@ export async function updateSessionKeyStatus(
     { userId: new Types.ObjectId(userId), chainId },
     { $set: update },
     { returnDocument: "after" },
-  ).lean();
+  );
   if (!doc) return null;
-  return serializeSmartAccount(doc);
+  return serializeSmartAccount(doc.toJSON());
 }
 
 const USDC_TRANSFER_ABI = parseAbi([
@@ -264,7 +261,7 @@ export async function withdrawFromSmartAccount(
   const account = await SmartAccount.findOne({
     userId: new Types.ObjectId(userId),
     chainId: resolvedChainId,
-  }).lean();
+  });
   if (!account) {
     throw new Error("No smart account found for this user");
   }

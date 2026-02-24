@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 import { z } from "zod/v4";
-import { objectId, mongoDate } from "./zod-helpers";
+import { objectId, mongoDate, renameId, makeSerializer } from "./zod-helpers";
 
 const DEFAULT_CHAIN_ID = parseInt(
   process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
@@ -19,49 +19,26 @@ export interface IHotWallet {
 
 export interface IHotWalletDocument extends Omit<IHotWallet, "_id">, Document {}
 
-/** Full output schema — includes encryptedPrivateKey (for signing operations). */
-const hotWalletFullOutputSchema = z
-  .object({
-    _id: objectId,
-    address: z.string(),
-    encryptedPrivateKey: z.string(),
-    userId: objectId,
-    chainId: z.number().int(),
-    createdAt: mongoDate,
-    updatedAt: mongoDate,
-  })
-  .transform(({ _id, ...rest }) => ({
-    id: _id,
-    ...rest,
-  }));
+const hotWalletRawSchema = z.object({
+  _id: objectId,
+  address: z.string(),
+  encryptedPrivateKey: z.string(),
+  userId: objectId,
+  chainId: z.number().int(),
+  createdAt: mongoDate,
+  updatedAt: mongoDate,
+});
 
-/** Public output schema — excludes encryptedPrivateKey (for display). */
-const hotWalletPublicOutputSchema = z
-  .object({
-    _id: objectId,
-    address: z.string(),
-    userId: objectId,
-    chainId: z.number().int(),
-    createdAt: mongoDate,
-    updatedAt: mongoDate,
-  })
-  .transform(({ _id, ...rest }) => ({
-    id: _id,
-    ...rest,
-  }));
+export const hotWalletFullOutputSchema = hotWalletRawSchema.transform(renameId);
+export const hotWalletPublicOutputSchema = hotWalletRawSchema
+  .omit({ encryptedPrivateKey: true })
+  .transform(renameId);
 
 export type HotWalletFullOutput = z.output<typeof hotWalletFullOutputSchema>;
 export type HotWalletPublicOutput = z.output<typeof hotWalletPublicOutputSchema>;
 
-/** Serialize a lean HotWallet document including sensitive fields. */
-export function serializeHotWallet(doc: unknown): HotWalletFullOutput {
-  return hotWalletFullOutputSchema.parse(doc);
-}
-
-/** Serialize a lean HotWallet document excluding sensitive fields (encryptedPrivateKey). */
-export function serializeHotWalletPublic(doc: unknown): HotWalletPublicOutput {
-  return hotWalletPublicOutputSchema.parse(doc);
-}
+export const serializeHotWallet = makeSerializer(hotWalletFullOutputSchema);
+export const serializeHotWalletPublic = makeSerializer(hotWalletPublicOutputSchema);
 
 const hotWalletSchema = new Schema<IHotWalletDocument>(
   {

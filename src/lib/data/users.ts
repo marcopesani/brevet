@@ -26,7 +26,7 @@ export async function ensureApiKey(
   await connectDB();
   const userObjectId = new Types.ObjectId(userId);
 
-  const user = await User.findById(userObjectId).select("apiKeyHash").lean();
+  const user = await User.findById(userObjectId).select("apiKeyHash");
   if (!user) {
     throw new Error(`User not found: ${userId}`);
   }
@@ -74,7 +74,7 @@ export async function getUserByApiKey(
   await connectDB();
   const hash = hashApiKey(rawKey);
 
-  const user = await User.findOne({ apiKeyHash: hash }).select("_id").lean();
+  const user = await User.findOne({ apiKeyHash: hash }).select("_id");
   if (!user) {
     return null;
   }
@@ -119,8 +119,7 @@ export async function getApiKeyPrefix(
   const userObjectId = new Types.ObjectId(userId);
 
   const user = await User.findById(userObjectId)
-    .select("apiKeyPrefix")
-    .lean();
+    .select("apiKeyPrefix");
 
   if (!user) {
     return null;

@@ -13,9 +13,8 @@ export async function getRecentTransactions(userId: string, limit: number = 5, o
   }
   const docs = await Transaction.find(filter)
     .sort({ createdAt: -1 })
-    .limit(limit)
-    .lean();
-  return docs.map((doc) => serializeTransaction(doc));
+    .limit(limit);
+  return docs.map((doc) => serializeTransaction(doc.toJSON()));
 }
 
 /**
@@ -39,10 +38,8 @@ export async function getTransactions(
     filter.chainId = options.chainId;
   }
 
-  const docs = await Transaction.find(filter)
-    .sort({ createdAt: -1 })
-    .lean();
-  return docs.map((doc) => serializeTransaction(doc));
+  const docs = await Transaction.find(filter).sort({ createdAt: -1 });
+  return docs.map((doc) => serializeTransaction(doc.toJSON()));
 }
 
 /**
@@ -63,9 +60,8 @@ export async function getSpendingHistory(
 
   const docs = await Transaction.find(filter)
     .sort({ createdAt: -1 })
-    .limit(100)
-    .lean();
-  return docs.map((doc) => serializeTransaction(doc));
+    .limit(100);
+  return docs.map((doc) => serializeTransaction(doc.toJSON()));
 }
 
 /**
@@ -98,5 +94,5 @@ export async function createTransaction(data: {
     errorMessage: data.errorMessage,
     responseStatus: data.responseStatus,
   });
-  return serializeTransaction(doc.toObject());
+  return serializeTransaction(doc.toJSON());
 }

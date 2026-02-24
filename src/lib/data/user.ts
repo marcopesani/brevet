@@ -13,8 +13,7 @@ export const getUserEnabledChains = cache(
   async (userId: string): Promise<number[]> => {
     await connectDB();
     const user = await User.findById(new Types.ObjectId(userId))
-      .select("enabledChains")
-      .lean();
+      .select("enabledChains");
     return user?.enabledChains ?? [];
   },
 );
@@ -39,8 +38,7 @@ export async function setUserEnabledChains(
     { $set: { enabledChains: chainIds } },
     { returnDocument: "after" },
   )
-    .select("enabledChains")
-    .lean();
+    .select("enabledChains");
 
   if (!doc) {
     throw new Error(`User not found: ${userId}`);

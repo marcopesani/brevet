@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 import { z } from "zod/v4";
-import { objectId, mongoDate, nullableDate } from "./zod-helpers";
+import { objectId, mongoDate, nullableDate, renameId, makeSerializer } from "./zod-helpers";
 
 const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
 
@@ -20,10 +20,6 @@ export interface IEndpointPolicyDocument
   extends Omit<IEndpointPolicy, "_id">,
     Document {}
 
-/**
- * Output schema for EndpointPolicy.
- * userId is optional because some queries exclude it via .select("-userId").
- */
 export const endpointPolicyOutputSchema = z
   .object({
     _id: objectId,
@@ -36,17 +32,11 @@ export const endpointPolicyOutputSchema = z
     createdAt: mongoDate,
     updatedAt: mongoDate,
   })
-  .transform(({ _id, ...rest }) => ({
-    id: _id,
-    ...rest,
-  }));
+  .transform(renameId);
 
 export type EndpointPolicyOutput = z.output<typeof endpointPolicyOutputSchema>;
 
-/** Validate and serialize a lean EndpointPolicy document. */
-export function serializeEndpointPolicy(doc: unknown): EndpointPolicyOutput {
-  return endpointPolicyOutputSchema.parse(doc);
-}
+export const serializeEndpointPolicy = makeSerializer(endpointPolicyOutputSchema);
 
 const endpointPolicySchema = new Schema<IEndpointPolicyDocument>(
   {

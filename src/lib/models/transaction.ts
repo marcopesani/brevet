@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 import { z } from "zod/v4";
-import { objectId, mongoDate } from "./zod-helpers";
+import { objectId, mongoDate, renameId, makeSerializer } from "./zod-helpers";
 
 const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
 
@@ -24,7 +24,6 @@ export interface ITransactionDocument
   extends Omit<ITransaction, "_id">,
     Document {}
 
-/** Zod schema for validating and serializing a lean Transaction document. */
 export const transactionOutputSchema = z
   .object({
     _id: objectId,
@@ -41,17 +40,11 @@ export const transactionOutputSchema = z
     responseStatus: z.number().nullable(),
     createdAt: mongoDate,
   })
-  .transform(({ _id, ...rest }) => ({
-    id: _id,
-    ...rest,
-  }));
+  .transform(renameId);
 
 export type TransactionOutput = z.output<typeof transactionOutputSchema>;
 
-/** Validate and serialize a lean Transaction document. */
-export function serializeTransaction(doc: unknown): TransactionOutput {
-  return transactionOutputSchema.parse(doc);
-}
+export const serializeTransaction = makeSerializer(transactionOutputSchema);
 
 const transactionSchema = new Schema<ITransactionDocument>(
   {

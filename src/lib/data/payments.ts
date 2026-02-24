@@ -15,10 +15,8 @@ export async function getPendingPayments(userId: string, options?: { chainId?: n
   if (options?.chainId !== undefined) {
     filter.chainId = options.chainId;
   }
-  const docs = await PendingPayment.find(filter)
-    .sort({ createdAt: -1 })
-    .lean();
-  return docs.map((doc) => serializePendingPayment(doc));
+  const docs = await PendingPayment.find(filter).sort({ createdAt: -1 });
+  return docs.map((doc) => serializePendingPayment(doc.toJSON()));
 }
 
 /**
@@ -45,8 +43,8 @@ export async function getPendingPayment(paymentId: string, userId: string) {
   const doc = await PendingPayment.findOne({
     _id: paymentId,
     userId: new Types.ObjectId(userId),
-  }).lean();
-  return doc ? serializePendingPayment(doc) : null;
+  });
+  return doc ? serializePendingPayment(doc.toJSON()) : null;
 }
 
 /**
@@ -80,7 +78,7 @@ export async function createPendingPayment(data: {
     requestBody: data.body ?? null,
     requestHeaders: data.headers ? JSON.stringify(data.headers) : null,
   });
-  return serializePendingPayment(doc.toObject());
+  return serializePendingPayment(doc.toJSON());
 }
 
 /**
@@ -91,8 +89,8 @@ export async function getPendingPaymentById(paymentId: string, userId: string) {
   const doc = await PendingPayment.findOne({
     _id: paymentId,
     userId: new Types.ObjectId(userId),
-  }).lean();
-  return doc ? serializePendingPayment(doc) : null;
+  });
+  return doc ? serializePendingPayment(doc.toJSON()) : null;
 }
 
 /**
@@ -123,8 +121,8 @@ export async function completePendingPayment(
       },
     },
     { returnDocument: "after" },
-  ).lean();
-  return doc ? serializePendingPayment(doc) : null;
+  );
+  return doc ? serializePendingPayment(doc.toJSON()) : null;
 }
 
 /**
@@ -154,8 +152,8 @@ export async function failPendingPayment(
       },
     },
     { returnDocument: "after" },
-  ).lean();
-  return doc ? serializePendingPayment(doc) : null;
+  );
+  return doc ? serializePendingPayment(doc.toJSON()) : null;
 }
 
 /**
@@ -170,8 +168,8 @@ export async function approvePendingPayment(paymentId: string, userId: string, s
     { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
     { $set: { status: "approved", signature } },
     { returnDocument: "after" },
-  ).lean();
-  return doc ? serializePendingPayment(doc) : null;
+  );
+  return doc ? serializePendingPayment(doc.toJSON()) : null;
 }
 
 /**
@@ -186,8 +184,8 @@ export async function rejectPendingPayment(paymentId: string, userId: string) {
     { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
     { $set: { status: "rejected" } },
     { returnDocument: "after" },
-  ).lean();
-  return doc ? serializePendingPayment(doc) : null;
+  );
+  return doc ? serializePendingPayment(doc.toJSON()) : null;
 }
 
 /**
@@ -202,6 +200,6 @@ export async function expirePendingPayment(paymentId: string, userId: string) {
     { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
     { $set: { status: "expired" } },
     { returnDocument: "after" },
-  ).lean();
-  return doc ? serializePendingPayment(doc) : null;
+  );
+  return doc ? serializePendingPayment(doc.toJSON()) : null;
 }

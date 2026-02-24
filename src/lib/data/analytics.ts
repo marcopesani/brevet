@@ -48,9 +48,7 @@ export async function getAnalytics(userId: string, options?: { chainId?: number 
     txFilter.chainId = options.chainId;
   }
 
-  const transactions = await Transaction.find(txFilter)
-    .sort({ createdAt: 1 })
-    .lean();
+  const transactions = await Transaction.find(txFilter).sort({ createdAt: 1 });
 
   const dailyMap = new Map<string, number>();
 

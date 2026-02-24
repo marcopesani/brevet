@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 import { z } from "zod/v4";
-import { objectId, mongoDate, nullableDate } from "./zod-helpers";
+import { objectId, mongoDate, nullableDate, renameId, makeSerializer } from "./zod-helpers";
 
 const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
 
@@ -30,7 +30,6 @@ export interface IPendingPaymentDocument
   extends Omit<IPendingPayment, "_id">,
     Document {}
 
-/** Zod schema for validating and serializing a lean PendingPayment document. */
 export const pendingPaymentOutputSchema = z
   .object({
     _id: objectId,
@@ -53,17 +52,11 @@ export const pendingPaymentOutputSchema = z
     expiresAt: mongoDate,
     createdAt: mongoDate,
   })
-  .transform(({ _id, ...rest }) => ({
-    id: _id,
-    ...rest,
-  }));
+  .transform(renameId);
 
 export type PendingPaymentOutput = z.output<typeof pendingPaymentOutputSchema>;
 
-/** Validate and serialize a lean PendingPayment document. */
-export function serializePendingPayment(doc: unknown): PendingPaymentOutput {
-  return pendingPaymentOutputSchema.parse(doc);
-}
+export const serializePendingPayment = makeSerializer(pendingPaymentOutputSchema);
 
 const pendingPaymentSchema = new Schema<IPendingPaymentDocument>(
   {
