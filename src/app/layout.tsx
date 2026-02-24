@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
+import { Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { getValidatedChainId } from "@/lib/server/chain";
 import { getAuthenticatedUser } from "@/lib/auth";
@@ -7,13 +8,14 @@ import { getUserEnabledChains } from "@/lib/data/user";
 import Providers from "./providers";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const roobert = localFont({
+  src: "../../public/fonts/roobert.woff2",
+  variable: "--font-roobert",
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  display: "swap",
   subsets: ["latin"],
 });
 
@@ -31,17 +33,21 @@ export default async function RootLayout({
   const cookies = headersObj.get("cookie");
 
   const user = await getAuthenticatedUser();
-  const enabledChains = user ? await getUserEnabledChains(user.userId) : undefined;
+  const enabledChains = user
+    ? await getUserEnabledChains(user.userId)
+    : undefined;
   const initialChainId = user
     ? await getValidatedChainId(cookies, user.userId)
     : undefined;
 
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <Providers cookies={cookies} initialChainId={initialChainId} enabledChains={enabledChains}>
+      <body className={`${roobert.variable} ${geistMono.variable} font-sans antialiased`}>
+        <Providers
+          cookies={cookies}
+          initialChainId={initialChainId}
+          enabledChains={enabledChains}
+        >
           {children}
         </Providers>
       </body>
