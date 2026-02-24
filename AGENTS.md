@@ -44,3 +44,41 @@ To inject the resulting session into a browser (for GUI testing), set the cookie
 ### Required secrets
 
 `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` and `ZERODEV_PROJECT_ID` are provided as environment secrets. With these set in `.env.local`, the AppKit modal properly connects to the WalletConnect relay (no 403 errors) and smart account operations work.
+
+### MCP Inspector CLI testing
+
+To get a fresh API key (keys are hashed in DB, can't be retrieved):
+
+```bash
+MONGODB_URI=mongodb://localhost:27017/brevet npx tsx -e "
+import { rotateApiKey } from './src/lib/data/users';
+import { connectDB } from './src/lib/db';
+await connectDB();
+const r = await rotateApiKey('<userId>');
+console.log(r.rawKey);
+process.exit(0);
+"
+```
+
+Then use the Inspector CLI (see `CLAUDE.md` for full reference). Example flow:
+
+```bash
+MCP_URL="http://localhost:3000/api/mcp/<humanHash>"
+API_KEY="brv_..."
+
+# List tools
+npx @modelcontextprotocol/inspector --cli "$MCP_URL" --transport http \
+  --header "Authorization: Bearer $API_KEY" --method tools/list
+
+# Trigger payment (creates pending payment if no smart account)
+npx @modelcontextprotocol/inspector --cli "$MCP_URL" --transport http \
+  --header "Authorization: Bearer $API_KEY" --method tools/call \
+  --tool-name x402_pay --tool-arg url=https://nickeljoke.vercel.app/api/joke
+
+# Check pending payment status
+npx @modelcontextprotocol/inspector --cli "$MCP_URL" --transport http \
+  --header "Authorization: Bearer $API_KEY" --method tools/call \
+  --tool-name x402_check_pending --tool-arg paymentId=<id>
+```
+
+The SSRF protection rejects localhost/private-IP URLs in `x402_pay`. Use real public x402 endpoints (e.g., `https://nickeljoke.vercel.app/api/joke` on Base Sepolia). Active endpoint policies must exist for the target URL before payment can proceed.
