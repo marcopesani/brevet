@@ -43,5 +43,6 @@ npm run test:e2e:browser:headed
 - `E2E_ZERODEV_PROJECT_ID` (fallback if `ZERODEV_PROJECT_ID` is not set)
 - `E2E_MONGODB_URI` (optional explicit DB URI for webServer startup)
 - `E2E_REAL_METAMASK=true` to force real MetaMask approval popups for SIWE and typed-data flows (disabled by default for deterministic CI)
+- `E2E_REAL_METAMASK_STRICT=true` to fail immediately when popup-driven real MetaMask flow fails (without deterministic fallback)
 
 Use a valid WalletConnect/Reown project ID for full wallet-connection happy paths.

@@ -253,6 +253,7 @@ npm run test:e2e:browser:headed
 - `E2E_ZERODEV_PROJECT_ID` (used by Playwright webServer if `ZERODEV_PROJECT_ID` is not already set)
 - `E2E_MONGODB_URI` (optional explicit DB URI for Playwright webServer)
 - `E2E_REAL_METAMASK=true` (optional: force real MetaMask popup approvals instead of deterministic test-mode signing fallback)
+- `E2E_REAL_METAMASK_STRICT=true` (optional: with `E2E_REAL_METAMASK`, fail instead of falling back to deterministic signing)
 
 > Note: for wallet-connection happy paths, use a valid WalletConnect/Reown project ID. Placeholder IDs allow app startup but can fail at runtime wallet handshake.
 

@@ -167,8 +167,12 @@ export function usePaymentSigning(
         },
       };
 
+      const useDeterministicTestSignature =
+        process.env.NEXT_PUBLIC_TEST_MODE === "true" &&
+        process.env.NEXT_PUBLIC_E2E_REAL_METAMASK !== "true";
+
       const signature =
-        process.env.NEXT_PUBLIC_TEST_MODE === "true"
+        useDeterministicTestSignature
           ? await mnemonicToAccount(
               process.env.NEXT_PUBLIC_E2E_METAMASK_SEED_PHRASE ??
                 "test test test test test test test test test test test junk",

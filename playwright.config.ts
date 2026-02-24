@@ -7,6 +7,7 @@ const walletConnectProjectId =
   process.env.E2E_WALLETCONNECT_PROJECT_ID ??
   "e2e-walletconnect-project-id";
 const chainId = process.env.NEXT_PUBLIC_CHAIN_ID ?? process.env.E2E_CHAIN_ID ?? "80002";
+const e2eRealMetaMask = process.env.E2E_REAL_METAMASK ?? "false";
 const zeroDevProjectId =
   process.env.ZERODEV_PROJECT_ID ??
   process.env.E2E_ZERODEV_PROJECT_ID ??
@@ -20,6 +21,7 @@ const hotWalletEncryptionKey =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const webServerCommand = [
   "NEXT_PUBLIC_TEST_MODE=true",
+  `NEXT_PUBLIC_E2E_REAL_METAMASK=${e2eRealMetaMask}`,
   `NEXT_PUBLIC_CHAIN_ID=${chainId}`,
   `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=${walletConnectProjectId}`,
   "NEXTAUTH_SECRET=e2e-nextauth-secret-with-32chars",

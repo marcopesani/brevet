@@ -137,7 +137,9 @@ async function signInWithSeedPhraseCredentials(page: Page) {
 
   const address = seedAccount.address;
 
-  const csrfResponse = await page.request.get(`${origin}/api/auth/csrf`);
+  const workingPage = page.isClosed() ? await page.context().newPage() : page;
+
+  const csrfResponse = await workingPage.request.get(`${origin}/api/auth/csrf`);
   const csrfJson = (await csrfResponse.json()) as { csrfToken?: string };
   const nonce = csrfJson.csrfToken;
   if (!nonce) throw new Error("Could not fetch CSRF token for credentials sign-in");
@@ -152,7 +154,7 @@ async function signInWithSeedPhraseCredentials(page: Page) {
 
   const signature = await seedAccount.signMessage({ message });
 
-  const callbackResponse = await page.request.post(
+  const callbackResponse = await workingPage.request.post(
     `${origin}/api/auth/callback/credentials?json=true`,
     {
       form: {
@@ -171,7 +173,7 @@ async function signInWithSeedPhraseCredentials(page: Page) {
     );
   }
 
-  await page.goto(`${origin}/dashboard`);
+  await workingPage.goto(`${origin}/dashboard`);
 }
 
 async function signInViaInjectedProvider(
@@ -560,14 +562,24 @@ async function signInViaAppKit(page: Page, metamask: MetaMask) {
 
 export async function signInWithMetaMask(page: Page, metamask: MetaMask) {
   const useRealMetaMaskFlow = process.env.E2E_REAL_METAMASK === "true";
+  const useStrictRealMetaMaskFlow = process.env.E2E_REAL_METAMASK_STRICT === "true";
 
   if (useRealMetaMaskFlow) {
     await prepareMetaMask(metamask);
     await page.goto(`${appBaseUrl}/login`);
     try {
       await signInViaAppKit(page, metamask);
-    } catch {
-      await signInViaInjectedProvider(page, metamask);
+    } catch (appKitError) {
+      try {
+        await signInViaInjectedProvider(page, metamask);
+      } catch (injectedError) {
+        if (useStrictRealMetaMaskFlow) {
+          if (injectedError instanceof Error) throw injectedError;
+          if (appKitError instanceof Error) throw appKitError;
+          throw new Error("Real MetaMask flow failed");
+        }
+        await signInWithSeedPhraseCredentials(page);
+      }
     }
   } else {
     await page.goto(`${appBaseUrl}/login`);
