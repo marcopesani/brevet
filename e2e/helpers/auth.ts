@@ -275,6 +275,74 @@ async function signInViaInjectedProvider(
     document.body.appendChild(triggerButton);
   });
 
+  const existingAccounts = await (await ensureActivePageOrOpen()).evaluate(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const provider = (window as any).ethereum;
+    if (!provider) return [] as string[];
+    return provider.request({ method: "eth_accounts" }) as Promise<string[]>;
+  });
+
+  if (existingAccounts[0]) {
+    autoApprover.stop();
+    await autoApprover.done;
+    const chainIdHex = await (await ensureActivePageOrOpen()).evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const provider = (window as any).ethereum;
+      return provider.request({ method: "eth_chainId" }) as Promise<string>;
+    });
+    const chainId = parseInt(chainIdHex, 16);
+    if (!Number.isFinite(chainId)) {
+      throw new Error(`Invalid chainId from provider: ${chainIdHex}`);
+    }
+
+    const csrfResponse = await (await ensureActivePageOrOpen()).request.get(`${origin}/api/auth/csrf`);
+    const csrfJson = (await csrfResponse.json()) as { csrfToken?: string };
+    const nonce = csrfJson.csrfToken;
+    if (!nonce) throw new Error("Could not fetch CSRF token for credentials sign-in");
+
+    const message = buildSiweMessage({
+      host,
+      origin,
+      address: existingAccounts[0] as `0x${string}`,
+      chainId,
+      nonce,
+    });
+
+    const signature = await (await ensureActivePageOrOpen()).evaluate(
+      async ({ messageToSign, account }) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const provider = (window as any).ethereum;
+        return provider.request({
+          method: "personal_sign",
+          params: [messageToSign, account],
+        }) as Promise<string>;
+      },
+      { messageToSign: message, account: existingAccounts[0] },
+    );
+
+    const callbackResponse = await (await ensureActivePageOrOpen()).request.post(
+      `${origin}/api/auth/callback/credentials?json=true`,
+      {
+        form: {
+          csrfToken: nonce,
+          message,
+          signature,
+          callbackUrl: `${origin}/dashboard`,
+          json: "true",
+        },
+      },
+    );
+
+    if (!callbackResponse.ok()) {
+      throw new Error(
+        `Credentials callback failed with ${callbackResponse.status()}: ${await callbackResponse.text()}`,
+      );
+    }
+
+    await (await ensureActivePageOrOpen()).goto("/dashboard");
+    return;
+  }
+
   async function triggerRequestAccounts() {
     const currentPage = await ensureActivePageOrOpen();
     await currentPage.evaluate(() => {
