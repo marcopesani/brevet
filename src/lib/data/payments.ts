@@ -1,12 +1,6 @@
-import { PendingPayment } from "@/lib/models/pending-payment";
+import { PendingPayment, serializePendingPayment } from "@/lib/models/pending-payment";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
-
-/** Map a lean Mongoose doc to an object with string `id` and `userId`. */
-function withId<T extends { _id: Types.ObjectId; userId?: Types.ObjectId }>(doc: T): Omit<T, "_id" | "userId"> & { id: string; userId: string } {
-  const { _id, userId, ...rest } = doc;
-  return { ...rest, id: _id.toString(), userId: userId ? userId.toString() : _id.toString() };
-}
 
 /**
  * Get all pending (non-expired) payments for a user.
@@ -24,7 +18,7 @@ export async function getPendingPayments(userId: string, options?: { chainId?: n
   const docs = await PendingPayment.find(filter)
     .sort({ createdAt: -1 })
     .lean();
-  return docs.map(withId);
+  return docs.map((doc) => serializePendingPayment(doc));
 }
 
 /**
@@ -52,7 +46,7 @@ export async function getPendingPayment(paymentId: string, userId: string) {
     _id: paymentId,
     userId: new Types.ObjectId(userId),
   }).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }
 
 /**
@@ -86,8 +80,7 @@ export async function createPendingPayment(data: {
     requestBody: data.body ?? null,
     requestHeaders: data.headers ? JSON.stringify(data.headers) : null,
   });
-  const lean = doc.toObject();
-  return withId(lean);
+  return serializePendingPayment(doc.toObject());
 }
 
 /**
@@ -99,7 +92,7 @@ export async function getPendingPaymentById(paymentId: string, userId: string) {
     _id: paymentId,
     userId: new Types.ObjectId(userId),
   }).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }
 
 /**
@@ -131,7 +124,7 @@ export async function completePendingPayment(
     },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }
 
 /**
@@ -162,7 +155,7 @@ export async function failPendingPayment(
     },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }
 
 /**
@@ -178,7 +171,7 @@ export async function approvePendingPayment(paymentId: string, userId: string, s
     { $set: { status: "approved", signature } },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }
 
 /**
@@ -194,7 +187,7 @@ export async function rejectPendingPayment(paymentId: string, userId: string) {
     { $set: { status: "rejected" } },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }
 
 /**
@@ -210,5 +203,5 @@ export async function expirePendingPayment(paymentId: string, userId: string) {
     { $set: { status: "expired" } },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }

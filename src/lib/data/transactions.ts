@@ -1,12 +1,6 @@
-import { Transaction } from "@/lib/models/transaction";
+import { Transaction, serializeTransaction } from "@/lib/models/transaction";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
-
-/** Map a lean Mongoose doc to an object with string `id` and `userId`. */
-function withId<T extends { _id: Types.ObjectId; userId?: Types.ObjectId }>(doc: T): Omit<T, "_id" | "userId"> & { id: string; userId: string } {
-  const { _id, userId, ...rest } = doc;
-  return { ...rest, id: _id.toString(), userId: userId ? userId.toString() : _id.toString() };
-}
 
 /**
  * Get recent transactions for a user, limited to a specified count.
@@ -21,7 +15,7 @@ export async function getRecentTransactions(userId: string, limit: number = 5, o
     .sort({ createdAt: -1 })
     .limit(limit)
     .lean();
-  return docs.map(withId);
+  return docs.map((doc) => serializeTransaction(doc));
 }
 
 /**
@@ -48,7 +42,7 @@ export async function getTransactions(
   const docs = await Transaction.find(filter)
     .sort({ createdAt: -1 })
     .lean();
-  return docs.map(withId);
+  return docs.map((doc) => serializeTransaction(doc));
 }
 
 /**
@@ -71,7 +65,7 @@ export async function getSpendingHistory(
     .sort({ createdAt: -1 })
     .limit(100)
     .lean();
-  return docs.map(withId);
+  return docs.map((doc) => serializeTransaction(doc));
 }
 
 /**
@@ -104,6 +98,5 @@ export async function createTransaction(data: {
     errorMessage: data.errorMessage,
     responseStatus: data.responseStatus,
   });
-  const lean = doc.toObject();
-  return withId(lean);
+  return serializeTransaction(doc.toObject());
 }

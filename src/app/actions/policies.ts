@@ -25,7 +25,7 @@ export async function getPolicy(policyId: string) {
 
   const policy = await _getPolicy(policyId);
   if (!policy) throw new Error("Policy not found");
-  if (policy.userId.toString() !== auth.userId) throw new Error("Forbidden");
+  if (policy.userId !== auth.userId) throw new Error("Forbidden");
   return policy;
 }
 
@@ -60,7 +60,7 @@ export async function updatePolicy(
 
   const existing = await _getPolicy(policyId);
   if (!existing) throw new Error("Policy not found");
-  if (existing.userId.toString() !== auth.userId) throw new Error("Forbidden");
+  if (existing.userId !== auth.userId) throw new Error("Forbidden");
 
   const policy = await _updatePolicy(policyId, auth.userId, data);
   if (!policy) throw new Error("A policy for this endpoint pattern already exists");
@@ -75,7 +75,7 @@ export async function activatePolicy(policyId: string) {
 
   const existing = await _getPolicy(policyId);
   if (!existing) throw new Error("Policy not found");
-  if (existing.userId.toString() !== auth.userId) throw new Error("Forbidden");
+  if (existing.userId !== auth.userId) throw new Error("Forbidden");
 
   const policy = await _activatePolicy(policyId, auth.userId);
 
@@ -89,7 +89,7 @@ export async function toggleAutoSign(policyId: string, autoSign: boolean) {
 
   const existing = await _getPolicy(policyId);
   if (!existing) throw new Error("Policy not found");
-  if (existing.userId.toString() !== auth.userId) throw new Error("Forbidden");
+  if (existing.userId !== auth.userId) throw new Error("Forbidden");
 
   const policy = await _toggleAutoSign(policyId, auth.userId, autoSign);
 
@@ -103,7 +103,7 @@ export async function archivePolicy(policyId: string) {
 
   const existing = await _getPolicy(policyId);
   if (!existing) throw new Error("Policy not found");
-  if (existing.userId.toString() !== auth.userId) throw new Error("Forbidden");
+  if (existing.userId !== auth.userId) throw new Error("Forbidden");
 
   if (existing.status === "archived") throw new Error("Policy is already archived");
 
@@ -119,7 +119,7 @@ export async function unarchivePolicy(policyId: string) {
 
   const existing = await _getPolicy(policyId);
   if (!existing) throw new Error("Policy not found");
-  if (existing.userId.toString() !== auth.userId) throw new Error("Forbidden");
+  if (existing.userId !== auth.userId) throw new Error("Forbidden");
 
   if (existing.status !== "archived") throw new Error("Policy is not archived");
 

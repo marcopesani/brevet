@@ -1,4 +1,6 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { z } from "zod/v4";
+import { objectId, mongoDate } from "./zod-helpers";
 
 export interface IUser {
   _id: Types.ObjectId;
@@ -13,6 +15,31 @@ export interface IUser {
 }
 
 export interface IUserDocument extends Omit<IUser, "_id">, Document {}
+
+/** Zod schema for validating and serializing a lean User document. */
+export const userOutputSchema = z
+  .object({
+    _id: objectId,
+    email: z.string().nullable(),
+    walletAddress: z.string().nullable(),
+    humanHash: z.string().nullable().optional(),
+    apiKeyHash: z.string().nullable().optional(),
+    apiKeyPrefix: z.string().nullable().optional(),
+    enabledChains: z.array(z.number().int()),
+    createdAt: mongoDate,
+    updatedAt: mongoDate,
+  })
+  .transform(({ _id, ...rest }) => ({
+    id: _id,
+    ...rest,
+  }));
+
+export type UserOutput = z.output<typeof userOutputSchema>;
+
+/** Validate and serialize a lean User document (from .lean() or .toObject()). */
+export function serializeUser(doc: unknown): UserOutput {
+  return userOutputSchema.parse(doc);
+}
 
 const userSchema = new Schema<IUserDocument>(
   {

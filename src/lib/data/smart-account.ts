@@ -4,28 +4,13 @@ import { privateKeyToAccount } from "viem/accounts";
 import { createKernelAccountClient, createZeroDevPaymasterClient } from "@zerodev/sdk";
 import { toECDSASigner } from "@zerodev/permissions/signers";
 import { deserializePermissionAccount } from "@zerodev/permissions";
-import { SmartAccount } from "@/lib/models/smart-account";
+import { SmartAccount, serializeSmartAccount, serializeSmartAccountFull } from "@/lib/models/smart-account";
 import { connectDB } from "@/lib/db";
 import { getUsdcBalance, decryptPrivateKey } from "@/lib/hot-wallet";
 import { computeSmartAccountAddress, createSessionKey } from "@/lib/smart-account";
 import { ENTRY_POINT, KERNEL_VERSION } from "@/lib/smart-account-constants";
 import { createChainPublicClient, getChainById, getDefaultChainConfig, getUsdcConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";
 import { createTransaction } from "@/lib/data/transactions";
-
-/** Serialize a lean SmartAccount doc for the Server→Client boundary. */
-function serialize<T extends { _id: Types.ObjectId; userId: Types.ObjectId; createdAt?: Date; updatedAt?: Date; sessionKeyExpiry?: Date }>(
-  doc: T,
-) {
-  const { _id, userId, createdAt, updatedAt, sessionKeyExpiry, ...rest } = doc;
-  return {
-    ...rest,
-    id: _id.toString(),
-    userId: userId.toString(),
-    ...(createdAt !== undefined && { createdAt: createdAt instanceof Date ? createdAt.toISOString() : createdAt }),
-    ...(updatedAt !== undefined && { updatedAt: updatedAt instanceof Date ? updatedAt.toISOString() : updatedAt }),
-    ...(sessionKeyExpiry !== undefined && { sessionKeyExpiry: sessionKeyExpiry instanceof Date ? sessionKeyExpiry.toISOString() : sessionKeyExpiry }),
-  };
-}
 
 /**
  * Get the user's smart account record for a specific chain (excludes sensitive fields).
@@ -40,7 +25,7 @@ export async function getSmartAccount(userId: string, chainId: number) {
     .select("-sessionKeyEncrypted -serializedAccount")
     .lean();
   if (!doc) return null;
-  return serialize(doc);
+  return serializeSmartAccount(doc);
 }
 
 /**
@@ -54,7 +39,7 @@ export async function getSmartAccountWithSessionKey(userId: string, chainId: num
     chainId,
   }).lean();
   if (!doc) return null;
-  return serialize(doc);
+  return serializeSmartAccountFull(doc);
 }
 
 /**
@@ -67,7 +52,7 @@ export async function getAllSmartAccounts(userId: string) {
   })
     .select("-sessionKeyEncrypted -serializedAccount")
     .lean();
-  return docs.map(serialize);
+  return docs.map((doc) => serializeSmartAccount(doc));
 }
 
 /**
@@ -109,8 +94,7 @@ export async function createSmartAccountRecord(data: {
     sessionKeyEncrypted: data.sessionKeyEncrypted,
     sessionKeyStatus: "pending_grant",
   });
-  const lean = doc.toObject();
-  return serialize(lean);
+  return serializeSmartAccountFull(doc.toObject());
 }
 
 /**
@@ -130,7 +114,7 @@ export async function ensureSmartAccount(
     chainId,
   }).lean();
   if (existing) {
-    return serialize(existing);
+    return serializeSmartAccountFull(existing);
   }
 
   const smartAccountAddress = await computeSmartAccountAddress(
@@ -150,8 +134,7 @@ export async function ensureSmartAccount(
       sessionKeyEncrypted,
       sessionKeyStatus: "pending_grant",
     });
-    const lean = doc.toObject();
-    return serialize(lean);
+    return serializeSmartAccountFull(doc.toObject());
   } catch (err: unknown) {
     // Handle race condition: a concurrent request may have created the record between
     // our findOne and create. Re-fetch and return the existing document.
@@ -168,7 +151,7 @@ export async function ensureSmartAccount(
       chainId,
     }).lean();
     if (!existing) throw err; // Should not happen, but be safe
-    return serialize(existing);
+    return serializeSmartAccountFull(existing);
   }
 }
 
@@ -188,7 +171,7 @@ export async function storeSerializedAccount(
     { returnDocument: "after" },
   ).lean();
   if (!doc) return null;
-  return serialize(doc);
+  return serializeSmartAccountFull(doc);
 }
 
 /**
@@ -219,7 +202,7 @@ export async function activateSessionKey(
     { returnDocument: "after" },
   ).lean();
   if (!doc) return null;
-  return serialize(doc);
+  return serializeSmartAccount(doc);
 }
 
 /**
@@ -243,7 +226,7 @@ export async function updateSessionKeyStatus(
     { returnDocument: "after" },
   ).lean();
   if (!doc) return null;
-  return serialize(doc);
+  return serializeSmartAccount(doc);
 }
 
 const USDC_TRANSFER_ABI = parseAbi([

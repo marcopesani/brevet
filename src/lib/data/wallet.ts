@@ -1,7 +1,7 @@
 import { Types } from "mongoose";
-import { User } from "@/lib/models/user";
-import { HotWallet } from "@/lib/models/hot-wallet";
-import { EndpointPolicy } from "@/lib/models/endpoint-policy";
+import { User, serializeUser } from "@/lib/models/user";
+import { HotWallet, serializeHotWallet, serializeHotWalletPublic } from "@/lib/models/hot-wallet";
+import { EndpointPolicy, serializeEndpointPolicy } from "@/lib/models/endpoint-policy";
 import { connectDB } from "@/lib/db";
 import { createHotWallet as createHotWalletKeys, getUsdcBalance } from "@/lib/hot-wallet";
 import { getEnvironmentChains } from "@/lib/chain-config";
@@ -130,7 +130,7 @@ export async function getHotWallet(userId: string, chainId?: number) {
     .select("-encryptedPrivateKey")
     .lean();
   if (!doc) return null;
-  return { ...doc, id: doc._id.toString() };
+  return serializeHotWalletPublic(doc);
 }
 
 /**
@@ -142,7 +142,7 @@ export async function getHotWalletWithKey(userId: string, chainId?: number) {
   const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
   const doc = await HotWallet.findOne({ userId: new Types.ObjectId(userId), chainId: resolvedChainId }).lean();
   if (!doc) return null;
-  return { ...doc, id: doc._id.toString() };
+  return serializeHotWallet(doc);
 }
 
 /**
@@ -153,12 +153,7 @@ export async function getAllHotWallets(userId: string) {
   const docs = await HotWallet.find({ userId: new Types.ObjectId(userId) })
     .select("-encryptedPrivateKey")
     .lean();
-  return docs.map((doc) => ({
-    ...doc,
-    id: doc._id.toString(),
-    address: doc.address,
-    chainId: doc.chainId,
-  }));
+  return docs.map((doc) => serializeHotWalletPublic(doc));
 }
 
 /**
@@ -178,11 +173,11 @@ export async function getUserWithWalletAndPolicies(userId: string, chainId?: num
     .lean();
   const endpointPolicies = await EndpointPolicy.find({ userId: userObjectId }).lean();
 
+  const serializedUser = serializeUser(user);
   return {
-    ...user,
-    id: user._id.toString(),
-    hotWallet: hotWallet ? { ...hotWallet, id: hotWallet._id.toString() } : null,
-    endpointPolicies: endpointPolicies.map((p) => ({ ...p, id: p._id.toString() })),
+    ...serializedUser,
+    hotWallet: hotWallet ? serializeHotWalletPublic(hotWallet) : null,
+    endpointPolicies: endpointPolicies.map((p) => serializeEndpointPolicy(p)),
   };
 }
 
