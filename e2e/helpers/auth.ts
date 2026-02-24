@@ -6,21 +6,36 @@ import { prepareMetaMask } from "./metamask";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function timeoutAfter(ms: number, label: string) {
+  return new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(label)), ms);
+  });
+}
+
 function startNotificationAutoApprover(metamask: MetaMask, timeoutMs = 30_000) {
   let active = true;
+  const extensionPrefix = metamask.extensionId
+    ? `chrome-extension://${metamask.extensionId}/`
+    : "chrome-extension://";
 
   const run = (async () => {
     const startedAt = Date.now();
 
     while (active && Date.now() - startedAt < timeoutMs) {
-      let notificationPage = metamask.context
+      const extensionPages = metamask.context
         .pages()
-        .find((candidate) => candidate.url().includes("/notification.html"));
+        .filter(
+          (candidate) =>
+            !candidate.isClosed() && candidate.url().startsWith(extensionPrefix),
+        );
+      let notificationPage =
+        extensionPages.find((candidate) => candidate.url().includes("/notification.html")) ??
+        extensionPages[0];
 
       if (!notificationPage) {
         try {
           notificationPage = await metamask.context.waitForEvent("page", {
-            predicate: (candidate) => candidate.url().includes("/notification.html"),
+            predicate: (candidate) => candidate.url().startsWith(extensionPrefix),
             timeout: 500,
           });
         } catch {
@@ -53,6 +68,13 @@ function startNotificationAutoApprover(metamask: MetaMask, timeoutMs = 30_000) {
         const connectButton = notificationPage.getByRole("button", { name: /^Connect$/i });
         if ((await connectButton.count()) > 0 && (await connectButton.first().isVisible())) {
           await connectButton.first().click().catch(() => undefined);
+          await sleep(120);
+          continue;
+        }
+
+        const confirmButton = notificationPage.getByRole("button", { name: /^Confirm$/i });
+        if ((await confirmButton.count()) > 0 && (await confirmButton.first().isVisible())) {
+          await confirmButton.first().click().catch(() => undefined);
           await sleep(120);
           continue;
         }
@@ -106,7 +128,7 @@ async function signInViaInjectedProvider(
   const initialOrigin = new URL(page.url()).origin;
   let activePage = page;
   const ensureActivePage = () => {
-    if (!activePage.isClosed()) return activePage;
+    if (!activePage.isClosed() && activePage.url().startsWith("http")) return activePage;
 
     const httpPage = metamask.context
       .pages()
@@ -146,7 +168,7 @@ async function signInViaInjectedProvider(
   const host = new URL(fallbackPage.url()).host;
   const autoApprover = startNotificationAutoApprover(metamask);
 
-  await fallbackPage.evaluate(() => {
+  await (await ensureActivePageOrOpen()).evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const windowWithState = window as any;
     windowWithState.__e2eRequestAccountsResult = undefined;
@@ -251,7 +273,7 @@ async function signInViaInjectedProvider(
   autoApprover.stop();
   await autoApprover.done;
 
-  const requestAccountsResult = await (await ensureActivePageOrOpen()).evaluate(() => {
+  let requestAccountsResult = await (await ensureActivePageOrOpen()).evaluate(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (window as any).__e2eRequestAccountsResult as {
       ok: boolean;
@@ -259,6 +281,29 @@ async function signInViaInjectedProvider(
       error?: string;
     };
   });
+
+  if (!requestAccountsResult.ok) {
+    if (requestAccountsResult.error?.includes("already pending")) {
+      try {
+        await metamask.connectToDapp();
+      } catch {
+        // Best effort: continue with direct account query.
+      }
+
+      const pendingRequestAccounts = await (await ensureActivePageOrOpen()).evaluate(async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const provider = (window as any).ethereum;
+        return provider.request({ method: "eth_accounts" }) as Promise<string[]>;
+      });
+
+      if (pendingRequestAccounts[0]) {
+        requestAccountsResult = {
+          ok: true,
+          accounts: pendingRequestAccounts,
+        };
+      }
+    }
+  }
 
   if (!requestAccountsResult.ok) {
     throw new Error(`Failed to request wallet accounts: ${requestAccountsResult.error}`);
@@ -333,6 +378,7 @@ async function signInViaInjectedProvider(
 export async function signInWithMetaMask(page: Page, metamask: MetaMask) {
   let activePage = page;
 
+  await prepareMetaMask(metamask);
   await activePage.goto("/login");
 
   const connectWalletButton = activePage.getByTestId("connect-wallet-button");
@@ -374,11 +420,17 @@ async function attemptWalletSignIn(page: Page, metamask: MetaMask) {
     await selectMetaMaskInAppKit(page);
   }
 
-  const autoApprover = startNotificationAutoApprover(metamask, 45_000);
+  const autoApprover = startNotificationAutoApprover(metamask, 15_000);
   try {
-    await metamask.connectToDapp();
-    await metamask.confirmSignature();
-    await page.waitForURL("**/dashboard", { timeout: 90_000 });
+    await Promise.race([
+      metamask.connectToDapp(),
+      timeoutAfter(20_000, "Timed out waiting for MetaMask dapp connection approval"),
+    ]);
+    await Promise.race([
+      metamask.confirmSignature(),
+      timeoutAfter(20_000, "Timed out waiting for MetaMask SIWE signature approval"),
+    ]);
+    await page.waitForURL("**/dashboard", { timeout: 25_000 });
   } finally {
     autoApprover.stop();
     await autoApprover.done;

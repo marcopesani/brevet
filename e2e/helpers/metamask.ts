@@ -21,6 +21,23 @@ async function clickIfVisible(locator: Locator) {
   return false;
 }
 
+async function clickIfEnabled(locator: Locator, attempts = 20, delayMs = 500) {
+  if ((await locator.count()) === 0) return false;
+  const first = locator.first();
+  if (!(await first.isVisible())) return false;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (!(await first.isVisible())) return false;
+    if (await first.isEnabled()) {
+      await first.click();
+      return true;
+    }
+    await first.page().waitForTimeout(delayMs);
+  }
+
+  return false;
+}
+
 export async function prepareMetaMask(metamask: MetaMask) {
   const extensionPages = metamask.context.pages().filter((page) =>
     metamask.extensionId
@@ -31,17 +48,33 @@ export async function prepareMetaMask(metamask: MetaMask) {
   const pagesToPrepare = extensionPages.length > 0 ? extensionPages : [metamask.page];
 
   for (const extensionPage of pagesToPrepare) {
+    const extensionOrigin = extensionPage.url().match(/^chrome-extension:\/\/[^/]+/)?.[0];
+
     await clickIfVisible(
       extensionPage.getByRole("button", {
         name: /Restart MetaMask/i,
       }),
     );
 
+    await clickIfVisible(extensionPage.getByTestId("onboarding-complete-done"));
+
     await clickIfVisible(
       extensionPage.getByRole("button", {
-      name: /Open wallet/i,
+        name: /Open wallet/i,
       }),
     );
+
+    const openedFromButton = await clickIfEnabled(
+      extensionPage.getByRole("button", {
+        name: /Open wallet/i,
+      }),
+    );
+
+    if (!openedFromButton && extensionOrigin) {
+      await extensionPage.goto(`${extensionOrigin}/home.html#`, {
+        waitUntil: "domcontentloaded",
+      });
+    }
   }
 
   for (const extensionPage of pagesToPrepare) {
