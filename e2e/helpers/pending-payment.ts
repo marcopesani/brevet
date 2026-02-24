@@ -1,16 +1,16 @@
 import { callMcpTool, createOrRotateDevUser, initializeMcp } from "./mcp";
 import { startMock402Server } from "./mock-402-server";
 
-const ETH_SEPOLIA_CHAIN = "eip155:11155111";
-const ETH_SEPOLIA_USDC = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+const POLYGON_AMOY_CHAIN = "eip155:80002";
+const POLYGON_AMOY_USDC = "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582";
 
 export async function createPendingPaymentForDevUser(baseUrl: string) {
   const devUser = await createOrRotateDevUser(baseUrl);
   const mockServer = await startMock402Server({
-    network: ETH_SEPOLIA_CHAIN,
+    network: POLYGON_AMOY_CHAIN,
     maxAmountRequired: "100000", // 0.1 USDC
     payTo: "0x1111111111111111111111111111111111111111",
-    asset: ETH_SEPOLIA_USDC,
+    asset: POLYGON_AMOY_USDC,
   });
 
   await initializeMcp(baseUrl, devUser.apiKey, devUser.userId);

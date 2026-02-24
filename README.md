@@ -215,9 +215,10 @@ The repository also includes browser E2E tests for wallet happy paths using Synp
 
 #### Prerequisites
 
-- Running app at `http://127.0.0.1:3000` (or set `E2E_BASE_URL`)
-- `NEXT_PUBLIC_TEST_MODE=true` enabled on the app (required for deterministic test user provisioning)
 - Chrome/Chromium dependencies available for Playwright
+
+> The Playwright config starts its own dedicated E2E app server automatically.  
+> If `MONGODB_URI` is not set, E2E startup uses an in-memory MongoDB instance.
 
 #### Setup
 
@@ -245,10 +246,13 @@ npm run test:e2e:browser:headed
 #### Optional env vars
 
 - `E2E_BASE_URL` (default: `http://127.0.0.1:3000`)
+- `E2E_CHAIN_ID` (default: `80002`)
 - `E2E_METAMASK_SEED_PHRASE` (default: Hardhat test mnemonic)
 - `E2E_METAMASK_PASSWORD` (default: `Password123!`)
 - `E2E_WALLETCONNECT_PROJECT_ID` (used by Playwright webServer if `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is not already set)
 - `E2E_ZERODEV_PROJECT_ID` (used by Playwright webServer if `ZERODEV_PROJECT_ID` is not already set)
+- `E2E_MONGODB_URI` (optional explicit DB URI for Playwright webServer)
+- `E2E_REAL_METAMASK=true` (optional: force real MetaMask popup approvals instead of deterministic test-mode signing fallback)
 
 > Note: for wallet-connection happy paths, use a valid WalletConnect/Reown project ID. Placeholder IDs allow app startup but can fail at runtime wallet handshake.
 

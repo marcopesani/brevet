@@ -6,6 +6,7 @@ import { authorizationTypes } from "@x402/evm";
 import type { PaymentRequirements } from "@x402/core/types";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Hex } from "viem";
+import { mnemonicToAccount } from "viem/accounts";
 import { toast } from "sonner";
 import { getChainById, getNetworkIdentifiers, type ChainConfig } from "@/lib/chain-config";
 import { formatAmountForDisplay } from "@/lib/x402/display";
@@ -105,11 +106,11 @@ export function usePaymentSigning(
       ? "Unknown"
       : `${amountForDisplay.displayAmount} ${amountForDisplay.symbol}`.trim();
 
-  async function invalidateAndNotify() {
+  const invalidateAndNotify = useCallback(async () => {
     queryClient.invalidateQueries({ queryKey: PENDING_PAYMENTS_QUERY_KEY });
     queryClient.invalidateQueries({ queryKey: WALLET_BALANCE_QUERY_KEY });
     onComplete?.();
-  }
+  }, [queryClient, onComplete]);
 
   const approve = useCallback(async (): Promise<SigningResult> => {
     setStatus("switching");
@@ -152,10 +153,10 @@ export function usePaymentSigning(
         nonce,
       };
 
-      const signature = await signTypedDataAsync({
+      const typedDataPayload = {
         domain: paymentChainConfig.usdcDomain,
         types: authorizationTypes,
-        primaryType: "TransferWithAuthorization",
+        primaryType: "TransferWithAuthorization" as const,
         message: {
           from: authorization.from,
           to: authorization.to,
@@ -164,7 +165,15 @@ export function usePaymentSigning(
           validBefore: authorization.validBefore,
           nonce: authorization.nonce,
         },
-      });
+      };
+
+      const signature =
+        process.env.NEXT_PUBLIC_TEST_MODE === "true"
+          ? await mnemonicToAccount(
+              process.env.NEXT_PUBLIC_E2E_METAMASK_SEED_PHRASE ??
+                "test test test test test test test test test test test junk",
+            ).signTypedData(typedDataPayload)
+          : await signTypedDataAsync(typedDataPayload);
 
       setStatus("submitting");
 

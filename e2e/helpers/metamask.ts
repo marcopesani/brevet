@@ -45,7 +45,8 @@ export async function prepareMetaMask(metamask: MetaMask) {
       : page.url().startsWith("chrome-extension://"),
   );
 
-  const pagesToPrepare = extensionPages.length > 0 ? extensionPages : [metamask.page];
+  const selectedExtensionPages = extensionPages.slice(-3);
+  const pagesToPrepare = selectedExtensionPages.length > 0 ? selectedExtensionPages : [metamask.page];
 
   for (const extensionPage of pagesToPrepare) {
     const extensionOrigin = extensionPage.url().match(/^chrome-extension:\/\/[^/]+/)?.[0];
@@ -68,6 +69,8 @@ export async function prepareMetaMask(metamask: MetaMask) {
       extensionPage.getByRole("button", {
         name: /Open wallet/i,
       }),
+      6,
+      500,
     );
 
     if (!openedFromButton && extensionOrigin) {

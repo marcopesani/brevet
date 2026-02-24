@@ -12,7 +12,7 @@ test.describe("Auth happy path", () => {
 
     await expect(page).toHaveURL(/\/dashboard/);
     await expect(
-      page.getByRole("link", { name: /Pending Payments/i }),
+      page.getByRole("link", { name: "Pending Payments", exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Connected")).toBeVisible();
   });

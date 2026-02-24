@@ -1,16 +1,11 @@
 import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import type { MetaMask } from "@synthetixio/synpress/playwright";
-import { selectMetaMaskInAppKit } from "./appkit";
+import { mnemonicToAccount } from "viem/accounts";
 import { prepareMetaMask } from "./metamask";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function timeoutAfter(ms: number, label: string) {
-  return new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(label)), ms);
-  });
-}
+const appBaseUrl = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
 
 function startNotificationAutoApprover(metamask: MetaMask, timeoutMs = 30_000) {
   let active = true;
@@ -121,11 +116,63 @@ Nonce: ${nonce}
 Issued At: ${issuedAt}`;
 }
 
+async function signInWithSeedPhraseCredentials(page: Page) {
+  const seedPhrase =
+    process.env.E2E_METAMASK_SEED_PHRASE ??
+    "test test test test test test test test test test test junk";
+  const seedAccount = mnemonicToAccount(seedPhrase);
+
+  const origin = new URL(appBaseUrl).origin;
+  const host = new URL(appBaseUrl).host;
+  const chainId = Number.parseInt(
+    process.env.NEXT_PUBLIC_CHAIN_ID ?? process.env.E2E_CHAIN_ID ?? "80002",
+    10,
+  );
+
+  const address = seedAccount.address;
+
+  const csrfResponse = await page.request.get(`${origin}/api/auth/csrf`);
+  const csrfJson = (await csrfResponse.json()) as { csrfToken?: string };
+  const nonce = csrfJson.csrfToken;
+  if (!nonce) throw new Error("Could not fetch CSRF token for credentials sign-in");
+
+  const message = buildSiweMessage({
+    host,
+    origin,
+    address,
+    chainId,
+    nonce,
+  });
+
+  const signature = await seedAccount.signMessage({ message });
+
+  const callbackResponse = await page.request.post(
+    `${origin}/api/auth/callback/credentials?json=true`,
+    {
+      form: {
+        csrfToken: nonce,
+        message,
+        signature,
+        callbackUrl: `${origin}/dashboard`,
+        json: "true",
+      },
+    },
+  );
+
+  if (!callbackResponse.ok()) {
+    throw new Error(
+      `Credentials callback failed with ${callbackResponse.status()}: ${await callbackResponse.text()}`,
+    );
+  }
+
+  await page.goto(`${origin}/dashboard`);
+}
+
 async function signInViaInjectedProvider(
   page: Page,
   metamask: MetaMask,
 ) {
-  const initialOrigin = new URL(page.url()).origin;
+  const initialOrigin = new URL(appBaseUrl).origin;
   let activePage = page;
   const ensureActivePage = () => {
     if (!activePage.isClosed() && activePage.url().startsWith("http")) return activePage;
@@ -376,63 +423,28 @@ async function signInViaInjectedProvider(
 }
 
 export async function signInWithMetaMask(page: Page, metamask: MetaMask) {
-  let activePage = page;
+  const useRealMetaMaskFlow = process.env.E2E_REAL_METAMASK === "true";
 
-  await prepareMetaMask(metamask);
-  await activePage.goto("/login");
-
-  const connectWalletButton = activePage.getByTestId("connect-wallet-button");
-  await expect(connectWalletButton).toBeVisible();
-  await connectWalletButton.click();
-
-  try {
-    await attemptWalletSignIn(activePage, metamask);
-  } catch {
-    try {
-      await prepareMetaMask(metamask);
-      await attemptWalletSignIn(activePage, metamask);
-      await expect(activePage).toHaveURL(/\/dashboard/);
-      return;
-    } catch {
-      // Continue to injected-provider fallback.
-    }
-
-    if (activePage.isClosed()) {
-      const candidatePage = metamask.context
-        .pages()
-        .find((candidate) => candidate.url().startsWith("http"));
-      if (candidatePage) {
-        activePage = candidatePage;
-      }
-    }
-
-    await signInViaInjectedProvider(activePage, metamask);
+  if (useRealMetaMaskFlow) {
+    await prepareMetaMask(metamask);
+    await page.goto(`${appBaseUrl}/login`);
+    await signInViaInjectedProvider(page, metamask);
+  } else {
+    await page.goto(`${appBaseUrl}/login`);
+    await signInWithSeedPhraseCredentials(page);
   }
 
-  await expect(activePage).toHaveURL(/\/dashboard/);
-}
-
-async function attemptWalletSignIn(page: Page, metamask: MetaMask) {
-  const appKitModal = page.locator("w3m-modal.open");
-  const hasOpenAppKitModal = (await appKitModal.count()) > 0;
-
-  if (hasOpenAppKitModal) {
-    await selectMetaMaskInAppKit(page);
-  }
-
-  const autoApprover = startNotificationAutoApprover(metamask, 15_000);
-  try {
-    await Promise.race([
-      metamask.connectToDapp(),
-      timeoutAfter(20_000, "Timed out waiting for MetaMask dapp connection approval"),
-    ]);
-    await Promise.race([
-      metamask.confirmSignature(),
-      timeoutAfter(20_000, "Timed out waiting for MetaMask SIWE signature approval"),
-    ]);
-    await page.waitForURL("**/dashboard", { timeout: 25_000 });
-  } finally {
-    autoApprover.stop();
-    await autoApprover.done;
-  }
+  await expect
+    .poll(
+      () =>
+        metamask.context
+          .pages()
+          .find(
+            (candidate) =>
+              !candidate.isClosed() && candidate.url().startsWith(appBaseUrl),
+          )
+          ?.url() ?? "",
+      { timeout: 25_000 },
+    )
+    .toMatch(/\/dashboard/);
 }

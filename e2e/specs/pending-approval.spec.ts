@@ -15,17 +15,19 @@ test.describe("Pending payment happy path", () => {
     const { stopServer } = await createPendingPaymentForDevUser(baseUrl);
 
     try {
-      await page.goto("/dashboard/pending");
+      await page.goto(`${baseUrl}/dashboard/pending`);
       await page.reload();
 
       await expect(page.getByText(/paid-resource/i)).toBeVisible({ timeout: 60_000 });
 
       await page.getByRole("button", { name: /Approve & Sign/i }).first().click();
-      await approveTypedDataSignature(metamask);
+      if (process.env.E2E_REAL_METAMASK === "true") {
+        await approveTypedDataSignature(metamask);
+      }
 
       await expect(page.getByText("Payment Approved")).toBeVisible({ timeout: 120_000 });
 
-      await page.goto("/dashboard/transactions");
+      await page.goto(`${baseUrl}/dashboard/transactions`);
       await expect(page.getByText("127.0.0.1")).toBeVisible({ timeout: 60_000 });
     } finally {
       await stopServer();
