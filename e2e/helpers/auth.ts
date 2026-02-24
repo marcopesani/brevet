@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import type { MetaMask } from "@synthetixio/synpress/playwright";
 import { mnemonicToAccount } from "viem/accounts";
+import { selectMetaMaskInAppKit } from "./appkit";
 import { prepareMetaMask } from "./metamask";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -490,13 +491,38 @@ async function signInViaInjectedProvider(
   await (await ensureActivePageOrOpen()).goto("/dashboard");
 }
 
+async function signInViaAppKit(page: Page, metamask: MetaMask) {
+  const connectWalletButton = page.getByTestId("connect-wallet-button");
+  await expect(connectWalletButton).toBeVisible();
+  await connectWalletButton.click();
+
+  const appKitModal = page.locator("w3m-modal.open");
+  if ((await appKitModal.count()) > 0) {
+    await selectMetaMaskInAppKit(page);
+  }
+
+  const autoApprover = startNotificationAutoApprover(metamask, 25_000);
+  try {
+    await metamask.connectToDapp();
+    await metamask.confirmSignature();
+    await page.waitForURL("**/dashboard", { timeout: 45_000 });
+  } finally {
+    autoApprover.stop();
+    await autoApprover.done;
+  }
+}
+
 export async function signInWithMetaMask(page: Page, metamask: MetaMask) {
   const useRealMetaMaskFlow = process.env.E2E_REAL_METAMASK === "true";
 
   if (useRealMetaMaskFlow) {
     await prepareMetaMask(metamask);
     await page.goto(`${appBaseUrl}/login`);
-    await signInViaInjectedProvider(page, metamask);
+    try {
+      await signInViaAppKit(page, metamask);
+    } catch {
+      await signInViaInjectedProvider(page, metamask);
+    }
   } else {
     await page.goto(`${appBaseUrl}/login`);
     await signInWithSeedPhraseCredentials(page);
