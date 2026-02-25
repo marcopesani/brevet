@@ -1,7 +1,7 @@
 import { cache } from "react";
-import { User } from "@/lib/models/user";
+import { User, parseUserEnabledChainsProjection } from "@/lib/models/user";
 import { CHAIN_CONFIGS } from "@/lib/chain-config";
-import { Types } from "mongoose";
+import { parseObjectId } from "@/lib/models/zod";
 import { connectDB } from "@/lib/db";
 
 /**
@@ -12,10 +12,11 @@ import { connectDB } from "@/lib/db";
 export const getUserEnabledChains = cache(
   async (userId: string): Promise<number[]> => {
     await connectDB();
-    const user = await User.findById(new Types.ObjectId(userId))
+    const user = await User.findById(parseObjectId(userId, "userId"))
       .select("enabledChains")
       .lean();
-    return user?.enabledChains ?? [];
+    if (!user) return [];
+    return parseUserEnabledChainsProjection(user).enabledChains ?? [];
   },
 );
 
@@ -35,9 +36,9 @@ export async function setUserEnabledChains(
 
   await connectDB();
   const doc = await User.findByIdAndUpdate(
-    new Types.ObjectId(userId),
+    parseObjectId(userId, "userId"),
     { $set: { enabledChains: chainIds } },
-    { returnDocument: "after" },
+    { returnDocument: "after", runValidators: true },
   )
     .select("enabledChains")
     .lean();
@@ -46,7 +47,7 @@ export async function setUserEnabledChains(
     throw new Error(`User not found: ${userId}`);
   }
 
-  return doc.enabledChains;
+  return parseUserEnabledChainsProjection(doc).enabledChains ?? [];
 }
 
 /**

@@ -1,5 +1,6 @@
 import { Transaction } from "@/lib/models/transaction";
-import { Types } from "mongoose";
+import { serializeTransactions } from "@/lib/models/transaction";
+import { parseObjectId } from "@/lib/models/zod";
 import { connectDB } from "@/lib/db";
 
 export interface AnalyticsSummary {
@@ -40,7 +41,7 @@ export async function getAnalytics(userId: string, options?: { chainId?: number 
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const txFilter: Record<string, unknown> = {
-    userId: new Types.ObjectId(userId),
+    userId: parseObjectId(userId, "userId"),
     type: "payment",
     createdAt: { $gte: thirtyDaysAgo },
   };
@@ -48,9 +49,11 @@ export async function getAnalytics(userId: string, options?: { chainId?: number 
     txFilter.chainId = options.chainId;
   }
 
-  const transactions = await Transaction.find(txFilter)
+  const transactions = serializeTransactions(
+    await Transaction.find(txFilter)
     .sort({ createdAt: 1 })
-    .lean();
+    .lean(),
+  );
 
   const dailyMap = new Map<string, number>();
 

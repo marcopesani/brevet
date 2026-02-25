@@ -1,6 +1,11 @@
 import { randomBytes, createHash } from "crypto";
-import { Types } from "mongoose";
-import { User } from "@/lib/models/user";
+import {
+  User,
+  parseApiKeyHashProjection,
+  parseApiKeyPrefixProjection,
+  parseUserIdProjection,
+} from "@/lib/models/user";
+import { parseObjectId, stringifyObjectId } from "@/lib/models/zod";
 import { connectDB } from "@/lib/db";
 
 const API_KEY_PREFIX = "brv_";
@@ -24,14 +29,15 @@ export async function ensureApiKey(
   userId: string,
 ): Promise<{ created: true; rawKey: string } | { created: false }> {
   await connectDB();
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = parseObjectId(userId, "userId");
 
   const user = await User.findById(userObjectId).select("apiKeyHash").lean();
   if (!user) {
     throw new Error(`User not found: ${userId}`);
   }
 
-  if (user.apiKeyHash) {
+  const parsedUser = parseApiKeyHashProjection(user);
+  if (parsedUser.apiKeyHash) {
     return { created: false };
   }
 
@@ -43,6 +49,7 @@ export async function ensureApiKey(
     const result = await User.updateOne(
       { _id: userObjectId, apiKeyHash: null },
       { $set: { apiKeyHash: hash, apiKeyPrefix: prefix } },
+      { runValidators: true },
     );
 
     if (result.modifiedCount === 0) {
@@ -79,7 +86,8 @@ export async function getUserByApiKey(
     return null;
   }
 
-  return { userId: user._id.toString() };
+  const parsed = parseUserIdProjection(user);
+  return { userId: stringifyObjectId(parsed._id, "user._id") };
 }
 
 /**
@@ -90,7 +98,7 @@ export async function rotateApiKey(
   userId: string,
 ): Promise<{ rawKey: string }> {
   await connectDB();
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = parseObjectId(userId, "userId");
 
   const rawKey = generateApiKey();
   const hash = hashApiKey(rawKey);
@@ -99,6 +107,7 @@ export async function rotateApiKey(
   const result = await User.updateOne(
     { _id: userObjectId },
     { $set: { apiKeyHash: hash, apiKeyPrefix: prefix } },
+    { runValidators: true },
   );
 
   if (result.matchedCount === 0) {
@@ -116,7 +125,7 @@ export async function getApiKeyPrefix(
   userId: string,
 ): Promise<string | null> {
   await connectDB();
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = parseObjectId(userId, "userId");
 
   const user = await User.findById(userObjectId)
     .select("apiKeyPrefix")
@@ -126,5 +135,5 @@ export async function getApiKeyPrefix(
     return null;
   }
 
-  return user.apiKeyPrefix ?? null;
+  return parseApiKeyPrefixProjection(user).apiKeyPrefix ?? null;
 }

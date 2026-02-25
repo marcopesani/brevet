@@ -1,19 +1,20 @@
-import { Transaction } from "@/lib/models/transaction";
-import { Types } from "mongoose";
+import {
+  Transaction,
+  serializeTransaction,
+  serializeTransactions,
+  validateCreateTransactionInput,
+} from "@/lib/models/transaction";
+import { parseObjectId } from "@/lib/models/zod";
 import { connectDB } from "@/lib/db";
-
-/** Map a lean Mongoose doc to an object with string `id` and `userId`. */
-function withId<T extends { _id: Types.ObjectId; userId?: Types.ObjectId }>(doc: T): Omit<T, "_id" | "userId"> & { id: string; userId: string } {
-  const { _id, userId, ...rest } = doc;
-  return { ...rest, id: _id.toString(), userId: userId ? userId.toString() : _id.toString() };
-}
 
 /**
  * Get recent transactions for a user, limited to a specified count.
  */
 export async function getRecentTransactions(userId: string, limit: number = 5, options?: { chainId?: number }) {
   await connectDB();
-  const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
+  const filter: Record<string, unknown> = {
+    userId: parseObjectId(userId, "userId"),
+  };
   if (options?.chainId !== undefined) {
     filter.chainId = options.chainId;
   }
@@ -21,7 +22,7 @@ export async function getRecentTransactions(userId: string, limit: number = 5, o
     .sort({ createdAt: -1 })
     .limit(limit)
     .lean();
-  return docs.map(withId);
+  return serializeTransactions(docs);
 }
 
 /**
@@ -32,7 +33,9 @@ export async function getTransactions(
   options?: { since?: Date; until?: Date; chainId?: number },
 ) {
   await connectDB();
-  const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
+  const filter: Record<string, unknown> = {
+    userId: parseObjectId(userId, "userId"),
+  };
 
   if (options?.since || options?.until) {
     const createdAt: Record<string, Date> = {};
@@ -48,7 +51,7 @@ export async function getTransactions(
   const docs = await Transaction.find(filter)
     .sort({ createdAt: -1 })
     .lean();
-  return docs.map(withId);
+  return serializeTransactions(docs);
 }
 
 /**
@@ -59,7 +62,9 @@ export async function getSpendingHistory(
   options?: { since?: Date; chainId?: number },
 ) {
   await connectDB();
-  const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
+  const filter: Record<string, unknown> = {
+    userId: parseObjectId(userId, "userId"),
+  };
   if (options?.since) {
     filter.createdAt = { $gte: options.since };
   }
@@ -71,7 +76,7 @@ export async function getSpendingHistory(
     .sort({ createdAt: -1 })
     .limit(100)
     .lean();
-  return docs.map(withId);
+  return serializeTransactions(docs);
 }
 
 /**
@@ -91,19 +96,19 @@ export async function createTransaction(data: {
   responseStatus?: number | null;
 }) {
   await connectDB();
+  const parsed = validateCreateTransactionInput(data);
   const doc = await Transaction.create({
-    amount: data.amount,
-    endpoint: data.endpoint,
-    txHash: data.txHash,
-    network: data.network,
-    ...(data.chainId !== undefined && { chainId: data.chainId }),
-    status: data.status,
-    type: data.type ?? "payment",
-    userId: new Types.ObjectId(data.userId),
-    responsePayload: data.responsePayload,
-    errorMessage: data.errorMessage,
-    responseStatus: data.responseStatus,
+    amount: parsed.amount,
+    endpoint: parsed.endpoint,
+    txHash: parsed.txHash ?? null,
+    network: parsed.network,
+    ...(parsed.chainId !== undefined && { chainId: parsed.chainId }),
+    status: parsed.status,
+    type: parsed.type ?? "payment",
+    userId: parseObjectId(parsed.userId, "userId"),
+    responsePayload: parsed.responsePayload ?? null,
+    errorMessage: parsed.errorMessage ?? null,
+    responseStatus: parsed.responseStatus ?? null,
   });
-  const lean = doc.toObject();
-  return withId(lean);
+  return serializeTransaction(doc.toObject());
 }

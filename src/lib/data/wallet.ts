@@ -1,7 +1,13 @@
-import { Types } from "mongoose";
-import { User } from "@/lib/models/user";
-import { HotWallet } from "@/lib/models/hot-wallet";
-import { EndpointPolicy } from "@/lib/models/endpoint-policy";
+import { User, parseUserIdProjection, serializeUser, validateUpsertUserInput } from "@/lib/models/user";
+import {
+  HotWallet,
+  parseHotWalletAddressProjection,
+  serializeHotWallet,
+  serializeHotWallets,
+  validateCreateHotWalletInput,
+} from "@/lib/models/hot-wallet";
+import { EndpointPolicy, serializeEndpointPolicies } from "@/lib/models/endpoint-policy";
+import { parseObjectId, stringifyObjectId } from "@/lib/models/zod";
 import { connectDB } from "@/lib/db";
 import { createHotWallet as createHotWalletKeys, getUsdcBalance } from "@/lib/hot-wallet";
 import { getEnvironmentChains } from "@/lib/chain-config";
@@ -19,7 +25,7 @@ const DEFAULT_CHAIN_ID = parseInt(
  */
 export async function getWalletBalance(userId: string, chainId?: number) {
   await connectDB();
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = parseObjectId(userId, "userId");
   const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
 
   const user = await User.findById(userObjectId).lean();
@@ -32,8 +38,9 @@ export async function getWalletBalance(userId: string, chainId?: number) {
     return null;
   }
 
-  const balance = await getUsdcBalance(hotWallet.address, resolvedChainId);
-  return { balance, address: hotWallet.address };
+  const parsedHotWallet = parseHotWalletAddressProjection(hotWallet);
+  const balance = await getUsdcBalance(parsedHotWallet.address, resolvedChainId);
+  return { balance, address: parsedHotWallet.address };
 }
 
 /**
@@ -42,7 +49,7 @@ export async function getWalletBalance(userId: string, chainId?: number) {
  */
 export async function ensureHotWallet(userId: string, chainId?: number) {
   await connectDB();
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = parseObjectId(userId, "userId");
   const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
 
   const user = await User.findById(userObjectId).lean();
@@ -52,19 +59,29 @@ export async function ensureHotWallet(userId: string, chainId?: number) {
 
   const existingWallet = await HotWallet.findOne({ userId: userObjectId, chainId: resolvedChainId }).lean();
   if (existingWallet) {
-    return { address: existingWallet.address, userId: user._id.toString() };
+    const serialized = serializeHotWallet(existingWallet);
+    return { address: serialized.address, userId: serialized.userId };
   }
 
   const { address, encryptedPrivateKey } = createHotWalletKeys();
-
-  await HotWallet.create({
+  const parsedInput = validateCreateHotWalletInput({
     address,
     encryptedPrivateKey,
-    userId: userObjectId,
+    userId,
     chainId: resolvedChainId,
   });
 
-  return { address, userId: user._id.toString() };
+  await HotWallet.create({
+    address: parsedInput.address,
+    encryptedPrivateKey: parsedInput.encryptedPrivateKey,
+    userId: parseObjectId(parsedInput.userId, "userId"),
+    chainId: parsedInput.chainId ?? resolvedChainId,
+  });
+
+  return {
+    address: parsedInput.address,
+    userId: stringifyObjectId(user._id, "user._id"),
+  };
 }
 
 /**
@@ -73,21 +90,34 @@ export async function ensureHotWallet(userId: string, chainId?: number) {
  */
 export async function ensureAllHotWallets(userId: string): Promise<number> {
   await connectDB();
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = parseObjectId(userId, "userId");
 
   const user = await User.findById(userObjectId).lean();
   if (!user) return 0;
 
   const chains = getEnvironmentChains();
   const existingWallets = await HotWallet.find({ userId: userObjectId }).lean();
-  const existingChainIds = new Set(existingWallets.map((w) => w.chainId));
+  const existingChainIds = new Set(
+    serializeHotWallets(existingWallets).map((w) => w.chainId),
+  );
 
   const missing = chains.filter((c) => !existingChainIds.has(c.chain.id));
   if (missing.length === 0) return 0;
 
   const docs = missing.map((c) => {
     const { address, encryptedPrivateKey } = createHotWalletKeys();
-    return { address, encryptedPrivateKey, userId: userObjectId, chainId: c.chain.id };
+    const parsed = validateCreateHotWalletInput({
+      address,
+      encryptedPrivateKey,
+      userId,
+      chainId: c.chain.id,
+    });
+    return {
+      address: parsed.address,
+      encryptedPrivateKey: parsed.encryptedPrivateKey,
+      userId: userObjectId,
+      chainId: parsed.chainId ?? c.chain.id,
+    };
   });
 
   try {
@@ -126,11 +156,12 @@ export async function withdrawFromWallet(
 export async function getHotWallet(userId: string, chainId?: number) {
   await connectDB();
   const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
-  const doc = await HotWallet.findOne({ userId: new Types.ObjectId(userId), chainId: resolvedChainId })
+  const userObjectId = parseObjectId(userId, "userId");
+  const doc = await HotWallet.findOne({ userId: userObjectId, chainId: resolvedChainId })
     .select("-encryptedPrivateKey")
     .lean();
   if (!doc) return null;
-  return { ...doc, id: doc._id.toString() };
+  return serializeHotWallet(doc);
 }
 
 /**
@@ -140,9 +171,10 @@ export async function getHotWallet(userId: string, chainId?: number) {
 export async function getHotWalletWithKey(userId: string, chainId?: number) {
   await connectDB();
   const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
-  const doc = await HotWallet.findOne({ userId: new Types.ObjectId(userId), chainId: resolvedChainId }).lean();
+  const userObjectId = parseObjectId(userId, "userId");
+  const doc = await HotWallet.findOne({ userId: userObjectId, chainId: resolvedChainId }).lean();
   if (!doc) return null;
-  return { ...doc, id: doc._id.toString() };
+  return serializeHotWallet(doc);
 }
 
 /**
@@ -150,15 +182,11 @@ export async function getHotWalletWithKey(userId: string, chainId?: number) {
  */
 export async function getAllHotWallets(userId: string) {
   await connectDB();
-  const docs = await HotWallet.find({ userId: new Types.ObjectId(userId) })
+  const userObjectId = parseObjectId(userId, "userId");
+  const docs = await HotWallet.find({ userId: userObjectId })
     .select("-encryptedPrivateKey")
     .lean();
-  return docs.map((doc) => ({
-    ...doc,
-    id: doc._id.toString(),
-    address: doc.address,
-    chainId: doc.chainId,
-  }));
+  return serializeHotWallets(docs);
 }
 
 /**
@@ -167,7 +195,7 @@ export async function getAllHotWallets(userId: string) {
  */
 export async function getUserWithWalletAndPolicies(userId: string, chainId?: number) {
   await connectDB();
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = parseObjectId(userId, "userId");
   const resolvedChainId = chainId ?? DEFAULT_CHAIN_ID;
 
   const user = await User.findById(userObjectId).lean();
@@ -177,12 +205,12 @@ export async function getUserWithWalletAndPolicies(userId: string, chainId?: num
     .select("-encryptedPrivateKey")
     .lean();
   const endpointPolicies = await EndpointPolicy.find({ userId: userObjectId }).lean();
+  const serializedUser = serializeUser(user);
 
   return {
-    ...user,
-    id: user._id.toString(),
-    hotWallet: hotWallet ? { ...hotWallet, id: hotWallet._id.toString() } : null,
-    endpointPolicies: endpointPolicies.map((p) => ({ ...p, id: p._id.toString() })),
+    ...serializedUser,
+    hotWallet: hotWallet ? serializeHotWallet(hotWallet) : null,
+    endpointPolicies: serializeEndpointPolicies(endpointPolicies),
   };
 }
 
@@ -192,11 +220,12 @@ export async function getUserWithWalletAndPolicies(userId: string, chainId?: num
  */
 export async function upsertUser(walletAddress: string) {
   await connectDB();
+  const parsedInput = validateUpsertUserInput({ walletAddress });
 
-  let user = await User.findOne({ walletAddress });
+  let user = await User.findOne({ walletAddress: parsedInput.walletAddress });
 
   if (!user) {
-    user = await User.create({ walletAddress });
+    user = await User.create({ walletAddress: parsedInput.walletAddress });
     const hash = humanHash(user._id.toHexString());
     user.humanHash = hash;
     await user.save();
@@ -220,7 +249,8 @@ export async function findByHumanHash(hash: string): Promise<string | null> {
   await connectDB();
   const user = await User.findOne({ humanHash: hash }).lean();
   if (!user) return null;
-  return user._id.toString();
+  const parsed = parseUserIdProjection(user);
+  return stringifyObjectId(parsed._id, "user._id");
 }
 
 /**
@@ -229,7 +259,7 @@ export async function findByHumanHash(hash: string): Promise<string | null> {
  */
 export async function getUserHumanHash(userId: string): Promise<string | null> {
   await connectDB();
-  const user = await User.findById(new Types.ObjectId(userId)).lean();
+  const user = await User.findById(parseObjectId(userId, "userId")).lean();
   if (!user) return null;
-  return user.humanHash ?? null;
+  return serializeUser(user).humanHash;
 }

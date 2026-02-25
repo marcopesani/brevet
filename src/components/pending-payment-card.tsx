@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useSignTypedData, useAccount, useSwitchChain } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { authorizationTypes } from "@x402/evm";
@@ -37,6 +37,13 @@ export interface PendingPayment {
   asset?: string;
   chainId?: number;
   paymentRequirements: string;
+  paymentRequirementsParsed: {
+    isFullFormat: boolean;
+    accepts: PaymentRequirements[];
+    x402Version: number;
+    resource: { url: string; description: string; mimeType: string };
+    extensions?: unknown;
+  };
   status: string;
   expiresAt: string;
   createdAt: string;
@@ -109,14 +116,7 @@ export default function PendingPaymentCard({
   const { activeChain } = useChain();
   const remaining = useCountdown(payment.expiresAt);
   const isExpired = remaining <= 0;
-
-  const parsedRequirements = useMemo(() => {
-    try {
-      return JSON.parse(payment.paymentRequirements);
-    } catch {
-      return null;
-    }
-  }, [payment.paymentRequirements]);
+  const parsedRequirements = payment.paymentRequirementsParsed;
 
   // Use the payment's stored chainId if available, otherwise fall back to active chain
   const paymentChainConfig = payment.chainId !== undefined
@@ -133,7 +133,7 @@ export default function PendingPaymentCard({
     setActionInProgress("approve");
     try {
       const requirements: PaymentRequirements[] = parsedRequirements
-        ? (Array.isArray(parsedRequirements) ? parsedRequirements : parsedRequirements.accepts)
+        ? parsedRequirements.accepts
         : [];
       const acceptedNetworks = getNetworkIdentifiers(paymentChainConfig);
       const requirement = requirements.find(
@@ -238,7 +238,7 @@ export default function PendingPaymentCard({
 
   // Display amount from requirement (amountRaw + asset) or legacy payment.amount
   const requirements: PaymentRequirements[] = parsedRequirements
-    ? (Array.isArray(parsedRequirements) ? parsedRequirements : parsedRequirements.accepts ?? [])
+    ? parsedRequirements.accepts ?? []
     : [];
   const acceptedNetworks = getNetworkIdentifiers(paymentChainConfig);
   const displayRequirement = requirements.find(

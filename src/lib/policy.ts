@@ -1,6 +1,7 @@
 import { connectDB } from "@/lib/db";
 import { EndpointPolicy, IEndpointPolicyDocument } from "@/lib/models/endpoint-policy";
 import { Types } from "mongoose";
+import { stringifyObjectId } from "@/lib/models/zod";
 
 export type PolicyAction = "auto_sign" | "manual_approval" | "rejected";
 
@@ -105,7 +106,7 @@ export async function checkPolicy(
   }
 
   const result = {
-    policyId: policy._id.toString(),
+    policyId: stringifyObjectId(policy._id, "endpointPolicy._id"),
     autoSign: policy.autoSign,
   };
 

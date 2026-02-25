@@ -1,19 +1,22 @@
-import { EndpointPolicy } from "@/lib/models/endpoint-policy";
-import { Types } from "mongoose";
+import {
+  EndpointPolicy,
+  parseEndpointPolicyId,
+  serializeEndpointPolicies,
+  serializeEndpointPolicy,
+  validateCreateEndpointPolicyInput,
+  validateUpdateEndpointPolicyInput,
+} from "@/lib/models/endpoint-policy";
+import { parseObjectId } from "@/lib/models/zod";
 import { connectDB } from "@/lib/db";
-
-/** Map a lean Mongoose doc to an object with string `id`. */
-function withId<T extends { _id: Types.ObjectId }>(doc: T): Omit<T, "_id"> & { id: string } {
-  const { _id, ...rest } = doc;
-  return { ...rest, id: _id.toString() };
-}
 
 /**
  * Get endpoint policies for a user, optionally filtered by status and/or chainId.
  */
 export async function getPolicies(userId: string, status?: string, options?: { chainId?: number }) {
   await connectDB();
-  const filter: Record<string, unknown> = { userId: new Types.ObjectId(userId) };
+  const filter: Record<string, unknown> = {
+    userId: parseObjectId(userId, "userId"),
+  };
   if (status) {
     filter.status = status;
   }
@@ -24,7 +27,7 @@ export async function getPolicies(userId: string, status?: string, options?: { c
     .select("-userId")
     .sort({ createdAt: -1 })
     .lean();
-  return docs.map(withId);
+  return serializeEndpointPolicies(docs);
 }
 
 /**
@@ -32,8 +35,9 @@ export async function getPolicies(userId: string, status?: string, options?: { c
  */
 export async function getPolicy(policyId: string) {
   await connectDB();
-  const doc = await EndpointPolicy.findById(policyId).lean();
-  return doc ? withId(doc) : null;
+  const policyObjectId = parseEndpointPolicyId(policyId);
+  const doc = await EndpointPolicy.findById(policyObjectId).lean();
+  return doc ? serializeEndpointPolicy(doc) : null;
 }
 
 /**
@@ -74,14 +78,18 @@ export async function createPolicy(
   }
 
   await connectDB();
-  const userObjectId = new Types.ObjectId(userId);
+  const parsedInput = validateCreateEndpointPolicyInput({
+    userId,
+    ...data,
+  });
+  const userObjectId = parseObjectId(parsedInput.userId, "userId");
 
   const existingFilter: Record<string, unknown> = {
     userId: userObjectId,
-    endpointPattern: data.endpointPattern,
+    endpointPattern: parsedInput.endpointPattern,
   };
-  if (data.chainId !== undefined) {
-    existingFilter.chainId = data.chainId;
+  if (parsedInput.chainId !== undefined) {
+    existingFilter.chainId = parsedInput.chainId;
   }
 
   const existing = await EndpointPolicy.findOne(existingFilter).lean();
@@ -92,13 +100,12 @@ export async function createPolicy(
 
   const doc = await EndpointPolicy.create({
     userId: userObjectId,
-    endpointPattern: data.endpointPattern,
-    ...(data.autoSign !== undefined && { autoSign: data.autoSign }),
-    ...(data.status !== undefined && { status: data.status }),
-    ...(data.chainId !== undefined && { chainId: data.chainId }),
+    endpointPattern: parsedInput.endpointPattern,
+    ...(parsedInput.autoSign !== undefined && { autoSign: parsedInput.autoSign }),
+    ...(parsedInput.status !== undefined && { status: parsedInput.status }),
+    ...(parsedInput.chainId !== undefined && { chainId: parsedInput.chainId }),
   });
-  const lean = doc.toObject();
-  return withId(lean);
+  return serializeEndpointPolicy(doc.toObject());
 }
 
 /**
@@ -116,12 +123,16 @@ export async function updatePolicy(
   },
 ) {
   await connectDB();
-  if (data.endpointPattern !== undefined) {
-    const existing = await EndpointPolicy.findById(policyId).lean();
-    if (existing && data.endpointPattern !== existing.endpointPattern) {
+  const policyObjectId = parseEndpointPolicyId(policyId);
+  const userObjectId = parseObjectId(userId, "userId");
+  const parsedInput = validateUpdateEndpointPolicyInput(data);
+
+  if (parsedInput.endpointPattern !== undefined) {
+    const existing = await EndpointPolicy.findById(policyObjectId).lean();
+    if (existing && parsedInput.endpointPattern !== existing.endpointPattern) {
       const conflict = await EndpointPolicy.findOne({
-        userId: new Types.ObjectId(userId),
-        endpointPattern: data.endpointPattern,
+        userId: userObjectId,
+        endpointPattern: parsedInput.endpointPattern,
         chainId: existing.chainId,
       }).lean();
       if (conflict) {
@@ -131,16 +142,18 @@ export async function updatePolicy(
   }
 
   const updateData: Record<string, unknown> = {};
-  if (data.endpointPattern !== undefined) updateData.endpointPattern = data.endpointPattern;
-  if (data.autoSign !== undefined) updateData.autoSign = data.autoSign;
-  if (data.status !== undefined) updateData.status = data.status;
+  if (parsedInput.endpointPattern !== undefined) {
+    updateData.endpointPattern = parsedInput.endpointPattern;
+  }
+  if (parsedInput.autoSign !== undefined) updateData.autoSign = parsedInput.autoSign;
+  if (parsedInput.status !== undefined) updateData.status = parsedInput.status;
 
   const doc = await EndpointPolicy.findByIdAndUpdate(
-    policyId,
+    policyObjectId,
     { $set: updateData },
-    { returnDocument: "after" },
+    { returnDocument: "after", runValidators: true },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializeEndpointPolicy(doc) : null;
 }
 
 /**
@@ -149,12 +162,14 @@ export async function updatePolicy(
  */
 export async function activatePolicy(policyId: string, userId: string) {
   await connectDB();
+  const policyObjectId = parseEndpointPolicyId(policyId);
+  const userObjectId = parseObjectId(userId, "userId");
   const doc = await EndpointPolicy.findOneAndUpdate(
-    { _id: policyId, userId: new Types.ObjectId(userId) },
+    { _id: policyObjectId, userId: userObjectId },
     { $set: { status: "active" } },
-    { returnDocument: "after" },
+    { returnDocument: "after", runValidators: true },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializeEndpointPolicy(doc) : null;
 }
 
 /**
@@ -163,12 +178,14 @@ export async function activatePolicy(policyId: string, userId: string) {
  */
 export async function toggleAutoSign(policyId: string, userId: string, autoSign: boolean) {
   await connectDB();
+  const policyObjectId = parseEndpointPolicyId(policyId);
+  const userObjectId = parseObjectId(userId, "userId");
   const doc = await EndpointPolicy.findOneAndUpdate(
-    { _id: policyId, userId: new Types.ObjectId(userId) },
+    { _id: policyObjectId, userId: userObjectId },
     { $set: { autoSign } },
-    { returnDocument: "after" },
+    { returnDocument: "after", runValidators: true },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializeEndpointPolicy(doc) : null;
 }
 
 /**
@@ -177,12 +194,14 @@ export async function toggleAutoSign(policyId: string, userId: string, autoSign:
  */
 export async function archivePolicy(policyId: string, userId: string) {
   await connectDB();
+  const policyObjectId = parseEndpointPolicyId(policyId);
+  const userObjectId = parseObjectId(userId, "userId");
   const doc = await EndpointPolicy.findOneAndUpdate(
-    { _id: policyId, userId: new Types.ObjectId(userId) },
+    { _id: policyObjectId, userId: userObjectId },
     { $set: { status: "archived", archivedAt: new Date() } },
-    { returnDocument: "after" },
+    { returnDocument: "after", runValidators: true },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializeEndpointPolicy(doc) : null;
 }
 
 /**
@@ -191,10 +210,12 @@ export async function archivePolicy(policyId: string, userId: string) {
  */
 export async function unarchivePolicy(policyId: string, userId: string) {
   await connectDB();
+  const policyObjectId = parseEndpointPolicyId(policyId);
+  const userObjectId = parseObjectId(userId, "userId");
   const doc = await EndpointPolicy.findOneAndUpdate(
-    { _id: policyId, userId: new Types.ObjectId(userId) },
+    { _id: policyObjectId, userId: userObjectId },
     { $set: { status: "draft", archivedAt: null } },
-    { returnDocument: "after" },
+    { returnDocument: "after", runValidators: true },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializeEndpointPolicy(doc) : null;
 }

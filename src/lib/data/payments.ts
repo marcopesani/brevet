@@ -1,20 +1,23 @@
-import { PendingPayment } from "@/lib/models/pending-payment";
-import { Types } from "mongoose";
+import {
+  PendingPayment,
+  parsePendingPaymentId,
+  serializePendingPayment,
+  serializePendingPayments,
+  validateCompletePendingPaymentInput,
+  validateCreatePendingPaymentInput,
+  validateFailPendingPaymentInput,
+} from "@/lib/models/pending-payment";
+import { parseObjectId } from "@/lib/models/zod";
 import { connectDB } from "@/lib/db";
-
-/** Map a lean Mongoose doc to an object with string `id` and `userId`. */
-function withId<T extends { _id: Types.ObjectId; userId?: Types.ObjectId }>(doc: T): Omit<T, "_id" | "userId"> & { id: string; userId: string } {
-  const { _id, userId, ...rest } = doc;
-  return { ...rest, id: _id.toString(), userId: userId ? userId.toString() : _id.toString() };
-}
 
 /**
  * Get all pending (non-expired) payments for a user.
  */
 export async function getPendingPayments(userId: string, options?: { chainId?: number }) {
   await connectDB();
+  const userObjectId = parseObjectId(userId, "userId");
   const filter: Record<string, unknown> = {
-    userId: new Types.ObjectId(userId),
+    userId: userObjectId,
     status: "pending",
     expiresAt: { $gt: new Date() },
   };
@@ -24,7 +27,7 @@ export async function getPendingPayments(userId: string, options?: { chainId?: n
   const docs = await PendingPayment.find(filter)
     .sort({ createdAt: -1 })
     .lean();
-  return docs.map(withId);
+  return serializePendingPayments(docs);
 }
 
 /**
@@ -32,8 +35,9 @@ export async function getPendingPayments(userId: string, options?: { chainId?: n
  */
 export async function getPendingCount(userId: string, options?: { chainId?: number }) {
   await connectDB();
+  const userObjectId = parseObjectId(userId, "userId");
   const filter: Record<string, unknown> = {
-    userId: new Types.ObjectId(userId),
+    userId: userObjectId,
     status: "pending",
     expiresAt: { $gt: new Date() },
   };
@@ -48,11 +52,13 @@ export async function getPendingCount(userId: string, options?: { chainId?: numb
  */
 export async function getPendingPayment(paymentId: string, userId: string) {
   await connectDB();
+  const paymentObjectId = parsePendingPaymentId(paymentId);
+  const userObjectId = parseObjectId(userId, "userId");
   const doc = await PendingPayment.findOne({
-    _id: paymentId,
-    userId: new Types.ObjectId(userId),
+    _id: paymentObjectId,
+    userId: userObjectId,
   }).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }
 
 /**
@@ -73,21 +79,21 @@ export async function createPendingPayment(data: {
   headers?: Record<string, string>;
 }) {
   await connectDB();
+  const parsed = validateCreatePendingPaymentInput(data);
   const doc = await PendingPayment.create({
-    userId: new Types.ObjectId(data.userId),
-    url: data.url,
-    method: data.method ?? "GET",
-    amount: data.amount ?? 0,
-    ...(data.amountRaw !== undefined && data.amountRaw !== "" && { amountRaw: data.amountRaw }),
-    ...(data.asset !== undefined && data.asset !== "" && { asset: data.asset }),
-    ...(data.chainId !== undefined && { chainId: data.chainId }),
-    paymentRequirements: data.paymentRequirements,
-    expiresAt: data.expiresAt,
-    requestBody: data.body ?? null,
-    requestHeaders: data.headers ? JSON.stringify(data.headers) : null,
+    userId: parseObjectId(parsed.userId, "userId"),
+    url: parsed.url,
+    method: parsed.method ?? "GET",
+    amount: parsed.amount ?? 0,
+    ...(parsed.amountRaw !== undefined && parsed.amountRaw !== "" && { amountRaw: parsed.amountRaw }),
+    ...(parsed.asset !== undefined && parsed.asset !== "" && { asset: parsed.asset }),
+    ...(parsed.chainId !== undefined && { chainId: parsed.chainId }),
+    paymentRequirements: parsed.paymentRequirements,
+    expiresAt: parsed.expiresAt,
+    requestBody: parsed.body ?? null,
+    requestHeaders: parsed.headers ? JSON.stringify(parsed.headers) : null,
   });
-  const lean = doc.toObject();
-  return withId(lean);
+  return serializePendingPayment(doc.toObject());
 }
 
 /**
@@ -95,11 +101,13 @@ export async function createPendingPayment(data: {
  */
 export async function getPendingPaymentById(paymentId: string, userId: string) {
   await connectDB();
+  const paymentObjectId = parsePendingPaymentId(paymentId);
+  const userObjectId = parseObjectId(userId, "userId");
   const doc = await PendingPayment.findOne({
-    _id: paymentId,
-    userId: new Types.ObjectId(userId),
+    _id: paymentObjectId,
+    userId: userObjectId,
   }).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }
 
 /**
@@ -118,20 +126,23 @@ export async function completePendingPayment(
   },
 ) {
   await connectDB();
+  const paymentObjectId = parsePendingPaymentId(paymentId);
+  const userObjectId = parseObjectId(userId, "userId");
+  const parsed = validateCompletePendingPaymentInput(data);
   const doc = await PendingPayment.findOneAndUpdate(
-    { _id: paymentId, status: "approved", userId: new Types.ObjectId(userId) },
+    { _id: paymentObjectId, status: "approved", userId: userObjectId },
     {
       $set: {
         status: "completed",
-        responsePayload: data.responsePayload,
-        responseStatus: data.responseStatus,
-        txHash: data.txHash ?? null,
+        responsePayload: parsed.responsePayload,
+        responseStatus: parsed.responseStatus,
+        txHash: parsed.txHash ?? null,
         completedAt: new Date(),
       },
     },
-    { returnDocument: "after" },
+    { returnDocument: "after", runValidators: true },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }
 
 /**
@@ -150,19 +161,22 @@ export async function failPendingPayment(
   },
 ) {
   await connectDB();
+  const paymentObjectId = parsePendingPaymentId(paymentId);
+  const userObjectId = parseObjectId(userId, "userId");
+  const parsed = validateFailPendingPaymentInput(data);
   const doc = await PendingPayment.findOneAndUpdate(
-    { _id: paymentId, status: "approved", userId: new Types.ObjectId(userId) },
+    { _id: paymentObjectId, status: "approved", userId: userObjectId },
     {
       $set: {
         status: "failed",
-        responsePayload: data.responsePayload ?? data.error ?? null,
-        responseStatus: data.responseStatus ?? null,
+        responsePayload: parsed.responsePayload ?? parsed.error ?? null,
+        responseStatus: parsed.responseStatus ?? null,
         completedAt: new Date(),
       },
     },
-    { returnDocument: "after" },
+    { returnDocument: "after", runValidators: true },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }
 
 /**
@@ -173,12 +187,14 @@ export async function failPendingPayment(
  */
 export async function approvePendingPayment(paymentId: string, userId: string, signature: string) {
   await connectDB();
+  const paymentObjectId = parsePendingPaymentId(paymentId);
+  const userObjectId = parseObjectId(userId, "userId");
   const doc = await PendingPayment.findOneAndUpdate(
-    { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
+    { _id: paymentObjectId, status: "pending", userId: userObjectId },
     { $set: { status: "approved", signature } },
-    { returnDocument: "after" },
+    { returnDocument: "after", runValidators: true },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }
 
 /**
@@ -189,12 +205,14 @@ export async function approvePendingPayment(paymentId: string, userId: string, s
  */
 export async function rejectPendingPayment(paymentId: string, userId: string) {
   await connectDB();
+  const paymentObjectId = parsePendingPaymentId(paymentId);
+  const userObjectId = parseObjectId(userId, "userId");
   const doc = await PendingPayment.findOneAndUpdate(
-    { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
+    { _id: paymentObjectId, status: "pending", userId: userObjectId },
     { $set: { status: "rejected" } },
-    { returnDocument: "after" },
+    { returnDocument: "after", runValidators: true },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }
 
 /**
@@ -205,10 +223,12 @@ export async function rejectPendingPayment(paymentId: string, userId: string) {
  */
 export async function expirePendingPayment(paymentId: string, userId: string) {
   await connectDB();
+  const paymentObjectId = parsePendingPaymentId(paymentId);
+  const userObjectId = parseObjectId(userId, "userId");
   const doc = await PendingPayment.findOneAndUpdate(
-    { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
+    { _id: paymentObjectId, status: "pending", userId: userObjectId },
     { $set: { status: "expired" } },
-    { returnDocument: "after" },
+    { returnDocument: "after", runValidators: true },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? serializePendingPayment(doc) : null;
 }

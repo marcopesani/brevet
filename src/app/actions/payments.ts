@@ -59,15 +59,8 @@ export async function approvePendingPayment(
     throw new Error("Payment has expired");
   }
 
-  const storedPaymentRequired = JSON.parse(payment.paymentRequirements);
-
-  // Backward compat: old records stored just the accepts array, new records store full PaymentRequired
-  const isFullFormat = !Array.isArray(storedPaymentRequired) && storedPaymentRequired.accepts;
-  const accepts = isFullFormat
-    ? storedPaymentRequired.accepts
-    : Array.isArray(storedPaymentRequired)
-      ? storedPaymentRequired
-      : [storedPaymentRequired];
+  const requirementData = payment.paymentRequirementsParsed;
+  const accepts = requirementData.accepts;
 
   // Resolve the requirement that matches the payment's chainId (same logic as the card)
   const chainId = payment.chainId ?? getDefaultChainConfig().chain.id;
@@ -90,11 +83,9 @@ export async function approvePendingPayment(
   const amountForTx = parseFloat(displayAmount) || 0;
   logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: amountForTx });
 
-  const x402Version = isFullFormat ? (storedPaymentRequired.x402Version ?? 1) : 1;
-  const resource = isFullFormat
-    ? storedPaymentRequired.resource
-    : { url: payment.url, description: "", mimeType: "" };
-  const extensions = isFullFormat ? storedPaymentRequired.extensions : undefined;
+  const x402Version = requirementData.x402Version;
+  const resource = requirementData.resource;
+  const extensions = requirementData.extensions;
 
   const paymentPayload: PaymentPayload = {
     x402Version,
@@ -117,9 +108,7 @@ export async function approvePendingPayment(
   const paymentHeaders = buildPaymentHeaders(paymentPayload);
 
   // Include stored request headers and body in the paid fetch
-  const storedHeaders: Record<string, string> = payment.requestHeaders
-    ? JSON.parse(payment.requestHeaders)
-    : {};
+  const storedHeaders = payment.requestHeadersParsed;
 
   try {
     const paidResponse = await safeFetch(payment.url, {

@@ -31,19 +31,10 @@ export function registerX402GetResult(
         }
 
         if (payment.status === "completed") {
-          let data: unknown = payment.responsePayload;
-          if (typeof payment.responsePayload === "string") {
-            try {
-              data = JSON.parse(payment.responsePayload);
-            } catch {
-              // Not JSON, keep as text
-            }
-          }
-
           return jsonContent({
             status: "completed",
             responseStatus: payment.responseStatus,
-            data,
+            data: payment.responsePayloadParsed,
             txHash: payment.txHash,
           });
         }
