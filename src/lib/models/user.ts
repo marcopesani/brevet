@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 import { z } from "zod/v4";
-import { objectIdSchema, objectIdStringSchema, parseObjectId, stringifyObjectId } from "@/lib/models/zod";
+import { objectIdSchema, parseObjectId, stringifyObjectId } from "@/lib/models/zod";
 
 export interface IUser {
   _id: Types.ObjectId;
