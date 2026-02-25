@@ -1,6 +1,6 @@
-import { Transaction } from "@/lib/models/transaction";
-import { Types } from "mongoose";
+import { Transaction, serializeTransaction } from "@/lib/models/transaction";
 import { connectDB } from "@/lib/db";
+import { toObjectId } from "@/lib/models/zod-utils";
 
 export interface AnalyticsSummary {
   today: number;
@@ -40,7 +40,7 @@ export async function getAnalytics(userId: string, options?: { chainId?: number 
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const txFilter: Record<string, unknown> = {
-    userId: new Types.ObjectId(userId),
+    userId: toObjectId(userId, "userId"),
     type: "payment",
     createdAt: { $gte: thirtyDaysAgo },
   };
@@ -49,8 +49,8 @@ export async function getAnalytics(userId: string, options?: { chainId?: number 
   }
 
   const transactions = await Transaction.find(txFilter)
-    .sort({ createdAt: 1 })
-    .lean();
+    .sort({ createdAt: 1 });
+  const serializedTransactions = transactions.map((tx) => serializeTransaction(tx));
 
   const dailyMap = new Map<string, number>();
 
@@ -66,7 +66,7 @@ export async function getAnalytics(userId: string, options?: { chainId?: number 
   let thisMonth = 0;
   let totalAmount = 0;
 
-  for (const tx of transactions) {
+  for (const tx of serializedTransactions) {
     const dateKey = tx.createdAt.toISOString().split("T")[0];
     dailyMap.set(dateKey, (dailyMap.get(dateKey) ?? 0) + tx.amount);
 
@@ -92,10 +92,10 @@ export async function getAnalytics(userId: string, options?: { chainId?: number 
     today: Math.round(today * 100) / 100,
     thisWeek: Math.round(thisWeek * 100) / 100,
     thisMonth: Math.round(thisMonth * 100) / 100,
-    totalTransactions: transactions.length,
+    totalTransactions: serializedTransactions.length,
     avgPaymentSize:
-      transactions.length > 0
-        ? Math.round((totalAmount / transactions.length) * 100) / 100
+      serializedTransactions.length > 0
+        ? Math.round((totalAmount / serializedTransactions.length) * 100) / 100
         : 0,
   };
 

@@ -19,6 +19,11 @@ import { getRequirementAmount } from "@/lib/x402/requirements";
 import { getChainById, getDefaultChainConfig, getNetworkIdentifiers } from "@/lib/chain-config";
 import { logger } from "@/lib/logger";
 import { safeFetch } from "@/lib/safe-fetch";
+import {
+  deserializePendingPaymentRequestHeaders,
+  deserializePendingPaymentRequirements,
+} from "@/lib/models/pending-payment";
+import { deserializeTransactionResponsePayload } from "@/lib/models/transaction";
 import type { Hex } from "viem";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 
@@ -59,12 +64,16 @@ export async function approvePendingPayment(
     throw new Error("Payment has expired");
   }
 
-  const storedPaymentRequired = JSON.parse(payment.paymentRequirements);
+  const storedPaymentRequired = deserializePendingPaymentRequirements(
+    payment.paymentRequirements,
+  ) as Record<string, unknown> | unknown[];
 
   // Backward compat: old records stored just the accepts array, new records store full PaymentRequired
-  const isFullFormat = !Array.isArray(storedPaymentRequired) && storedPaymentRequired.accepts;
+  const isFullFormat =
+    !Array.isArray(storedPaymentRequired) &&
+    "accepts" in storedPaymentRequired;
   const accepts = isFullFormat
-    ? storedPaymentRequired.accepts
+    ? (storedPaymentRequired.accepts as unknown[])
     : Array.isArray(storedPaymentRequired)
       ? storedPaymentRequired
       : [storedPaymentRequired];
@@ -90,11 +99,15 @@ export async function approvePendingPayment(
   const amountForTx = parseFloat(displayAmount) || 0;
   logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: amountForTx });
 
-  const x402Version = isFullFormat ? (storedPaymentRequired.x402Version ?? 1) : 1;
+  const x402Version = isFullFormat
+    ? ((storedPaymentRequired.x402Version as number | undefined) ?? 1)
+    : 1;
   const resource = isFullFormat
-    ? storedPaymentRequired.resource
+    ? (storedPaymentRequired.resource as PaymentPayload["resource"])
     : { url: payment.url, description: "", mimeType: "" };
-  const extensions = isFullFormat ? storedPaymentRequired.extensions : undefined;
+  const extensions = isFullFormat
+    ? (storedPaymentRequired.extensions as PaymentPayload["extensions"])
+    : undefined;
 
   const paymentPayload: PaymentPayload = {
     x402Version,
@@ -117,9 +130,8 @@ export async function approvePendingPayment(
   const paymentHeaders = buildPaymentHeaders(paymentPayload);
 
   // Include stored request headers and body in the paid fetch
-  const storedHeaders: Record<string, string> = payment.requestHeaders
-    ? JSON.parse(payment.requestHeaders)
-    : {};
+  const storedHeaders: Record<string, string> =
+    deserializePendingPaymentRequestHeaders(payment.requestHeaders);
 
   try {
     const paidResponse = await safeFetch(payment.url, {
@@ -184,11 +196,7 @@ export async function approvePendingPayment(
     let responseData: unknown = null;
     const contentType = paidResponse.headers.get("content-type") ?? "";
     if (contentType.includes("application/json")) {
-      try {
-        responseData = JSON.parse(responsePayload ?? "");
-      } catch {
-        responseData = responsePayload;
-      }
+      responseData = deserializeTransactionResponsePayload(responsePayload);
     } else {
       responseData = responsePayload;
     }

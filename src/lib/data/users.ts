@@ -1,7 +1,12 @@
 import { randomBytes, createHash } from "crypto";
-import { Types } from "mongoose";
 import { User } from "@/lib/models/user";
 import { connectDB } from "@/lib/db";
+import {
+  serializeUser,
+  serializeUserWithSecrets,
+  validateUserApiKeyUpdate,
+} from "@/lib/models/user";
+import { toObjectId } from "@/lib/models/zod-utils";
 
 const API_KEY_PREFIX = "brv_";
 
@@ -24,25 +29,33 @@ export async function ensureApiKey(
   userId: string,
 ): Promise<{ created: true; rawKey: string } | { created: false }> {
   await connectDB();
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = toObjectId(userId, "userId");
 
-  const user = await User.findById(userObjectId).select("apiKeyHash").lean();
+  const user = await User.findById(userObjectId);
   if (!user) {
     throw new Error(`User not found: ${userId}`);
   }
+  const serialized = serializeUserWithSecrets(user);
 
-  if (user.apiKeyHash) {
+  if (serialized.apiKeyHash) {
     return { created: false };
   }
 
   const rawKey = generateApiKey();
-  const hash = hashApiKey(rawKey);
-  const prefix = rawKey.slice(0, 8);
+  const validated = validateUserApiKeyUpdate({
+    apiKeyHash: hashApiKey(rawKey),
+    apiKeyPrefix: rawKey.slice(0, 8),
+  });
 
   try {
     const result = await User.updateOne(
       { _id: userObjectId, apiKeyHash: null },
-      { $set: { apiKeyHash: hash, apiKeyPrefix: prefix } },
+      {
+        $set: {
+          apiKeyHash: validated.apiKeyHash,
+          apiKeyPrefix: validated.apiKeyPrefix,
+        },
+      },
     );
 
     if (result.modifiedCount === 0) {
@@ -74,12 +87,12 @@ export async function getUserByApiKey(
   await connectDB();
   const hash = hashApiKey(rawKey);
 
-  const user = await User.findOne({ apiKeyHash: hash }).select("_id").lean();
+  const user = await User.findOne({ apiKeyHash: hash });
   if (!user) {
     return null;
   }
 
-  return { userId: user._id.toString() };
+  return { userId: serializeUser(user).id };
 }
 
 /**
@@ -90,15 +103,22 @@ export async function rotateApiKey(
   userId: string,
 ): Promise<{ rawKey: string }> {
   await connectDB();
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = toObjectId(userId, "userId");
 
   const rawKey = generateApiKey();
-  const hash = hashApiKey(rawKey);
-  const prefix = rawKey.slice(0, 8);
+  const validated = validateUserApiKeyUpdate({
+    apiKeyHash: hashApiKey(rawKey),
+    apiKeyPrefix: rawKey.slice(0, 8),
+  });
 
   const result = await User.updateOne(
     { _id: userObjectId },
-    { $set: { apiKeyHash: hash, apiKeyPrefix: prefix } },
+    {
+      $set: {
+        apiKeyHash: validated.apiKeyHash,
+        apiKeyPrefix: validated.apiKeyPrefix,
+      },
+    },
   );
 
   if (result.matchedCount === 0) {
@@ -116,15 +136,13 @@ export async function getApiKeyPrefix(
   userId: string,
 ): Promise<string | null> {
   await connectDB();
-  const userObjectId = new Types.ObjectId(userId);
+  const userObjectId = toObjectId(userId, "userId");
 
-  const user = await User.findById(userObjectId)
-    .select("apiKeyPrefix")
-    .lean();
+  const user = await User.findById(userObjectId);
 
   if (!user) {
     return null;
   }
 
-  return user.apiKeyPrefix ?? null;
+  return serializeUser(user).apiKeyPrefix ?? null;
 }

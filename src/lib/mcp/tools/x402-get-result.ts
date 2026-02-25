@@ -4,6 +4,7 @@ import {
   getPendingPayment,
   expirePendingPayment,
 } from "@/lib/data/payments";
+import { deserializePendingPaymentResponsePayload } from "@/lib/models/pending-payment";
 import { textContent, jsonContent, toolError } from "../shared";
 
 export function registerX402GetResult(
@@ -31,14 +32,9 @@ export function registerX402GetResult(
         }
 
         if (payment.status === "completed") {
-          let data: unknown = payment.responsePayload;
-          if (typeof payment.responsePayload === "string") {
-            try {
-              data = JSON.parse(payment.responsePayload);
-            } catch {
-              // Not JSON, keep as text
-            }
-          }
+          const data = deserializePendingPaymentResponsePayload(
+            payment.responsePayload,
+          );
 
           return jsonContent({
             status: "completed",

@@ -1,4 +1,9 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { z } from "zod/v4";
+import {
+  dateLikeSchema,
+  objectIdLikeSchema,
+} from "@/lib/models/zod-utils";
 
 export interface IUser {
   _id: Types.ObjectId;
@@ -13,6 +18,116 @@ export interface IUser {
 }
 
 export interface IUserDocument extends Omit<IUser, "_id">, Document {}
+
+export interface UserSerialized {
+  id: string;
+  email: string | null;
+  walletAddress: string | null;
+  humanHash: string | null;
+  apiKeyPrefix: string | null;
+  enabledChains: number[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface UserSerializedWithSecrets extends UserSerialized {
+  apiKeyHash: string | null;
+}
+
+const userReadSchema = z.object({
+  _id: objectIdLikeSchema,
+  email: z.string().nullable(),
+  walletAddress: z.string().nullable(),
+  humanHash: z.string().nullable(),
+  apiKeyHash: z.string().nullable(),
+  apiKeyPrefix: z.string().nullable(),
+  enabledChains: z.array(z.number().int()),
+  createdAt: dateLikeSchema,
+  updatedAt: dateLikeSchema,
+});
+
+const userPublicSchema = z.object({
+  id: z.string(),
+  email: z.string().nullable(),
+  walletAddress: z.string().nullable(),
+  humanHash: z.string().nullable(),
+  apiKeyPrefix: z.string().nullable(),
+  enabledChains: z.array(z.number().int()),
+  createdAt: z.date(),
+  updatedAt: z.date(),
+});
+
+const userWithSecretsSchema = userPublicSchema.extend({
+  apiKeyHash: z.string().nullable(),
+});
+
+const userCreateInputSchema = z.object({
+  email: z.string().email().nullable().optional(),
+  walletAddress: z.string().min(1).nullable().optional(),
+  humanHash: z.string().min(1).nullable().optional(),
+  apiKeyHash: z.string().min(1).nullable().optional(),
+  apiKeyPrefix: z.string().min(1).nullable().optional(),
+  enabledChains: z.array(z.number().int()).optional(),
+});
+
+const userEnabledChainsUpdateSchema = z.object({
+  enabledChains: z.array(z.number().int()),
+});
+
+const userApiKeyUpdateSchema = z.object({
+  apiKeyHash: z.string().min(1),
+  apiKeyPrefix: z.string().min(1),
+});
+
+export type UserCreateInput = z.output<typeof userCreateInputSchema>;
+
+/** Validate user creation/upsert payload. */
+export function validateUserCreateInput(input: unknown): UserCreateInput {
+  return userCreateInputSchema.parse(input);
+}
+
+/** Validate enabled-chains update payload. */
+export function validateUserEnabledChainsUpdate(input: unknown): z.output<
+  typeof userEnabledChainsUpdateSchema
+> {
+  return userEnabledChainsUpdateSchema.parse(input);
+}
+
+/** Validate API-key update payload. */
+export function validateUserApiKeyUpdate(input: unknown): z.output<
+  typeof userApiKeyUpdateSchema
+> {
+  return userApiKeyUpdateSchema.parse(input);
+}
+
+/** Serialize and validate a user document for public app-layer usage. */
+export function serializeUser(input: unknown): UserSerialized {
+  const parsed = userReadSchema.parse(input);
+  return userPublicSchema.parse({
+    id: parsed._id,
+    email: parsed.email,
+    walletAddress: parsed.walletAddress,
+    humanHash: parsed.humanHash,
+    apiKeyPrefix: parsed.apiKeyPrefix,
+    enabledChains: parsed.enabledChains,
+    createdAt: parsed.createdAt,
+    updatedAt: parsed.updatedAt,
+  });
+}
+
+/**
+ * Serialize and validate a user document including API-key hash.
+ * Use only on trusted server-side paths that need secret key material.
+ */
+export function serializeUserWithSecrets(
+  input: unknown,
+): UserSerializedWithSecrets {
+  const parsed = userReadSchema.parse(input);
+  return userWithSecretsSchema.parse({
+    ...serializeUser(parsed),
+    apiKeyHash: parsed.apiKeyHash,
+  });
+}
 
 const userSchema = new Schema<IUserDocument>(
   {
@@ -33,6 +148,16 @@ const userSchema = new Schema<IUserDocument>(
 
 userSchema.virtual("id").get(function () {
   return this._id.toString();
+});
+
+userSchema.set("toJSON", {
+  virtuals: true,
+  transform: (_doc, ret) => serializeUser(ret),
+});
+
+userSchema.set("toObject", {
+  virtuals: true,
+  transform: (_doc, ret) => serializeUser(ret),
 });
 
 userSchema.index(

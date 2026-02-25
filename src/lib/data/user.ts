@@ -1,8 +1,12 @@
 import { cache } from "react";
 import { User } from "@/lib/models/user";
 import { CHAIN_CONFIGS } from "@/lib/chain-config";
-import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
+import {
+  serializeUser,
+  validateUserEnabledChainsUpdate,
+} from "@/lib/models/user";
+import { toObjectId } from "@/lib/models/zod-utils";
 
 /**
  * Get the list of enabled chain IDs for a user.
@@ -12,10 +16,9 @@ import { connectDB } from "@/lib/db";
 export const getUserEnabledChains = cache(
   async (userId: string): Promise<number[]> => {
     await connectDB();
-    const user = await User.findById(new Types.ObjectId(userId))
-      .select("enabledChains")
-      .lean();
-    return user?.enabledChains ?? [];
+    const user = await User.findById(toObjectId(userId, "userId"));
+    if (!user) return [];
+    return serializeUser(user).enabledChains;
   },
 );
 
@@ -28,6 +31,7 @@ export async function setUserEnabledChains(
   userId: string,
   chainIds: number[],
 ): Promise<number[]> {
+  const validated = validateUserEnabledChainsUpdate({ enabledChains: chainIds });
   const unknown = chainIds.filter((id) => !(id in CHAIN_CONFIGS));
   if (unknown.length > 0) {
     throw new Error(`Unknown chain IDs: ${unknown.join(", ")}`);
@@ -35,18 +39,16 @@ export async function setUserEnabledChains(
 
   await connectDB();
   const doc = await User.findByIdAndUpdate(
-    new Types.ObjectId(userId),
-    { $set: { enabledChains: chainIds } },
+    toObjectId(userId, "userId"),
+    { $set: { enabledChains: validated.enabledChains } },
     { returnDocument: "after" },
-  )
-    .select("enabledChains")
-    .lean();
+  );
 
   if (!doc) {
     throw new Error(`User not found: ${userId}`);
   }
 
-  return doc.enabledChains;
+  return serializeUser(doc).enabledChains;
 }
 
 /**

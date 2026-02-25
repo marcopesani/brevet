@@ -37,6 +37,7 @@ export interface PendingPayment {
   asset?: string;
   chainId?: number;
   paymentRequirements: string;
+  paymentRequirementsData?: unknown;
   status: string;
   expiresAt: string;
   createdAt: string;
@@ -110,13 +111,10 @@ export default function PendingPaymentCard({
   const remaining = useCountdown(payment.expiresAt);
   const isExpired = remaining <= 0;
 
-  const parsedRequirements = useMemo(() => {
-    try {
-      return JSON.parse(payment.paymentRequirements);
-    } catch {
-      return null;
-    }
-  }, [payment.paymentRequirements]);
+  const parsedRequirements = useMemo(
+    () => payment.paymentRequirementsData ?? null,
+    [payment.paymentRequirementsData],
+  );
 
   // Use the payment's stored chainId if available, otherwise fall back to active chain
   const paymentChainConfig = payment.chainId !== undefined

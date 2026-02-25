@@ -45,6 +45,7 @@ interface Transaction {
   type: string;
   createdAt: string | Date;
   responsePayload: string | null;
+  responseData?: unknown | string | null;
   errorMessage: string | null;
   responseStatus: number | null;
 }
@@ -128,17 +129,8 @@ function TypeBadge({ type }: { type: string }) {
   }
 }
 
-function JsonViewer({ data }: { data: string }) {
-  let parsed: unknown;
-  let isJson = false;
-  try {
-    parsed = JSON.parse(data);
-    isJson = true;
-  } catch {
-    // not valid JSON
-  }
-
-  if (!isJson) {
+function JsonViewer({ data }: { data: unknown }) {
+  if (typeof data === "string") {
     return (
       <pre className="text-sm font-mono whitespace-pre-wrap break-words">
         {data}
@@ -146,7 +138,7 @@ function JsonViewer({ data }: { data: string }) {
     );
   }
 
-  const formatted = JSON.stringify(parsed, null, 2);
+  const formatted = JSON.stringify(data, null, 2);
   return (
     <pre className="text-sm font-mono whitespace-pre-wrap break-words">
       {formatted.split("\n").map((line, i) => {
@@ -272,10 +264,12 @@ function TransactionDetailSheet({
                 </div>
               </div>
             )}
-            {transaction.responsePayload && (
+            {(transaction.responseData ?? transaction.responsePayload) != null && (
               <ScrollArea className="flex-1 min-h-0 px-4 pb-4">
                 <div className="rounded-md border bg-muted/30 p-4 overflow-x-auto">
-                  <JsonViewer data={transaction.responsePayload} />
+                  <JsonViewer
+                    data={transaction.responseData ?? transaction.responsePayload}
+                  />
                 </div>
               </ScrollArea>
             )}
@@ -408,7 +402,8 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
               </TableHeader>
               <TableBody>
                 {paged.map((tx) => {
-                  const hasResponse = tx.responsePayload !== null;
+                  const hasResponse =
+                    (tx.responseData ?? tx.responsePayload) !== null;
                   const isClickable = hasResponse || tx.errorMessage !== null || tx.status === "failed";
                   return (
                     <TableRow
