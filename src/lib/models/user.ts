@@ -36,12 +36,12 @@ export interface UserSerializedWithSecrets extends UserSerialized {
 
 const userReadSchema = z.object({
   _id: objectIdLikeSchema,
-  email: z.string().nullable(),
-  walletAddress: z.string().nullable(),
-  humanHash: z.string().nullable(),
-  apiKeyHash: z.string().nullable(),
-  apiKeyPrefix: z.string().nullable(),
-  enabledChains: z.array(z.number().int()),
+  email: z.string().nullable().optional(),
+  walletAddress: z.string().nullable().optional(),
+  humanHash: z.string().nullable().optional(),
+  apiKeyHash: z.string().nullable().optional(),
+  apiKeyPrefix: z.string().nullable().optional(),
+  enabledChains: z.array(z.number().int()).optional(),
   createdAt: dateLikeSchema,
   updatedAt: dateLikeSchema,
 });
@@ -105,11 +105,11 @@ export function serializeUser(input: unknown): UserSerialized {
   const parsed = userReadSchema.parse(input);
   return userPublicSchema.parse({
     id: parsed._id,
-    email: parsed.email,
-    walletAddress: parsed.walletAddress,
-    humanHash: parsed.humanHash,
-    apiKeyPrefix: parsed.apiKeyPrefix,
-    enabledChains: parsed.enabledChains,
+    email: parsed.email ?? null,
+    walletAddress: parsed.walletAddress ?? null,
+    humanHash: parsed.humanHash ?? null,
+    apiKeyPrefix: parsed.apiKeyPrefix ?? null,
+    enabledChains: parsed.enabledChains ?? [],
     createdAt: parsed.createdAt,
     updatedAt: parsed.updatedAt,
   });
@@ -125,7 +125,7 @@ export function serializeUserWithSecrets(
   const parsed = userReadSchema.parse(input);
   return userWithSecretsSchema.parse({
     ...serializeUser(parsed),
-    apiKeyHash: parsed.apiKeyHash,
+    apiKeyHash: parsed.apiKeyHash ?? null,
   });
 }
 

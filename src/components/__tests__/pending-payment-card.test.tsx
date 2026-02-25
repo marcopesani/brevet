@@ -144,12 +144,25 @@ const BASE_NO_AMOUNT_REQUIREMENTS = JSON.stringify({
 });
 
 function createPayment(overrides: Partial<PendingPayment> = {}): PendingPayment {
+  const paymentRequirements =
+    overrides.paymentRequirements ?? BASE_PAYMENT_REQUIREMENTS;
+  const parsedRequirements =
+    overrides.paymentRequirementsData ??
+    (() => {
+      try {
+        return JSON.parse(paymentRequirements);
+      } catch {
+        return null;
+      }
+    })();
+
   return {
     id: "pay-1",
     url: "https://api.example.com/resource",
     amount: 0.1,
     chainId: 8453,
-    paymentRequirements: BASE_PAYMENT_REQUIREMENTS,
+    paymentRequirements,
+    paymentRequirementsData: parsedRequirements,
     status: "pending",
     expiresAt: new Date(Date.now() + 3600_000).toISOString(),
     createdAt: new Date().toISOString(),
