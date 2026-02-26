@@ -71,8 +71,7 @@ export function SpendingChart({ initialData }: { initialData: DailySpending[] })
 
   if (!data.length || !hasSpending) {
     return (
-      <div className="px-4 lg:px-6">
-        <Card>
+      <Card>
           <CardHeader>
             <CardTitle>Daily Spending</CardTitle>
             <CardDescription>No spending data yet</CardDescription>
@@ -83,13 +82,11 @@ export function SpendingChart({ initialData }: { initialData: DailySpending[] })
             </div>
           </CardContent>
         </Card>
-      </div>
     )
   }
 
   return (
-    <div className="px-4 lg:px-6">
-      <Card className="@container/card">
+    <Card className="@container/card">
         <CardHeader>
           <CardTitle>Daily Spending</CardTitle>
           <CardDescription>
@@ -132,7 +129,7 @@ export function SpendingChart({ initialData }: { initialData: DailySpending[] })
             </Select>
           </CardAction>
         </CardHeader>
-        <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+        <CardContent className="px-0 pt-4 sm:pt-6">
           <ChartContainer
             config={chartConfig}
             className="aspect-auto h-[250px] w-full"
@@ -192,6 +189,5 @@ export function SpendingChart({ initialData }: { initialData: DailySpending[] })
           </ChartContainer>
         </CardContent>
       </Card>
-    </div>
   )
 }

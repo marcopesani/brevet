@@ -17,7 +17,7 @@ export function DashboardShell({
       <AppSidebar walletAddress={walletAddress} />
       <SidebarInset>
         <SiteHeader />
-        <div className="flex flex-1 flex-col gap-4 p-4 lg:p-6">
+        <div className="flex flex-1 flex-col gap-4 p-4 lg:p-6 bg-sidebar">
           {children}
         </div>
       </SidebarInset>
