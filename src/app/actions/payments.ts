@@ -53,7 +53,7 @@ export async function approvePendingPayment(
   if (!payment) throw new Error("Pending payment not found");
   if (payment.status !== "pending") throw new Error(`Payment is already ${payment.status}`);
 
-  if (new Date() > payment.expiresAt) {
+  if (Date.now() > new Date(payment.expiresAt).getTime()) {
     logger.warn("Payment expired during approval", { userId: auth.userId, paymentId, action: "payment_expired" });
     await _expirePendingPayment(paymentId, auth.userId);
     throw new Error("Payment has expired");

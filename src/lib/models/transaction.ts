@@ -1,9 +1,9 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { z } from "zod/v4";
 
-const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
-
-export interface ITransaction {
+type TransactionDoc = Document & {
   _id: Types.ObjectId;
+  userId: Types.ObjectId;
   amount: number;
   endpoint: string;
   txHash: string | null;
@@ -11,27 +11,41 @@ export interface ITransaction {
   chainId: number;
   status: string;
   type: string;
-  userId: Types.ObjectId;
   responsePayload: string | null;
   errorMessage: string | null;
   responseStatus: number | null;
   createdAt: Date;
-}
+};
 
-export interface ITransactionDocument
-  extends Omit<ITransaction, "_id">,
-    Document {}
+export const TransactionDTO = z.object({
+  _id: z.instanceof(Types.ObjectId).transform((v) => v.toString()),
+  userId: z.instanceof(Types.ObjectId).transform((v) => v.toString()),
+  amount: z.number(),
+  endpoint: z.string(),
+  txHash: z.string().nullable(),
+  network: z.string(),
+  chainId: z.number(),
+  status: z.string(),
+  type: z.string(),
+  responsePayload: z.string().nullable(),
+  errorMessage: z.string().nullable(),
+  responseStatus: z.number().nullable(),
+  createdAt: z.instanceof(Date).transform((v) => v.toISOString()),
+});
 
-const transactionSchema = new Schema<ITransactionDocument>(
+export type TransactionDTO = z.output<typeof TransactionDTO>;
+
+// --- Mongoose schema ---
+const transactionSchema = new Schema<TransactionDoc>(
   {
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     amount: { type: Number, required: true },
     endpoint: { type: String, required: true },
     txHash: { type: String, default: null },
-    network: { type: String, default: "base" },
-    chainId: { type: Number, default: defaultChainId, index: true },
+    network: { type: String, required: true },
+    chainId: { type: Number, required: true },
     status: { type: String, default: "pending" },
     type: { type: String, default: "payment" },
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     responsePayload: { type: String, default: null },
     errorMessage: { type: String, default: null },
     responseStatus: { type: Number, default: null },
@@ -39,17 +53,12 @@ const transactionSchema = new Schema<ITransactionDocument>(
   {
     timestamps: { createdAt: true, updatedAt: false },
     collection: "transactions",
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
   }
 );
 
-transactionSchema.virtual("id").get(function () {
-  return this._id.toString();
-});
-
 transactionSchema.index({ userId: 1 });
+transactionSchema.index({ chainId: 1 });
 
-export const Transaction: Model<ITransactionDocument> =
+export const Transaction: Model<TransactionDoc> =
   mongoose.models.Transaction ||
-  mongoose.model<ITransactionDocument>("Transaction", transactionSchema);
+  mongoose.model<TransactionDoc>("Transaction", transactionSchema);

@@ -1,8 +1,7 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { z } from "zod/v4";
 
-const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
-
-export interface IPendingPayment {
+type PendingPaymentDoc = Document & {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
   url: string;
@@ -22,13 +21,33 @@ export interface IPendingPayment {
   completedAt: Date | null;
   expiresAt: Date;
   createdAt: Date;
-}
+};
 
-export interface IPendingPaymentDocument
-  extends Omit<IPendingPayment, "_id">,
-    Document {}
+export const PendingPaymentDTO = z.object({
+  _id: z.instanceof(Types.ObjectId).transform((v) => v.toString()),
+  userId: z.instanceof(Types.ObjectId).transform((v) => v.toString()),
+  url: z.string(),
+  method: z.string(),
+  amount: z.number().optional(),
+  amountRaw: z.string().nullable(),
+  asset: z.string().nullable(),
+  chainId: z.number(),
+  paymentRequirements: z.string(),
+  status: z.string(),
+  signature: z.string().nullable(),
+  requestBody: z.string().nullable(),
+  requestHeaders: z.string().nullable(),
+  responsePayload: z.string().nullable(),
+  responseStatus: z.number().nullable(),
+  txHash: z.string().nullable(),
+  completedAt: z.instanceof(Date).nullable().transform((v) => v?.toISOString() ?? null),
+  expiresAt: z.instanceof(Date).transform((v) => v.toISOString()),
+  createdAt: z.instanceof(Date).transform((v) => v.toISOString()),
+});
 
-const pendingPaymentSchema = new Schema<IPendingPaymentDocument>(
+export type PendingPaymentDTO = z.output<typeof PendingPaymentDTO>;
+
+const pendingPaymentSchema = new Schema<PendingPaymentDoc>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     url: { type: String, required: true },
@@ -36,7 +55,7 @@ const pendingPaymentSchema = new Schema<IPendingPaymentDocument>(
     amount: { type: Number, default: 0 },
     amountRaw: { type: String, default: null },
     asset: { type: String, default: null },
-    chainId: { type: Number, default: defaultChainId, index: true },
+    chainId: { type: Number, required: true },
     paymentRequirements: { type: String, required: true },
     status: { type: String, default: "pending" },
     signature: { type: String, default: null },
@@ -51,21 +70,13 @@ const pendingPaymentSchema = new Schema<IPendingPaymentDocument>(
   {
     timestamps: { createdAt: true, updatedAt: false },
     collection: "pendingpayments",
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
   }
 );
 
-pendingPaymentSchema.virtual("id").get(function () {
-  return this._id.toString();
-});
-
 pendingPaymentSchema.index({ userId: 1 });
 pendingPaymentSchema.index({ status: 1 });
+pendingPaymentSchema.index({ chainId: 1 });
 
-export const PendingPayment: Model<IPendingPaymentDocument> =
+export const PendingPayment: Model<PendingPaymentDoc> =
   mongoose.models.PendingPayment ||
-  mongoose.model<IPendingPaymentDocument>(
-    "PendingPayment",
-    pendingPaymentSchema
-  );
+  mongoose.model<PendingPaymentDoc>("PendingPayment", pendingPaymentSchema);

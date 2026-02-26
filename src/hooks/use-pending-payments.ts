@@ -1,11 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { PendingPayment } from "@/components/pending-payment-card";
+import type { PendingPaymentDTO } from "@/lib/models/pending-payment";
 
 export const PENDING_PAYMENTS_QUERY_KEY = ["pending-payments"] as const;
 
-async function fetchPendingPayments(chainId?: number): Promise<PendingPayment[]> {
+async function fetchPendingPayments(chainId?: number): Promise<PendingPaymentDTO[]> {
   const url = chainId !== undefined
     ? `/api/payments/pending?chainId=${chainId}`
     : "/api/payments/pending";

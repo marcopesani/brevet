@@ -49,7 +49,7 @@ export function registerX402GetResult(
         }
 
         if (payment.status === "pending") {
-          if (new Date() > payment.expiresAt) {
+          if (Date.now() > new Date(payment.expiresAt).getTime()) {
             await expirePendingPayment(paymentId, userId);
             return jsonContent({
               status: "expired",
@@ -61,7 +61,7 @@ export function registerX402GetResult(
           const timeRemainingSeconds = Math.max(
             0,
             Math.floor(
-              (payment.expiresAt.getTime() - Date.now()) / 1000,
+              (new Date(payment.expiresAt).getTime() - Date.now()) / 1000,
             ),
           );
 

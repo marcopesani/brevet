@@ -1,17 +1,11 @@
-import { PendingPayment } from "@/lib/models/pending-payment";
+import { PendingPayment, PendingPaymentDTO } from "@/lib/models/pending-payment";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
-
-/** Map a lean Mongoose doc to an object with string `id` and `userId`. */
-function withId<T extends { _id: Types.ObjectId; userId?: Types.ObjectId }>(doc: T): Omit<T, "_id" | "userId"> & { id: string; userId: string } {
-  const { _id, userId, ...rest } = doc;
-  return { ...rest, id: _id.toString(), userId: userId ? userId.toString() : _id.toString() };
-}
 
 /**
  * Get all pending (non-expired) payments for a user.
  */
-export async function getPendingPayments(userId: string, options?: { chainId?: number }) {
+export async function getPendingPayments(userId: string, options?: { chainId?: number }): Promise<PendingPaymentDTO[]> {
   await connectDB();
   const filter: Record<string, unknown> = {
     userId: new Types.ObjectId(userId),
@@ -24,7 +18,7 @@ export async function getPendingPayments(userId: string, options?: { chainId?: n
   const docs = await PendingPayment.find(filter)
     .sort({ createdAt: -1 })
     .lean();
-  return docs.map(withId);
+  return docs.map((doc) => PendingPaymentDTO.parse(doc));
 }
 
 /**
@@ -46,13 +40,13 @@ export async function getPendingCount(userId: string, options?: { chainId?: numb
 /**
  * Find a single pending payment by ID, scoped to the given user.
  */
-export async function getPendingPayment(paymentId: string, userId: string) {
+export async function getPendingPayment(paymentId: string, userId: string): Promise<PendingPaymentDTO | null> {
   await connectDB();
   const doc = await PendingPayment.findOne({
     _id: paymentId,
     userId: new Types.ObjectId(userId),
   }).lean();
-  return doc ? withId(doc) : null;
+  return doc ? PendingPaymentDTO.parse(doc) : null;
 }
 
 /**
@@ -71,7 +65,7 @@ export async function createPendingPayment(data: {
   expiresAt: Date;
   body?: string;
   headers?: Record<string, string>;
-}) {
+}): Promise<PendingPaymentDTO> {
   await connectDB();
   const doc = await PendingPayment.create({
     userId: new Types.ObjectId(data.userId),
@@ -86,20 +80,19 @@ export async function createPendingPayment(data: {
     requestBody: data.body ?? null,
     requestHeaders: data.headers ? JSON.stringify(data.headers) : null,
   });
-  const lean = doc.toObject();
-  return withId(lean);
+  return PendingPaymentDTO.parse(doc.toObject());
 }
 
 /**
  * Get a single pending payment by ID, scoped to the given user.
  */
-export async function getPendingPaymentById(paymentId: string, userId: string) {
+export async function getPendingPaymentById(paymentId: string, userId: string): Promise<PendingPaymentDTO | null> {
   await connectDB();
   const doc = await PendingPayment.findOne({
     _id: paymentId,
     userId: new Types.ObjectId(userId),
   }).lean();
-  return doc ? withId(doc) : null;
+  return doc ? PendingPaymentDTO.parse(doc) : null;
 }
 
 /**
@@ -116,7 +109,7 @@ export async function completePendingPayment(
     responseStatus: number;
     txHash?: string;
   },
-) {
+): Promise<PendingPaymentDTO | null> {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
     { _id: paymentId, status: "approved", userId: new Types.ObjectId(userId) },
@@ -131,7 +124,7 @@ export async function completePendingPayment(
     },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? PendingPaymentDTO.parse(doc) : null;
 }
 
 /**
@@ -148,7 +141,7 @@ export async function failPendingPayment(
     responseStatus?: number;
     error?: string;
   },
-) {
+): Promise<PendingPaymentDTO | null> {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
     { _id: paymentId, status: "approved", userId: new Types.ObjectId(userId) },
@@ -162,7 +155,7 @@ export async function failPendingPayment(
     },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? PendingPaymentDTO.parse(doc) : null;
 }
 
 /**
@@ -171,14 +164,14 @@ export async function failPendingPayment(
  * Requires userId for defense-in-depth ownership verification.
  * Returns null if the payment was already transitioned by another caller.
  */
-export async function approvePendingPayment(paymentId: string, userId: string, signature: string) {
+export async function approvePendingPayment(paymentId: string, userId: string, signature: string): Promise<PendingPaymentDTO | null> {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
     { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
     { $set: { status: "approved", signature } },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? PendingPaymentDTO.parse(doc) : null;
 }
 
 /**
@@ -187,14 +180,14 @@ export async function approvePendingPayment(paymentId: string, userId: string, s
  * Requires userId for defense-in-depth ownership verification.
  * Returns null if the payment was already transitioned by another caller.
  */
-export async function rejectPendingPayment(paymentId: string, userId: string) {
+export async function rejectPendingPayment(paymentId: string, userId: string): Promise<PendingPaymentDTO | null> {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
     { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
     { $set: { status: "rejected" } },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? PendingPaymentDTO.parse(doc) : null;
 }
 
 /**
@@ -203,12 +196,12 @@ export async function rejectPendingPayment(paymentId: string, userId: string) {
  * Requires userId for defense-in-depth ownership verification.
  * Returns null if the payment was already transitioned by another caller.
  */
-export async function expirePendingPayment(paymentId: string, userId: string) {
+export async function expirePendingPayment(paymentId: string, userId: string): Promise<PendingPaymentDTO | null> {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
     { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
     { $set: { status: "expired" } },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+  return doc ? PendingPaymentDTO.parse(doc) : null;
 }

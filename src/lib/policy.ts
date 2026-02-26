@@ -1,5 +1,5 @@
 import { connectDB } from "@/lib/db";
-import { EndpointPolicy, IEndpointPolicyDocument } from "@/lib/models/endpoint-policy";
+import { EndpointPolicy } from "@/lib/models/endpoint-policy";
 import { Types } from "mongoose";
 
 export type PolicyAction = "auto_sign" | "manual_approval" | "rejected";
@@ -29,7 +29,7 @@ async function findMatchingPolicy(userId: string, endpoint: string, chainId?: nu
   };
   const policies = await EndpointPolicy.find(filter);
 
-  let bestMatch: IEndpointPolicyDocument | null = null;
+  let bestMatch: (typeof policies)[number] | null = null;
   for (const policy of policies) {
     if (endpoint.startsWith(policy.endpointPattern)) {
       // Verify the character after the pattern is a URL boundary (/, ?, #, or end-of-string)

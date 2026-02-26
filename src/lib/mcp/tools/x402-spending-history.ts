@@ -49,13 +49,13 @@ export function registerX402SpendingHistory(
         return jsonContent({
           count: transactions.length,
           transactions: transactions.map((tx) => ({
-            id: tx.id,
+            _id: tx._id,
             amount: tx.amount,
             endpoint: tx.endpoint,
             txHash: tx.txHash,
             network: tx.network,
             status: tx.status,
-            createdAt: tx.createdAt.toISOString(),
+            createdAt: tx.createdAt,
           })),
         });
       } catch (error) {

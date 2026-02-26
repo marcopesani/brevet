@@ -34,7 +34,7 @@ export function registerX402CheckPending(
 
         if (
           payment.status === "pending" &&
-          new Date() > payment.expiresAt
+          Date.now() > new Date(payment.expiresAt).getTime()
         ) {
           await expirePendingPayment(paymentId, userId);
           return jsonContent({
@@ -48,7 +48,7 @@ export function registerX402CheckPending(
             status: "completed",
             message:
               "Payment is complete. Use x402_get_result to retrieve the response data.",
-            paymentId: payment.id,
+            paymentId: payment._id,
           });
         }
 
@@ -57,7 +57,7 @@ export function registerX402CheckPending(
             status: "failed",
             message:
               "Payment failed. Use x402_get_result for error details.",
-            paymentId: payment.id,
+            paymentId: payment._id,
           });
         }
 
@@ -79,7 +79,7 @@ export function registerX402CheckPending(
         const timeRemaining = Math.max(
           0,
           Math.floor(
-            (payment.expiresAt.getTime() - Date.now()) / 1000,
+            (new Date(payment.expiresAt).getTime() - Date.now()) / 1000,
           ),
         );
 
@@ -93,7 +93,7 @@ export function registerX402CheckPending(
         const { displayAmount, symbol } = formatAmountForDisplay(amountRaw, asset, chainIdForDisplay);
 
         return jsonContent({
-          id: payment.id,
+          _id: payment._id,
           status: payment.status,
           amountRaw: amountRaw ?? null,
           asset: asset ?? null,

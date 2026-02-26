@@ -4,7 +4,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { createKernelAccountClient, createZeroDevPaymasterClient } from "@zerodev/sdk";
 import { toECDSASigner } from "@zerodev/permissions/signers";
 import { deserializePermissionAccount } from "@zerodev/permissions";
-import { SmartAccount } from "@/lib/models/smart-account";
+import { SmartAccount, SmartAccountDTO, SmartAccountWithKeyDTO } from "@/lib/models/smart-account";
 import { connectDB } from "@/lib/db";
 import { getUsdcBalance, decryptPrivateKey } from "@/lib/encryption";
 import { computeSmartAccountAddress, createSessionKey } from "@/lib/smart-account";
@@ -12,26 +12,11 @@ import { ENTRY_POINT, KERNEL_VERSION } from "@/lib/smart-account-constants";
 import { createChainPublicClient, getChainById, getDefaultChainConfig, getUsdcConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";
 import { createTransaction } from "@/lib/data/transactions";
 
-/** Serialize a lean SmartAccount doc for the Server→Client boundary. */
-function serialize<T extends { _id: Types.ObjectId; userId: Types.ObjectId; createdAt?: Date; updatedAt?: Date; sessionKeyExpiry?: Date }>(
-  doc: T,
-) {
-  const { _id, userId, createdAt, updatedAt, sessionKeyExpiry, ...rest } = doc;
-  return {
-    ...rest,
-    id: _id.toString(),
-    userId: userId.toString(),
-    ...(createdAt !== undefined && { createdAt: createdAt instanceof Date ? createdAt.toISOString() : createdAt }),
-    ...(updatedAt !== undefined && { updatedAt: updatedAt instanceof Date ? updatedAt.toISOString() : updatedAt }),
-    ...(sessionKeyExpiry !== undefined && { sessionKeyExpiry: sessionKeyExpiry instanceof Date ? sessionKeyExpiry.toISOString() : sessionKeyExpiry }),
-  };
-}
-
 /**
  * Get the user's smart account record for a specific chain (excludes sensitive fields).
  * Returns null if not found.
  */
-export async function getSmartAccount(userId: string, chainId: number) {
+export async function getSmartAccount(userId: string, chainId: number): Promise<SmartAccountDTO | null> {
   await connectDB();
   const doc = await SmartAccount.findOne({
     userId: new Types.ObjectId(userId),
@@ -40,34 +25,34 @@ export async function getSmartAccount(userId: string, chainId: number) {
     .select("-sessionKeyEncrypted -serializedAccount")
     .lean();
   if (!doc) return null;
-  return serialize(doc);
+  return SmartAccountDTO.parse(doc);
 }
 
 /**
  * Get the user's smart account INCLUDING sessionKeyEncrypted and serializedAccount (for signing).
  * Only use this when signing is needed — prefer getSmartAccount() otherwise.
  */
-export async function getSmartAccountWithSessionKey(userId: string, chainId: number) {
+export async function getSmartAccountWithSessionKey(userId: string, chainId: number): Promise<SmartAccountWithKeyDTO | null> {
   await connectDB();
   const doc = await SmartAccount.findOne({
     userId: new Types.ObjectId(userId),
     chainId,
   }).lean();
   if (!doc) return null;
-  return serialize(doc);
+  return SmartAccountWithKeyDTO.parse(doc);
 }
 
 /**
  * Get all smart accounts for a user across all chains (excludes sensitive fields).
  */
-export async function getAllSmartAccounts(userId: string) {
+export async function getAllSmartAccounts(userId: string): Promise<SmartAccountDTO[]> {
   await connectDB();
   const docs = await SmartAccount.find({
     userId: new Types.ObjectId(userId),
   })
     .select("-sessionKeyEncrypted -serializedAccount")
     .lean();
-  return docs.map(serialize);
+  return docs.map((doc) => SmartAccountDTO.parse(doc));
 }
 
 /**
@@ -98,7 +83,7 @@ export async function createSmartAccountRecord(data: {
   smartAccountAddress: string;
   sessionKeyAddress: string;
   sessionKeyEncrypted: string;
-}) {
+}): Promise<SmartAccountWithKeyDTO> {
   await connectDB();
   const doc = await SmartAccount.create({
     userId: new Types.ObjectId(data.userId),
@@ -109,8 +94,7 @@ export async function createSmartAccountRecord(data: {
     sessionKeyEncrypted: data.sessionKeyEncrypted,
     sessionKeyStatus: "pending_grant",
   });
-  const lean = doc.toObject();
-  return serialize(lean);
+  return SmartAccountWithKeyDTO.parse(doc.toObject());
 }
 
 /**
@@ -121,7 +105,7 @@ export async function ensureSmartAccount(
   userId: string,
   ownerAddress: string,
   chainId: number,
-) {
+): Promise<SmartAccountWithKeyDTO> {
   await connectDB();
   const userObjectId = new Types.ObjectId(userId);
 
@@ -130,7 +114,7 @@ export async function ensureSmartAccount(
     chainId,
   }).lean();
   if (existing) {
-    return serialize(existing);
+    return SmartAccountWithKeyDTO.parse(existing);
   }
 
   const smartAccountAddress = await computeSmartAccountAddress(
@@ -150,8 +134,7 @@ export async function ensureSmartAccount(
       sessionKeyEncrypted,
       sessionKeyStatus: "pending_grant",
     });
-    const lean = doc.toObject();
-    return serialize(lean);
+    return SmartAccountWithKeyDTO.parse(doc.toObject());
   } catch (err: unknown) {
     // Handle race condition: a concurrent request may have created the record between
     // our findOne and create. Re-fetch and return the existing document.
@@ -163,38 +146,33 @@ export async function ensureSmartAccount(
     if (!isDuplicateKeyError) {
       throw err;
     }
-    const existing = await SmartAccount.findOne({
+    const existingDoc = await SmartAccount.findOne({
       userId: userObjectId,
       chainId,
     }).lean();
-    if (!existing) throw err; // Should not happen, but be safe
-    return serialize(existing);
+    if (!existingDoc) throw err; // Should not happen, but be safe
+    return SmartAccountWithKeyDTO.parse(existingDoc);
   }
 }
 
 /**
  * Store the encrypted serialized permission account (ZeroDev serializePermissionAccount output).
- * Returns the updated record or null if not found.
  */
 export async function storeSerializedAccount(
   userId: string,
   chainId: number,
   serializedEncrypted: string,
-) {
+): Promise<void> {
   await connectDB();
-  const doc = await SmartAccount.findOneAndUpdate(
+  await SmartAccount.findOneAndUpdate(
     { userId: new Types.ObjectId(userId), chainId },
     { $set: { serializedAccount: serializedEncrypted } },
-    { returnDocument: "after" },
-  ).lean();
-  if (!doc) return null;
-  return serialize(doc);
+  );
 }
 
 /**
  * Activate a session key: sets status to "active", stores grant tx hash,
  * expiry date, and spend limits. Used by finalizeSessionKey server action.
- * Returns the updated record or null if not found.
  */
 export async function activateSessionKey(
   userId: string,
@@ -203,9 +181,9 @@ export async function activateSessionKey(
   expiryDate: Date,
   spendLimitPerTx: number,
   spendLimitDaily: number,
-) {
+): Promise<void> {
   await connectDB();
-  const doc = await SmartAccount.findOneAndUpdate(
+  await SmartAccount.findOneAndUpdate(
     { userId: new Types.ObjectId(userId), chainId },
     {
       $set: {
@@ -216,34 +194,27 @@ export async function activateSessionKey(
         spendLimitDaily,
       },
     },
-    { returnDocument: "after" },
-  ).lean();
-  if (!doc) return null;
-  return serialize(doc);
+  );
 }
 
 /**
  * Update session key status. Optionally stores the grant transaction hash.
- * Returns the updated record or null if not found.
  */
 export async function updateSessionKeyStatus(
   userId: string,
   chainId: number,
   status: "pending_grant" | "active" | "expired" | "revoked",
   grantTxHash?: string,
-) {
+): Promise<void> {
   await connectDB();
   const update: Record<string, unknown> = { sessionKeyStatus: status };
   if (grantTxHash !== undefined) {
     update.sessionKeyGrantTxHash = grantTxHash;
   }
-  const doc = await SmartAccount.findOneAndUpdate(
+  await SmartAccount.findOneAndUpdate(
     { userId: new Types.ObjectId(userId), chainId },
     { $set: update },
-    { returnDocument: "after" },
-  ).lean();
-  if (!doc) return null;
-  return serialize(doc);
+  );
 }
 
 const USDC_TRANSFER_ABI = parseAbi([

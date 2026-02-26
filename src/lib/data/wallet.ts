@@ -7,7 +7,7 @@ import { humanHash } from "@/lib/human-hash";
  * Find or create a user by wallet address.
  * Generates a humanHash on creation. Backfills humanHash for existing users that lack one.
  */
-export async function upsertUser(walletAddress: string) {
+export async function upsertUser(walletAddress: string): Promise<{ _id: string; humanHash: string | null }> {
   await connectDB();
 
   let user = await User.findOne({ walletAddress });
@@ -17,7 +17,7 @@ export async function upsertUser(walletAddress: string) {
     const hash = humanHash(user._id.toHexString());
     user.humanHash = hash;
     await user.save();
-    return user;
+    return { _id: user._id.toString(), humanHash: hash };
   }
 
   if (!user.humanHash) {
@@ -26,7 +26,7 @@ export async function upsertUser(walletAddress: string) {
     await user.save();
   }
 
-  return user;
+  return { _id: user._id.toString(), humanHash: user.humanHash ?? null };
 }
 
 /**

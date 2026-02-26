@@ -81,7 +81,7 @@ export function registerX402Pay(server: McpServer, userId: string): void {
           const timeoutMinutes = Math.ceil(result.maxTimeoutSeconds / 60);
 
           return textContent(
-            `Payment of ${amountLabel} requires user approval. Payment ID: ${pendingPayment.id}. The user has been notified and has ${timeoutMinutes} minutes to approve. Use x402_check_pending to check the status.`,
+            `Payment of ${amountLabel} requires user approval. Payment ID: ${pendingPayment._id}. The user has been notified and has ${timeoutMinutes} minutes to approve. Use x402_check_pending to check the status.`,
           );
         }
 

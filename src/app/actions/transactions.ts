@@ -5,14 +5,15 @@ import {
   getRecentTransactions as _getRecentTransactions,
   getTransactions as _getTransactions,
 } from "@/lib/data/transactions";
+import type { TransactionDTO } from "@/lib/models/transaction";
 
-export async function getRecentTransactions(limit?: number, chainId?: number) {
+export async function getRecentTransactions(limit?: number, chainId?: number): Promise<TransactionDTO[]> {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
   return _getRecentTransactions(auth.userId, limit, chainId !== undefined ? { chainId } : undefined);
 }
 
-export async function getTransactions(since?: string, until?: string, chainId?: number) {
+export async function getTransactions(since?: string, until?: string, chainId?: number): Promise<TransactionDTO[]> {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
 

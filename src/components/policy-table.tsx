@@ -26,21 +26,12 @@ import {
   archivePolicy,
   unarchivePolicy,
 } from "@/app/actions/policies";
-
-interface Policy {
-  id: string;
-  endpointPattern: string;
-  autoSign: boolean;
-  status: string;
-  archivedAt: string | Date | null;
-  createdAt: string | Date;
-  updatedAt: string | Date;
-}
+import type { EndpointPolicyDTO } from "@/lib/models/endpoint-policy";
 
 type TabFilter = "all" | "active" | "draft" | "archived";
 
 interface PolicyTableProps {
-  initialPolicies: Policy[];
+  initialPolicies: EndpointPolicyDTO[];
   chainName?: string;
   chainId?: number;
 }
@@ -69,10 +60,10 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
     }
   }
 
-  async function handleToggleAutoSign(policy: Policy) {
-    setActionInProgress(policy.id);
+  async function handleToggleAutoSign(policy: EndpointPolicyDTO) {
+    setActionInProgress(policy._id);
     try {
-      await toggleAutoSign(policy.id, !policy.autoSign);
+      await toggleAutoSign(policy._id, !policy.autoSign);
       toast.success(
         `Auto-sign ${!policy.autoSign ? "enabled" : "disabled"}`
       );
@@ -219,11 +210,11 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
                 </TableHeader>
                 <TableBody>
                   {filtered.map((policy) => {
-                    const isActionTarget = actionInProgress === policy.id;
+                    const isActionTarget = actionInProgress === policy._id;
                     const isArchived = policy.status === "archived";
                     return (
                       <TableRow
-                        key={policy.id}
+                        key={policy._id}
                         className={isArchived ? "opacity-60" : ""}
                       >
                         <TableCell className="font-mono text-sm">
@@ -245,7 +236,7 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
                               size="sm"
                               variant="outline"
                               disabled={isBusy}
-                              onClick={() => handleUnarchive(policy.id)}
+                              onClick={() => handleUnarchive(policy._id)}
                             >
                               {isActionTarget ? "..." : "Reactivate"}
                             </Button>
@@ -256,7 +247,7 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
                                   size="sm"
                                   variant="default"
                                   disabled={isBusy}
-                                  onClick={() => handleActivate(policy.id)}
+                                  onClick={() => handleActivate(policy._id)}
                                 >
                                   {isActionTarget ? "..." : "Activate"}
                                 </Button>
@@ -265,7 +256,7 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
                                 size="sm"
                                 variant="outline"
                                 disabled={isBusy}
-                                onClick={() => handleArchive(policy.id)}
+                                onClick={() => handleArchive(policy._id)}
                               >
                                 {isActionTarget ? "..." : "Archive"}
                               </Button>

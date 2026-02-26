@@ -35,7 +35,7 @@ export async function setupSmartAccount(chainId: number) {
   revalidatePath("/dashboard/wallet");
   revalidatePath("/dashboard");
   return {
-    id: account.id,
+    _id: account._id,
     smartAccountAddress: account.smartAccountAddress,
     chainId: account.chainId,
     sessionKeyStatus: account.sessionKeyStatus,
@@ -154,7 +154,11 @@ export async function sendBundlerRequest(
   });
 
   const json = await response.json();
-  if (json.error) throw new Error(json.error.message);
+  if (json.error) {
+    const err = json.error as { message?: string; data?: string; code?: number };
+    const message = err?.message ?? err?.data ?? (typeof err === "string" ? err : `Bundler error ${err?.code ?? "unknown"}`);
+    throw new Error(message);
+  }
   return json.result;
 }
 
