@@ -31,7 +31,7 @@ Vitest: `unit` (excludes `src/test/e2e/`), `e2e` (only `src/test/e2e/`); `filePa
 
 Chains: `src/lib/chain-config.ts`; `getChainById`, `getDefaultChainConfig()`; default UI chain is fixed in code (8453, Base mainnet); user-enabled chains per user.
 
-**Testing MCP:** Inspector CLI: `--transport http`, URL `.../api/mcp/{humanHash}`, auth `Authorization: Bearer brv_...` or `?api_key=`. See CLAUDE.md for full examples.
+**Testing MCP:** Inspector CLI: `--transport http`, URL `.../api/mcp/{humanHash}`, auth `Authorization: Bearer brv_...` or `?api_key=`.
 
 ## Data and actions: avoid these errors
 
