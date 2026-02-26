@@ -33,15 +33,10 @@ export function ChainSelector() {
       onValueChange={(value) => setActiveChainId(Number(value))}
       disabled={isSwitchingChain}
     >
-      <SelectTrigger size="sm" className="w-full">
+      <SelectTrigger size="default" className="w-full">
         <SelectValue>
           <ChainDot color={activeChain.color} />
           <span className="truncate">{activeChain.displayName}</span>
-          {activeChain.isTestnet && (
-            <Badge variant="outline" className="ml-1 px-1 py-0 text-[10px] leading-tight">
-              Testnet
-            </Badge>
-          )}
         </SelectValue>
       </SelectTrigger>
       <SelectContent position="popper" align="start">

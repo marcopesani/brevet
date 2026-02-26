@@ -28,7 +28,7 @@ export default async function DashboardPage() {
     ]);
 
   return (
-    <div className="flex flex-col gap-4 md:gap-6">
+    <div className="flex flex-col gap-4">
       <SectionCards summary={analytics.summary} wallet={wallet} />
       <PendingAlert count={pendingCount} />
       <SpendingChart initialData={analytics.dailySpending} />
