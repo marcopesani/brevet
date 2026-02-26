@@ -21,11 +21,15 @@ export async function getPolicies(userId: string, status?: string, options?: { c
 }
 
 /**
- * Get a single endpoint policy by ID.
+ * Get a single endpoint policy by ID, scoped to the given user.
+ * Returns null if not found or if the policy does not belong to the user.
  */
-export async function getPolicy(policyId: string) {
+export async function getPolicy(policyId: string, userId: string) {
   await connectDB();
-  const doc = await EndpointPolicy.findById(policyId).lean();
+  const doc = await EndpointPolicy.findOne({
+    _id: policyId,
+    userId: new Types.ObjectId(userId),
+  }).lean();
 
   if (!doc) return null;
 
@@ -95,8 +99,9 @@ export async function createPolicy(
 
 /**
  * Update an endpoint policy. Returns the updated policy.
+ * Only updates if the policy belongs to the given user.
  * Checks for endpointPattern conflicts if the pattern is being changed.
- * Returns null if a conflict exists.
+ * Returns null if a conflict exists or the policy is not found for this user.
  */
 export async function updatePolicy(
   policyId: string,
@@ -108,11 +113,14 @@ export async function updatePolicy(
   },
 ) {
   await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
+  const scopedFilter = { _id: policyId, userId: userObjectId };
+
   if (data.endpointPattern !== undefined) {
-    const existing = await EndpointPolicy.findById(policyId).lean();
+    const existing = await EndpointPolicy.findOne(scopedFilter).lean();
     if (existing && data.endpointPattern !== existing.endpointPattern) {
       const conflict = await EndpointPolicy.findOne({
-        userId: new Types.ObjectId(userId),
+        userId: userObjectId,
         endpointPattern: data.endpointPattern,
         chainId: existing.chainId,
       }).lean();
@@ -127,8 +135,8 @@ export async function updatePolicy(
   if (data.autoSign !== undefined) updateData.autoSign = data.autoSign;
   if (data.status !== undefined) updateData.status = data.status;
 
-  const doc = await EndpointPolicy.findByIdAndUpdate(
-    policyId,
+  const doc = await EndpointPolicy.findOneAndUpdate(
+    scopedFilter,
     { $set: updateData },
     { returnDocument: "after" },
   ).lean();

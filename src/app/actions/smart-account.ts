@@ -3,9 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { type Hex } from "viem";
 import { z } from "zod/v4";
-import { getAuthenticatedUser } from "@/lib/auth";
 import { type ActionResult, ok, err } from "@/lib/action-result";
-import { withAuth } from "@/lib/action-result-server";
+import { withAuth, withAuthRead } from "@/lib/action-result-server";
 import {
   ALLOWED_BUNDLER_METHODS,
   toHumanReadableBundlerError,
@@ -34,24 +33,15 @@ import {
 // ---------------------------------------------------------------------------
 
 export async function getSmartAccountForChain(chainId: number) {
-  const auth = await getAuthenticatedUser();
-  if (!auth) throw new Error("Unauthorized");
-
-  return getSmartAccount(auth.userId, chainId);
+  return withAuthRead((auth) => getSmartAccount(auth.userId, chainId));
 }
 
 export async function getSmartAccountBalanceAction(chainId: number) {
-  const auth = await getAuthenticatedUser();
-  if (!auth) throw new Error("Unauthorized");
-
-  return getSmartAccountBalance(auth.userId, chainId);
+  return withAuthRead((auth) => getSmartAccountBalance(auth.userId, chainId));
 }
 
 export async function getAllSmartAccountsAction() {
-  const auth = await getAuthenticatedUser();
-  if (!auth) throw new Error("Unauthorized");
-
-  return getAllSmartAccounts(auth.userId);
+  return withAuthRead((auth) => getAllSmartAccounts(auth.userId));
 }
 
 // ---------------------------------------------------------------------------

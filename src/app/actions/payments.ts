@@ -1,9 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getAuthenticatedUser } from "@/lib/auth";
 import { ok, err } from "@/lib/action-result";
-import { withAuth } from "@/lib/action-result-server";
+import { withAuth, withAuthRead } from "@/lib/action-result-server";
 import {
   getPendingPayments as _getPendingPayments,
   getPendingCount as _getPendingCount,
@@ -29,15 +28,11 @@ import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 // ---------------------------------------------------------------------------
 
 export async function getPendingPayments() {
-  const auth = await getAuthenticatedUser();
-  if (!auth) throw new Error("Unauthorized");
-  return _getPendingPayments(auth.userId);
+  return withAuthRead((auth) => _getPendingPayments(auth.userId));
 }
 
 export async function getPendingCount() {
-  const auth = await getAuthenticatedUser();
-  if (!auth) throw new Error("Unauthorized");
-  return _getPendingCount(auth.userId);
+  return withAuthRead((auth) => _getPendingCount(auth.userId));
 }
 
 // ---------------------------------------------------------------------------
