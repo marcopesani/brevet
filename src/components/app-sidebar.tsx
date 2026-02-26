@@ -23,6 +23,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -33,9 +34,14 @@ export function AppSidebar({
   walletAddress,
   ...props
 }: React.ComponentProps<typeof Sidebar> & { walletAddress: string }) {
+  const { setOpenMobile } = useSidebar()
   const { activeChain } = useChain()
   const { count: pendingCount } = usePendingPayments(activeChain.chain.id)
   const pathname = usePathname()
+
+  React.useEffect(() => {
+    setOpenMobile(false)
+  }, [pathname, setOpenMobile])
 
   const navMain = [
     {

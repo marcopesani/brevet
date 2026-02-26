@@ -1,27 +1,29 @@
-"use client"
+"use client";
 
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app-sidebar"
-import { SiteHeader } from "@/components/site-header"
-import { Toaster } from "@/components/ui/sonner"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
+import { SiteHeader } from "@/components/site-header";
+import { Toaster } from "@/components/ui/sonner";
 
 export function DashboardShell({
   walletAddress,
   children,
 }: {
-  walletAddress: string
-  children: React.ReactNode
+  walletAddress: string;
+  children: React.ReactNode;
 }) {
   return (
     <SidebarProvider>
       <AppSidebar walletAddress={walletAddress} />
       <SidebarInset>
         <SiteHeader />
-        <div className="flex flex-1 flex-col gap-4 p-4 lg:p-6">
-          {children}
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4 lg:p-6 bg-sidebar">
+          <div className="container mx-auto w-full max-w-6xl">
+            {children}
+          </div>
         </div>
       </SidebarInset>
       <Toaster />
     </SidebarProvider>
-  )
+  );
 }
