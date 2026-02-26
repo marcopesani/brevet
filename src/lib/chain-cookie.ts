@@ -1,4 +1,4 @@
-import { getChainConfig, getDefaultChainConfig } from "@/lib/chain-config";
+import { getChainById, getDefaultChainConfig } from "@/lib/chain-config";
 
 export const CHAIN_COOKIE_NAME = "brevet-active-chain";
 
@@ -11,5 +11,5 @@ export function getInitialChainIdFromCookie(cookieHeader: string | null): number
   const match = cookieHeader.match(new RegExp(`${CHAIN_COOKIE_NAME}=(\\d+)`));
   if (!match) return getDefaultChainConfig().chain.id;
   const parsed = parseInt(match[1], 10);
-  return getChainConfig(parsed) ? parsed : getDefaultChainConfig().chain.id;
+  return getChainById(parsed) ? parsed : getDefaultChainConfig().chain.id;
 }

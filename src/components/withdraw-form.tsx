@@ -10,8 +10,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getChainConfig, getDefaultChainConfig } from "@/lib/chain-config";
-import { withdrawFromWallet } from "@/app/actions/wallet";
+import { getChainById, getDefaultChainConfig } from "@/lib/chain-config";
+import { withdrawFromWallet } from "@/app/actions/smart-account";
 import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
 
 interface WithdrawFormProps {
@@ -32,7 +32,7 @@ export default function WithdrawForm({
   const [txHash, setTxHash] = useState<string | null>(null);
 
   const chainConfig = chainId
-    ? getChainConfig(chainId) ?? getDefaultChainConfig()
+    ? getChainById(chainId) ?? getDefaultChainConfig()
     : getDefaultChainConfig();
   const explorerName = chainConfig.explorerUrl
     .replace("https://", "")

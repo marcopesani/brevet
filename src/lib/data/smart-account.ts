@@ -6,7 +6,7 @@ import { toECDSASigner } from "@zerodev/permissions/signers";
 import { deserializePermissionAccount } from "@zerodev/permissions";
 import { SmartAccount } from "@/lib/models/smart-account";
 import { connectDB } from "@/lib/db";
-import { getUsdcBalance, decryptPrivateKey } from "@/lib/hot-wallet";
+import { getUsdcBalance, decryptPrivateKey } from "@/lib/encryption";
 import { computeSmartAccountAddress, createSessionKey } from "@/lib/smart-account";
 import { ENTRY_POINT, KERNEL_VERSION } from "@/lib/smart-account-constants";
 import { createChainPublicClient, getChainById, getDefaultChainConfig, getUsdcConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";

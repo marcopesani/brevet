@@ -4,7 +4,7 @@ import { x402Client, x402HTTPClient } from "@x402/core/client";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { createTransaction } from "@/lib/data/transactions";
 import { getSmartAccount, getSmartAccountWithSessionKey, updateSessionKeyStatus } from "@/lib/data/smart-account";
-import { decryptPrivateKey, getUsdcBalance } from "@/lib/hot-wallet";
+import { decryptPrivateKey, getUsdcBalance } from "@/lib/encryption";
 import { checkPolicy } from "@/lib/policy";
 import { createSmartAccountSignerFromSerialized, createSmartAccountSigner } from "@/lib/smart-account";
 import { SESSION_KEY_DEFAULT_EXPIRY_DAYS } from "@/lib/smart-account-constants";

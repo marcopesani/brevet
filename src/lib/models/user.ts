@@ -31,7 +31,7 @@ const userSchema = new Schema<IUserDocument>(
   }
 );
 
-userSchema.virtual("id").get(function () {
+userSchema.virtual("userId").get(function () {
   return this._id.toString();
 });
 

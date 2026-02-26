@@ -12,9 +12,10 @@ import {
   getAllSmartAccounts,
   storeSerializedAccount,
   activateSessionKey,
+  withdrawFromSmartAccount,
 } from "@/lib/data/smart-account";
-import { decryptPrivateKey, encryptPrivateKey } from "@/lib/hot-wallet";
-import { createChainPublicClient, getChainConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";
+import { decryptPrivateKey, encryptPrivateKey } from "@/lib/encryption";
+import { createChainPublicClient, getChainById, getZeroDevBundlerRpc } from "@/lib/chain-config";
 import {
   SESSION_KEY_MAX_SPEND_PER_TX,
   SESSION_KEY_MAX_SPEND_DAILY,
@@ -60,6 +61,18 @@ export async function getAllSmartAccountsAction() {
   if (!auth) throw new Error("Unauthorized");
 
   return getAllSmartAccounts(auth.userId);
+}
+
+export async function withdrawFromWallet(amount: number, toAddress: string, chainId?: number) {
+  const auth = await getAuthenticatedUser();
+  if (!auth) throw new Error("Unauthorized");
+
+  const result = await withdrawFromSmartAccount(auth.userId, amount, toAddress, chainId);
+
+  revalidatePath("/dashboard/wallet");
+  revalidatePath("/dashboard/transactions");
+
+  return result;
 }
 
 // Allowed bundler/paymaster JSON-RPC methods for sendBundlerRequest
@@ -185,7 +198,7 @@ export async function finalizeSessionKey(
   }
 
   // Verify the grant transaction on-chain
-  const config = getChainConfig(chainId);
+  const config = getChainById(chainId);
   if (!config) return { success: false as const, error: `Unsupported chain: ${chainId}` };
 
   const publicClient = createChainPublicClient(chainId);

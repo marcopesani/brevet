@@ -5,8 +5,8 @@ import { getKernelAddressFromECDSA } from "@zerodev/ecdsa-validator";
 import { toPermissionValidator } from "@zerodev/permissions";
 import { toECDSASigner } from "@zerodev/permissions/signers";
 import { deserializePermissionAccount } from "@zerodev/permissions";
-import { encryptPrivateKey } from "@/lib/hot-wallet";
-import { createChainPublicClient, getChainConfig } from "@/lib/chain-config";
+import { encryptPrivateKey } from "@/lib/encryption";
+import { createChainPublicClient, getChainById } from "@/lib/chain-config";
 import { ENTRY_POINT, KERNEL_VERSION, buildSessionKeyPolicies } from "@/lib/smart-account-constants";
 import type { ClientEvmSigner } from "@/lib/x402/types";
 
@@ -19,7 +19,7 @@ export async function computeSmartAccountAddress(
   ownerAddress: Address,
   chainId: number,
 ): Promise<Address> {
-  const config = getChainConfig(chainId);
+  const config = getChainById(chainId);
   if (!config) {
     throw new Error(`Unsupported chain: ${chainId}`);
   }
@@ -64,7 +64,7 @@ export async function createSmartAccountSigner(
   expiryTimestamp: number,
   spendLimitPerTx?: bigint,
 ): Promise<ClientEvmSigner> {
-  const config = getChainConfig(chainId);
+  const config = getChainById(chainId);
   if (!config) {
     throw new Error(`Unsupported chain: ${chainId}`);
   }
@@ -115,7 +115,7 @@ export async function createSmartAccountSignerFromSerialized(
   sessionKeyHex: Hex,
   chainId: number,
 ): Promise<ClientEvmSigner> {
-  const config = getChainConfig(chainId);
+  const config = getChainById(chainId);
   if (!config) {
     throw new Error(`Unsupported chain: ${chainId}`);
   }

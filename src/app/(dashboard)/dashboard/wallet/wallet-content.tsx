@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import WalletBalance from "@/components/wallet-balance";
 import NoAccountCard from "./no-account-card";
 import PendingGrantSection from "./pending-grant-section";
 import ActiveWalletSection from "./active-wallet-section";
