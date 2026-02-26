@@ -27,6 +27,23 @@ export const EndpointPolicyDTO = z.object({
 
 export type EndpointPolicyDTO = z.output<typeof EndpointPolicyDTO>;
 
+/** Input for creating an endpoint policy (userId passed separately in data layer). */
+export const EndpointPolicyCreateInput = z.object({
+  endpointPattern: z.string(),
+  chainId: z.number(),
+  autoSign: z.boolean().optional(),
+  status: z.string().optional(),
+});
+export type EndpointPolicyCreateInput = z.output<typeof EndpointPolicyCreateInput>;
+
+/** Input for updating an endpoint policy (partial). */
+export const EndpointPolicyUpdateInput = z.object({
+  endpointPattern: z.string().optional(),
+  autoSign: z.boolean().optional(),
+  status: z.string().optional(),
+});
+export type EndpointPolicyUpdateInput = z.output<typeof EndpointPolicyUpdateInput>;
+
 const endpointPolicySchema = new Schema<EndpointPolicyDoc>(
   {
     endpointPattern: { type: String, required: true },

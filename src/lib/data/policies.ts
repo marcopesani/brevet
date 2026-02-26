@@ -1,4 +1,9 @@
-import { EndpointPolicy, EndpointPolicyDTO } from "@/lib/models/endpoint-policy";
+import {
+  EndpointPolicy,
+  EndpointPolicyDTO,
+  type EndpointPolicyCreateInput,
+  type EndpointPolicyUpdateInput,
+} from "@/lib/models/endpoint-policy";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
 
@@ -59,15 +64,7 @@ export function validateEndpointPattern(pattern: string): string | null {
  * Create a new endpoint policy. Returns null if a policy for this endpoint pattern already exists.
  * Throws if the endpoint pattern is not a valid URL with scheme + host.
  */
-export async function createPolicy(
-  userId: string,
-  data: {
-    endpointPattern: string;
-    autoSign?: boolean;
-    status?: string;
-    chainId: number;
-  },
-) {
+export async function createPolicy(userId: string, data: EndpointPolicyCreateInput) {
   const patternError = validateEndpointPattern(data.endpointPattern);
   if (patternError) {
     throw new Error(patternError);
@@ -103,15 +100,7 @@ export async function createPolicy(
  * Checks for endpointPattern conflicts if the pattern is being changed.
  * Returns null if a conflict exists or the policy is not found for this user.
  */
-export async function updatePolicy(
-  policyId: string,
-  userId: string,
-  data: {
-    endpointPattern?: string;
-    autoSign?: boolean;
-    status?: string;
-  },
-) {
+export async function updatePolicy(policyId: string, userId: string, data: EndpointPolicyUpdateInput) {
   await connectDB();
   const userObjectId = new Types.ObjectId(userId);
   const scopedFilter = { _id: policyId, userId: userObjectId };

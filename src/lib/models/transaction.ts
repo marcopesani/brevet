@@ -35,6 +35,22 @@ export const TransactionDTO = z.object({
 
 export type TransactionDTO = z.output<typeof TransactionDTO>;
 
+/** Input for creating a transaction (userId as string; omit _id, createdAt). */
+export const TransactionCreateInput = z.object({
+  userId: z.string(),
+  amount: z.number(),
+  endpoint: z.string(),
+  network: z.string(),
+  chainId: z.number(),
+  status: z.string(),
+  txHash: z.string().nullable().optional(),
+  type: z.string().optional(),
+  responsePayload: z.string().nullable().optional(),
+  errorMessage: z.string().nullable().optional(),
+  responseStatus: z.number().nullable().optional(),
+});
+export type TransactionCreateInput = z.output<typeof TransactionCreateInput>;
+
 // --- Mongoose schema ---
 const transactionSchema = new Schema<TransactionDoc>(
   {
