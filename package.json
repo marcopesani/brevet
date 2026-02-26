@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
     "test:e2e": "vitest run --project e2e",
@@ -16,7 +17,6 @@
     "test:e2e:browser": "playwright test --config=playwright.config.ts",
     "test:e2e:browser:headed": "playwright test --config=playwright.config.ts --headed",
     "test:e2e:browser:poc": "playwright test --config=playwright.config.ts e2e/specs/poc-login-metamask.spec.ts",
-    "test:integration": "bash scripts/integration-test.sh",
     "migrate:data": "npx tsx scripts/migrate-pg-to-mongo.ts",
     "migrate:chainid": "npx tsx scripts/migrate-add-chainid.ts",
     "postinstall": "patch-package"
