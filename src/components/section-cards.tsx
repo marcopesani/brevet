@@ -1,22 +1,27 @@
-import { IconTrendingDown, IconTrendingUp } from "@tabler/icons-react"
-
-import { Badge } from "@/components/ui/badge"
 import {
   Card,
   CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import type { AnalyticsSummary } from "@/lib/data/analytics"
+} from "@/components/ui/card";
+import type { AnalyticsSummary } from "@/lib/data/analytics";
 
 interface SectionCardsProps {
-  summary: AnalyticsSummary
-  wallet: { balance: string; address: string } | null
+  summary: AnalyticsSummary;
+  wallet: { balance: string; address: string } | null;
 }
 
 export function SectionCards({ summary, wallet }: SectionCardsProps) {
   const cards = [
+    {
+      label: "Smart Account Balance",
+      value: wallet ? `$${wallet.balance}` : "N/A",
+      footer: wallet
+        ? `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`
+        : "No account found",
+      description: "USDC balance",
+    },
     {
       label: "Today Spend",
       value: `$${summary.today.toFixed(2)}`,
@@ -35,15 +40,7 @@ export function SectionCards({ summary, wallet }: SectionCardsProps) {
       footer: "Month to date",
       description: "Monthly spending",
     },
-    {
-      label: "Smart Account Balance",
-      value: wallet ? `$${wallet.balance}` : "N/A",
-      footer: wallet
-        ? `${wallet.address.slice(0, 6)}...${wallet.address.slice(-4)}`
-        : "No account found",
-      description: "USDC balance",
-    },
-  ]
+  ];
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -64,5 +61,5 @@ export function SectionCards({ summary, wallet }: SectionCardsProps) {
         </Card>
       ))}
     </div>
-  )
+  );
 }

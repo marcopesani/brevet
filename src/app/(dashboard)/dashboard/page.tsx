@@ -8,7 +8,7 @@ import { getPendingCount } from "@/lib/data/payments";
 import { getRecentTransactions } from "@/lib/data/transactions";
 import { SectionCards } from "@/components/section-cards";
 import { PendingAlert } from "@/components/pending-alert";
-import { SpendingChart } from "@/components/spending-chart";
+import { SummaryChart } from "@/components/summary-chart";
 import { RecentTransactions } from "@/components/recent-transactions";
 
 export default async function DashboardPage() {
@@ -31,7 +31,7 @@ export default async function DashboardPage() {
     <div className="flex flex-col gap-4">
       <SectionCards summary={analytics.summary} wallet={wallet} />
       <PendingAlert count={pendingCount} />
-      <SpendingChart initialData={analytics.dailySpending} />
+      <SummaryChart dailyMetrics={analytics.dailyMetrics} metricsSummary={analytics.metricsSummary} />
       <RecentTransactions transactions={recentTransactions} />
     </div>
   );
