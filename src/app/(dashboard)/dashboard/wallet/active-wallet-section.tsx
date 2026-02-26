@@ -3,16 +3,17 @@
 import WalletBalance from "@/components/wallet-balance";
 import FundWalletForm from "@/components/fund-wallet-form";
 import WithdrawCard from "@/components/withdraw-card";
+import type { SmartAccountDTO } from "@/lib/models/smart-account";
 
-interface ActiveWalletSectionProps {
-  smartAccountAddress?: string;
+type ActiveWalletSectionAccount = Pick<SmartAccountDTO, "chainId"> &
+  Partial<Pick<SmartAccountDTO, "smartAccountAddress" | "sessionKeyStatus">>;
+
+interface ActiveWalletSectionProps extends ActiveWalletSectionAccount {
   balance?: string;
   balanceLoading: boolean;
   balanceError?: Error;
   chainName: string;
   explorerUrl: string;
-  sessionKeyStatus?: string;
-  chainId: number;
 }
 
 export default function ActiveWalletSection({

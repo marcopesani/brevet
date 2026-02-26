@@ -1,4 +1,4 @@
-import { Transaction, TransactionDTO } from "@/lib/models/transaction";
+import { Transaction, TransactionDTO, type TransactionCreateInput } from "@/lib/models/transaction";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
 
@@ -71,32 +71,20 @@ export async function getSpendingHistory(
 /**
  * Create a new transaction record.
  */
-export async function createTransaction(data: {
-  amount: number;
-  endpoint: string;
-  txHash?: string | null;
-  network: string;
-  chainId: number;
-  status: string;
-  type?: string;
-  userId: string;
-  responsePayload?: string | null;
-  errorMessage?: string | null;
-  responseStatus?: number | null;
-}): Promise<TransactionDTO> {
+export async function createTransaction(data: TransactionCreateInput): Promise<TransactionDTO> {
   await connectDB();
   const doc = await Transaction.create({
     amount: data.amount,
     endpoint: data.endpoint,
-    txHash: data.txHash,
+    txHash: data.txHash ?? undefined,
     network: data.network,
     chainId: data.chainId,
     status: data.status,
     type: data.type ?? "payment",
     userId: new Types.ObjectId(data.userId),
-    responsePayload: data.responsePayload,
-    errorMessage: data.errorMessage,
-    responseStatus: data.responseStatus,
+    responsePayload: data.responsePayload ?? undefined,
+    errorMessage: data.errorMessage ?? undefined,
+    responseStatus: data.responseStatus ?? undefined,
   });
   return TransactionDTO.parse(doc.toObject());
 }

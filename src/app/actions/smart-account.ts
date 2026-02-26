@@ -28,6 +28,7 @@ import {
   SESSION_KEY_MAX_SPEND_DAILY,
   SESSION_KEY_MAX_EXPIRY_DAYS,
 } from "@/lib/smart-account-constants";
+import type { SmartAccountDTO } from "@/lib/models/smart-account";
 
 // ---------------------------------------------------------------------------
 // Reads — keep throwing (consumed by Server Components / error boundaries)
@@ -69,12 +70,16 @@ export async function setupSmartAccount(chainId: number) {
     revalidatePath("/dashboard/wallet");
     revalidatePath("/dashboard");
 
-    return ok({
+    const payload: Pick<
+      SmartAccountDTO,
+      "_id" | "smartAccountAddress" | "chainId" | "sessionKeyStatus"
+    > = {
       _id: account._id,
       smartAccountAddress: account.smartAccountAddress,
       chainId: account.chainId,
       sessionKeyStatus: account.sessionKeyStatus,
-    });
+    };
+    return ok(payload);
   });
 }
 

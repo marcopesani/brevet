@@ -14,7 +14,11 @@ import {
   archivePolicy as _archivePolicy,
   unarchivePolicy as _unarchivePolicy,
 } from "@/lib/data/policies";
-import type { EndpointPolicyDTO } from "@/lib/models/endpoint-policy";
+import type {
+  EndpointPolicyDTO,
+  EndpointPolicyCreateInput,
+  EndpointPolicyUpdateInput,
+} from "@/lib/models/endpoint-policy";
 
 // ---------------------------------------------------------------------------
 // Reads — keep throwing (consumed by Server Components / error boundaries)
@@ -40,12 +44,7 @@ export async function getPolicy(policyId: string): Promise<EndpointPolicyDTO> {
 // Mutations — return ActionResult<T>
 // ---------------------------------------------------------------------------
 
-export async function createPolicy(data: {
-  endpointPattern: string;
-  autoSign?: boolean;
-  status?: string;
-  chainId: number;
-}) {
+export async function createPolicy(data: EndpointPolicyCreateInput) {
   return withAuth(async (auth) => {
     const policy = await _createPolicy(auth.userId, data);
     if (!policy) {
@@ -57,14 +56,7 @@ export async function createPolicy(data: {
   });
 }
 
-export async function updatePolicy(
-  policyId: string,
-  data: {
-    endpointPattern?: string;
-    autoSign?: boolean;
-    status?: string;
-  },
-) {
+export async function updatePolicy(policyId: string, data: EndpointPolicyUpdateInput) {
   return withAuth(async (auth) => {
     const existing = await _getPolicy(policyId);
     if (!existing) return err("Policy not found");

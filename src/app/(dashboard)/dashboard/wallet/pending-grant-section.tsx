@@ -2,12 +2,10 @@
 
 import SessionKeyAuthCard from "@/components/session-key-auth-card";
 import FundWalletForm from "@/components/fund-wallet-form";
+import type { SmartAccountDTO } from "@/lib/models/smart-account";
 
-interface PendingGrantSectionProps {
-  smartAccountAddress?: string;
-  sessionKeyAddress?: string;
-  chainId: number;
-}
+type PendingGrantSectionProps = Pick<SmartAccountDTO, "chainId"> &
+  Partial<Pick<SmartAccountDTO, "smartAccountAddress" | "sessionKeyAddress">>;
 
 export default function PendingGrantSection({
   smartAccountAddress,

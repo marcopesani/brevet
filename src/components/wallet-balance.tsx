@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import type { SmartAccountDTO } from "@/lib/models/smart-account";
 
 interface WalletBalanceProps {
   accountAddress?: string;
@@ -19,7 +20,7 @@ interface WalletBalanceProps {
   balanceError?: Error;
   chainName: string;
   explorerUrl: string;
-  sessionKeyStatus?: string;
+  sessionKeyStatus?: SmartAccountDTO["sessionKeyStatus"];
 }
 
 export default function WalletBalance({
