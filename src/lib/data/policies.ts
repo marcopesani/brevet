@@ -61,7 +61,7 @@ export async function createPolicy(
     endpointPattern: string;
     autoSign?: boolean;
     status?: string;
-    chainId?: number;
+    chainId: number;
   },
 ) {
   const patternError = validateEndpointPattern(data.endpointPattern);
@@ -72,15 +72,11 @@ export async function createPolicy(
   await connectDB();
   const userObjectId = new Types.ObjectId(userId);
 
-  const existingFilter: Record<string, unknown> = {
+  const existing = await EndpointPolicy.findOne({
     userId: userObjectId,
     endpointPattern: data.endpointPattern,
-  };
-  if (data.chainId !== undefined) {
-    existingFilter.chainId = data.chainId;
-  }
-
-  const existing = await EndpointPolicy.findOne(existingFilter).lean();
+    chainId: data.chainId,
+  }).lean();
 
   if (existing) {
     return null;
@@ -89,9 +85,9 @@ export async function createPolicy(
   const doc = await EndpointPolicy.create({
     userId: userObjectId,
     endpointPattern: data.endpointPattern,
+    chainId: data.chainId,
     ...(data.autoSign !== undefined && { autoSign: data.autoSign }),
     ...(data.status !== undefined && { status: data.status }),
-    ...(data.chainId !== undefined && { chainId: data.chainId }),
   });
   const lean = doc.toObject();
   return EndpointPolicyDTO.parse(lean);

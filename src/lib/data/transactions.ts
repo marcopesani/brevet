@@ -76,7 +76,7 @@ export async function createTransaction(data: {
   endpoint: string;
   txHash?: string | null;
   network: string;
-  chainId?: number;
+  chainId: number;
   status: string;
   type?: string;
   userId: string;
@@ -90,7 +90,7 @@ export async function createTransaction(data: {
     endpoint: data.endpoint,
     txHash: data.txHash,
     network: data.network,
-    ...(data.chainId !== undefined && { chainId: data.chainId }),
+    chainId: data.chainId,
     status: data.status,
     type: data.type ?? "payment",
     userId: new Types.ObjectId(data.userId),

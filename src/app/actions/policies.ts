@@ -44,7 +44,7 @@ export async function createPolicy(data: {
   endpointPattern: string;
   autoSign?: boolean;
   status?: string;
-  chainId?: number;
+  chainId: number;
 }) {
   return withAuth(async (auth) => {
     const policy = await _createPolicy(auth.userId, data);

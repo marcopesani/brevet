@@ -18,7 +18,7 @@ const getServerSnapshot = () => false;
 
 interface WithdrawCardBodyProps {
   balance?: string;
-  chainId?: number;
+  chainId: number;
 }
 
 export default function WithdrawCardBody({

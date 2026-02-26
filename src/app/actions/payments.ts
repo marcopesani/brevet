@@ -18,7 +18,7 @@ import { createTransaction } from "@/lib/data/transactions";
 import { buildPaymentHeaders, extractSettleResponse, extractTxHashFromResponse } from "@/lib/x402/headers";
 import { formatAmountForDisplay } from "@/lib/x402/display";
 import { getRequirementAmount } from "@/lib/x402/requirements";
-import { getChainById, getDefaultChainConfig, getNetworkIdentifiers } from "@/lib/chain-config";
+import { getChainById, getNetworkIdentifiers } from "@/lib/chain-config";
 import { logger } from "@/lib/logger";
 import { safeFetch } from "@/lib/safe-fetch";
 import type { Hex } from "viem";
@@ -78,7 +78,7 @@ export async function approvePendingPayment(
         ? storedPaymentRequired
         : [storedPaymentRequired];
 
-    const chainId = payment.chainId ?? getDefaultChainConfig().chain.id;
+    const chainId = payment.chainId;
     const chainConfig = getChainById(chainId);
     const acceptedNetworks = chainConfig ? getNetworkIdentifiers(chainConfig) : [];
     const acceptedRequirement =
@@ -160,6 +160,7 @@ export async function approvePendingPayment(
         amount: amountForTx,
         endpoint: payment.url,
         network: acceptedRequirement?.network ?? "base",
+        chainId,
         status: txStatus,
         userId: payment.userId,
         txHash: txHash ?? undefined,
@@ -219,6 +220,7 @@ export async function approvePendingPayment(
         amount: amountForTx,
         endpoint: payment.url,
         network: acceptedRequirement?.network ?? "base",
+        chainId,
         status: "failed",
         userId: payment.userId,
         errorMessage: `Network error: ${errorMsg}`,

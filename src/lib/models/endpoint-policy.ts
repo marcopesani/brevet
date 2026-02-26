@@ -32,7 +32,7 @@ const endpointPolicySchema = new Schema<EndpointPolicyDoc>(
     endpointPattern: { type: String, required: true },
     autoSign: { type: Boolean, default: false },
     status: { type: String, default: "active" },
-    chainId: { type: Number },
+    chainId: { type: Number, required: true },
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     archivedAt: { type: Date, default: null },
   },

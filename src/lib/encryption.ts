@@ -2,7 +2,7 @@ import {
   formatUnits,
 } from "viem";
 import crypto from "crypto";
-import { createChainPublicClient, getChainById, getDefaultChainConfig, getUsdcConfig } from "@/lib/chain-config";
+import { createChainPublicClient, getChainById, getUsdcConfig } from "@/lib/chain-config";
 import { reportRpcError, reportRpcSuccess } from "@/lib/rpc-health";
 
 const USDC_ABI = [
@@ -66,11 +66,10 @@ export function decryptPrivateKey(encryptedData: string): string {
   return decrypted.toString("utf8");
 }
 
-function resolveChainConfig(chainId?: number) {
-  const id = chainId ?? getDefaultChainConfig().chain.id;
-  const config = getChainById(id);
+function resolveChainConfig(chainId: number) {
+  const config = getChainById(chainId);
   if (!config) {
-    throw new Error(`Unsupported chain: ${id}`);
+    throw new Error(`Unsupported chain: ${chainId}`);
   }
   return config;
 }
@@ -93,7 +92,7 @@ export function isRpcRateLimitError(error: unknown): boolean {
 
 export async function getUsdcBalance(
   address: string,
-  chainId?: number,
+  chainId: number,
 ): Promise<string> {
   const config = resolveChainConfig(chainId);
   const resolvedChainId = config.chain.id;

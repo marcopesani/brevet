@@ -40,7 +40,7 @@ export async function getSmartAccountForChain(chainId: number) {
   return getSmartAccount(auth.userId, chainId);
 }
 
-export async function getSmartAccountBalanceAction(chainId?: number) {
+export async function getSmartAccountBalanceAction(chainId: number) {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
 
@@ -81,7 +81,7 @@ export async function setupSmartAccount(chainId: number) {
 export async function withdrawFromWallet(
   amount: number,
   toAddress: string,
-  chainId?: number,
+  chainId: number,
 ) {
   return withAuth(async (auth) => {
     const result = await withdrawFromSmartAccount(

@@ -1,8 +1,6 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
 import { z } from "zod/v4";
 
-const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
-
 type SmartAccountDoc = Document & {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
@@ -51,7 +49,7 @@ export type SmartAccountWithKeyDTO = z.output<typeof SmartAccountWithKeyDTO>;
 const smartAccountSchema = new Schema<SmartAccountDoc>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    chainId: { type: Number, required: true, default: defaultChainId },
+    chainId: { type: Number, required: true },
     ownerAddress: { type: String, required: true },
     smartAccountAddress: { type: String, required: true },
     smartAccountVersion: { type: String, required: true, default: "0.3.3" },

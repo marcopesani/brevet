@@ -60,7 +60,7 @@ export async function createPendingPayment(data: {
   amount?: number;
   amountRaw?: string;
   asset?: string;
-  chainId?: number;
+  chainId: number;
   paymentRequirements: string;
   expiresAt: Date;
   body?: string;
@@ -74,7 +74,7 @@ export async function createPendingPayment(data: {
     amount: data.amount ?? 0,
     ...(data.amountRaw !== undefined && data.amountRaw !== "" && { amountRaw: data.amountRaw }),
     ...(data.asset !== undefined && data.asset !== "" && { asset: data.asset }),
-    ...(data.chainId !== undefined && { chainId: data.chainId }),
+    chainId: data.chainId,
     paymentRequirements: data.paymentRequirements,
     expiresAt: data.expiresAt,
     requestBody: data.body ?? null,

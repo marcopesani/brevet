@@ -33,7 +33,7 @@ type TabFilter = "all" | "active" | "draft" | "archived";
 interface PolicyTableProps {
   initialPolicies: EndpointPolicyDTO[];
   chainName?: string;
-  chainId?: number;
+  chainId: number;
 }
 
 export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTableProps) {

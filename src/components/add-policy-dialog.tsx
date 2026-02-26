@@ -20,7 +20,7 @@ interface AddPolicyDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
-  chainId?: number;
+  chainId: number;
 }
 
 export function AddPolicyDialog({

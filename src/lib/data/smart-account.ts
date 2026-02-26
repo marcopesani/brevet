@@ -9,7 +9,7 @@ import { connectDB } from "@/lib/db";
 import { getUsdcBalance, decryptPrivateKey } from "@/lib/encryption";
 import { computeSmartAccountAddress, createSessionKey } from "@/lib/smart-account";
 import { ENTRY_POINT, KERNEL_VERSION } from "@/lib/smart-account-constants";
-import { createChainPublicClient, getChainById, getDefaultChainConfig, getUsdcConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";
+import { createChainPublicClient, getChainById, getUsdcConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";
 import { createTransaction } from "@/lib/data/transactions";
 
 /**
@@ -59,17 +59,16 @@ export async function getAllSmartAccounts(userId: string): Promise<SmartAccountD
  * Get the USDC balance of the user's smart account on a specific chain.
  * Returns null if no smart account exists on that chain.
  */
-export async function getSmartAccountBalance(userId: string, chainId?: number) {
+export async function getSmartAccountBalance(userId: string, chainId: number) {
   await connectDB();
-  const resolvedChainId = chainId ?? getDefaultChainConfig().chain.id;
   const doc = await SmartAccount.findOne({
     userId: new Types.ObjectId(userId),
-    chainId: resolvedChainId,
+    chainId,
   })
     .select("smartAccountAddress")
     .lean();
   if (!doc) return null;
-  const balance = await getUsdcBalance(doc.smartAccountAddress, resolvedChainId);
+  const balance = await getUsdcBalance(doc.smartAccountAddress, chainId);
   return { balance, address: doc.smartAccountAddress };
 }
 
@@ -205,7 +204,7 @@ export async function withdrawFromSmartAccount(
   userId: string,
   amount: number,
   toAddress: string,
-  chainId?: number,
+  chainId: number,
 ): Promise<{ txHash: string; userOpHash: string }> {
   if (!isAddress(toAddress)) {
     throw new Error("Invalid destination address");
@@ -214,12 +213,11 @@ export async function withdrawFromSmartAccount(
     throw new Error("Amount must be greater than 0");
   }
 
-  const resolvedChainId = chainId ?? getDefaultChainConfig().chain.id;
-  const config = getChainById(resolvedChainId);
+  const config = getChainById(chainId);
   if (!config) {
-    throw new Error(`Unsupported chain: ${resolvedChainId}`);
+    throw new Error(`Unsupported chain: ${chainId}`);
   }
-  const usdcToken = getUsdcConfig(resolvedChainId);
+  const usdcToken = getUsdcConfig(chainId);
   const decimals = usdcToken?.decimals ?? 6;
 
   await connectDB();
@@ -227,7 +225,7 @@ export async function withdrawFromSmartAccount(
   // Look up smart account with session key and serialized account
   const account = await SmartAccount.findOne({
     userId: new Types.ObjectId(userId),
-    chainId: resolvedChainId,
+    chainId,
   }).lean();
   if (!account) {
     throw new Error("No smart account found for this user");
@@ -247,7 +245,7 @@ export async function withdrawFromSmartAccount(
   }
 
   // Check USDC balance
-  const balance = await getUsdcBalance(account.smartAccountAddress, resolvedChainId);
+  const balance = await getUsdcBalance(account.smartAccountAddress, chainId);
   if (parseFloat(balance) < amount) {
     throw new Error(
       `Insufficient balance: ${balance} USDC available, ${amount} requested`,
@@ -259,7 +257,7 @@ export async function withdrawFromSmartAccount(
   const serializedAccount = decryptPrivateKey(account.serializedAccount);
 
   // Build kernel account from serialized permission account
-  const publicClient = createChainPublicClient(resolvedChainId);
+  const publicClient = createChainPublicClient(chainId);
 
   const sessionKeyAccount = privateKeyToAccount(sessionKeyHex);
   const ecdsaSigner = await toECDSASigner({
@@ -275,7 +273,7 @@ export async function withdrawFromSmartAccount(
   );
 
   // Build ZeroDev bundler and paymaster transports (unified v3 endpoint)
-  const zerodevRpcUrl = getZeroDevBundlerRpc(resolvedChainId);
+  const zerodevRpcUrl = getZeroDevBundlerRpc(chainId);
   const bundlerTransport = http(zerodevRpcUrl);
 
   const paymasterClient = createZeroDevPaymasterClient({
@@ -323,7 +321,7 @@ export async function withdrawFromSmartAccount(
     endpoint: `withdrawal:${toAddress}`,
     txHash,
     network: config.networkString,
-    chainId: resolvedChainId,
+    chainId,
     status: "completed",
     type: "withdrawal",
     userId,
