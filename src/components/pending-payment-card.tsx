@@ -208,14 +208,21 @@ export default function PendingPaymentCard({
 
   async function handleReject() {
     setActionInProgress("reject");
-    const result = await rejectPendingPayment(payment._id);
-    if (result.success) {
-      toast.success("Payment rejected");
-      invalidateAndNotify();
-    } else {
-      toast.error(result.error);
+    try {
+      const result = await rejectPendingPayment(payment._id);
+      if (result.success) {
+        toast.success("Payment rejected");
+        invalidateAndNotify();
+      } else {
+        toast.error(result.error);
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to reject payment"
+      );
+    } finally {
+      setActionInProgress(null);
     }
-    setActionInProgress(null);
   }
 
   const urgencyVariant = getUrgencyVariant(remaining);

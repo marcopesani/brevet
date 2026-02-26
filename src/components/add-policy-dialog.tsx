@@ -39,20 +39,24 @@ export function AddPolicyDialog({
     setError(null);
     setSubmitting(true);
 
-    const result = await createPolicy({ endpointPattern, autoSign, chainId });
+    try {
+      const result = await createPolicy({ endpointPattern, autoSign, chainId });
 
-    if (!result.success) {
-      setError(result.error);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+
+      toast.success("Policy created");
+      setEndpointPattern("");
+      setAutoSign(false);
+      onOpenChange(false);
+      onSuccess();
+    } catch {
+      setError("Failed to create policy");
+    } finally {
       setSubmitting(false);
-      return;
     }
-
-    toast.success("Policy created");
-    setEndpointPattern("");
-    setAutoSign(false);
-    setSubmitting(false);
-    onOpenChange(false);
-    onSuccess();
   }
 
   return (

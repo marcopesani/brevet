@@ -55,6 +55,13 @@ async function main() {
     await mongod.stop();
     process.exit(code ?? 0);
   });
+
+  const cleanup = (exitCode) => {
+    if (child.exitCode === null) child.kill("SIGTERM");
+    mongod.stop().then(() => process.exit(exitCode));
+  };
+  process.on("SIGINT", () => cleanup(130));
+  process.on("SIGTERM", () => cleanup(143));
 }
 
 main().catch((err) => {
