@@ -84,18 +84,6 @@ export async function createPendingPayment(data: {
 }
 
 /**
- * Get a single pending payment by ID, scoped to the given user.
- */
-export async function getPendingPaymentById(paymentId: string, userId: string): Promise<PendingPaymentDTO | null> {
-  await connectDB();
-  const doc = await PendingPayment.findOne({
-    _id: paymentId,
-    userId: new Types.ObjectId(userId),
-  }).lean();
-  return doc ? PendingPaymentDTO.parse(doc) : null;
-}
-
-/**
  * Mark a pending payment as completed and store response data.
  * Only succeeds if the payment is currently "approved" (atomic precondition).
  * Requires userId for defense-in-depth ownership verification.

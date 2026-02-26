@@ -49,20 +49,21 @@ export default function WithdrawForm({
     setError(null);
     setTxHash(null);
 
-    try {
-      const data = await withdrawFromWallet(
-        parseFloat(amount),
-        address,
-        chainId,
-      );
-      setTxHash(data.txHash);
+    const result = await withdrawFromWallet(
+      parseFloat(amount),
+      address,
+      chainId,
+    );
+
+    if (!result.success) {
+      setError(result.error);
+    } else {
+      setTxHash(result.data.txHash);
       setAmount("");
       queryClient.invalidateQueries({ queryKey: WALLET_BALANCE_QUERY_KEY });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Withdrawal failed");
-    } finally {
-      setLoading(false);
     }
+
+    setLoading(false);
   }
 
   return (

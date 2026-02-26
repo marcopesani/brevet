@@ -1,11 +1,13 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import NoAccountCard from "./no-account-card";
 import PendingGrantSection from "./pending-grant-section";
 import ActiveWalletSection from "./active-wallet-section";
 import { useWalletBalance } from "@/hooks/use-wallet-balance";
 import { useChain } from "@/contexts/chain-context";
+import { unwrap } from "@/lib/action-result";
 import {
   setupSmartAccount,
   getSmartAccountForChain,
@@ -49,10 +51,13 @@ export default function WalletContent({
   });
 
   const { mutate: doSetup, isPending: setupPending } = useMutation({
-    mutationFn: (cId: number) => setupSmartAccount(cId),
+    mutationFn: async (cId: number) => unwrap(await setupSmartAccount(cId)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["smart-account", chainId] });
       queryClient.invalidateQueries({ queryKey: ["smart-accounts-all"] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
     },
   });
 

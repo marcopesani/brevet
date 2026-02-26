@@ -74,30 +74,6 @@ export async function getSmartAccountBalance(userId: string, chainId?: number) {
 }
 
 /**
- * Create a new smart account record. Does not check for duplicates — use ensureSmartAccount for idempotent creation.
- */
-export async function createSmartAccountRecord(data: {
-  userId: string;
-  ownerAddress: string;
-  chainId: number;
-  smartAccountAddress: string;
-  sessionKeyAddress: string;
-  sessionKeyEncrypted: string;
-}): Promise<SmartAccountWithKeyDTO> {
-  await connectDB();
-  const doc = await SmartAccount.create({
-    userId: new Types.ObjectId(data.userId),
-    ownerAddress: data.ownerAddress,
-    chainId: data.chainId,
-    smartAccountAddress: data.smartAccountAddress,
-    sessionKeyAddress: data.sessionKeyAddress,
-    sessionKeyEncrypted: data.sessionKeyEncrypted,
-    sessionKeyStatus: "pending_grant",
-  });
-  return SmartAccountWithKeyDTO.parse(doc.toObject());
-}
-
-/**
  * Idempotent smart account creation: returns existing record if (userId, chainId) exists,
  * otherwise computes counterfactual address, generates session key, and creates a new record.
  */

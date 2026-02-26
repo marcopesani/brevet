@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { ok, err } from "@/lib/action-result";
+import { withAuth } from "@/lib/action-result-server";
 import {
   getPendingPayments as _getPendingPayments,
   getPendingCount as _getPendingCount,
@@ -22,6 +24,10 @@ import { safeFetch } from "@/lib/safe-fetch";
 import type { Hex } from "viem";
 import type { PaymentPayload, PaymentRequirements } from "@x402/core/types";
 
+// ---------------------------------------------------------------------------
+// Reads — keep throwing (consumed by Server Components / error boundaries)
+// ---------------------------------------------------------------------------
+
 export async function getPendingPayments() {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
@@ -33,6 +39,10 @@ export async function getPendingCount() {
   if (!auth) throw new Error("Unauthorized");
   return _getPendingCount(auth.userId);
 }
+
+// ---------------------------------------------------------------------------
+// Mutations — return ActionResult<T>
+// ---------------------------------------------------------------------------
 
 export async function approvePendingPayment(
   paymentId: string,
@@ -46,214 +56,199 @@ export async function approvePendingPayment(
     nonce: string;
   },
 ) {
-  const auth = await getAuthenticatedUser();
-  if (!auth) throw new Error("Unauthorized");
+  return withAuth(async (auth) => {
+    const payment = await _getPendingPayment(paymentId, auth.userId);
+    if (!payment) return err("Pending payment not found");
+    if (payment.status !== "pending") return err(`Payment is already ${payment.status}`);
 
-  const payment = await _getPendingPayment(paymentId, auth.userId);
-  if (!payment) throw new Error("Pending payment not found");
-  if (payment.status !== "pending") throw new Error(`Payment is already ${payment.status}`);
-
-  if (Date.now() > new Date(payment.expiresAt).getTime()) {
-    logger.warn("Payment expired during approval", { userId: auth.userId, paymentId, action: "payment_expired" });
-    await _expirePendingPayment(paymentId, auth.userId);
-    throw new Error("Payment has expired");
-  }
-
-  const storedPaymentRequired = JSON.parse(payment.paymentRequirements);
-
-  // Backward compat: old records stored just the accepts array, new records store full PaymentRequired
-  const isFullFormat = !Array.isArray(storedPaymentRequired) && storedPaymentRequired.accepts;
-  const accepts = isFullFormat
-    ? storedPaymentRequired.accepts
-    : Array.isArray(storedPaymentRequired)
-      ? storedPaymentRequired
-      : [storedPaymentRequired];
-
-  // Resolve the requirement that matches the payment's chainId (same logic as the card)
-  const chainId = payment.chainId ?? getDefaultChainConfig().chain.id;
-  const chainConfig = getChainById(chainId);
-  const acceptedNetworks = chainConfig ? getNetworkIdentifiers(chainConfig) : [];
-  const acceptedRequirement =
-    accepts.find(
-      (r: { scheme?: string; network?: string }) =>
-        r.scheme === "exact" && r.network != null && acceptedNetworks.includes(r.network),
-    ) ?? accepts[0];
-
-  const amountRaw =
-    (acceptedRequirement && getRequirementAmount(acceptedRequirement as PaymentRequirements)) ??
-    payment.amountRaw;
-  const { displayAmount } = formatAmountForDisplay(
-    amountRaw,
-    acceptedRequirement?.asset ?? payment.asset,
-    chainId,
-  );
-  const amountForTx = parseFloat(displayAmount) || 0;
-  logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: amountForTx });
-
-  const x402Version = isFullFormat ? (storedPaymentRequired.x402Version ?? 1) : 1;
-  const resource = isFullFormat
-    ? storedPaymentRequired.resource
-    : { url: payment.url, description: "", mimeType: "" };
-  const extensions = isFullFormat ? storedPaymentRequired.extensions : undefined;
-
-  const paymentPayload: PaymentPayload = {
-    x402Version,
-    resource,
-    accepted: acceptedRequirement,
-    payload: {
-      signature: signature as Hex,
-      authorization: {
-        from: authorization.from as Hex,
-        to: authorization.to as Hex,
-        value: authorization.value,
-        validAfter: authorization.validAfter,
-        validBefore: authorization.validBefore,
-        nonce: authorization.nonce as Hex,
-      },
-    },
-    ...(extensions ? { extensions } : {}),
-  };
-
-  const paymentHeaders = buildPaymentHeaders(paymentPayload);
-
-  // Include stored request headers and body in the paid fetch
-  const storedHeaders: Record<string, string> = payment.requestHeaders
-    ? JSON.parse(payment.requestHeaders)
-    : {};
-
-  try {
-    const paidResponse = await safeFetch(payment.url, {
-      method: payment.method,
-      headers: {
-        ...storedHeaders,
-        ...paymentHeaders,
-      },
-      ...(payment.requestBody ? { body: payment.requestBody } : {}),
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    // Mark as approved with signature first (transitional state)
-    const approved = await _approvePendingPayment(paymentId, auth.userId, signature);
-    if (!approved) {
-      throw new Error("Payment has already been processed");
+    if (Date.now() > new Date(payment.expiresAt).getTime()) {
+      logger.warn("Payment expired during approval", { userId: auth.userId, paymentId, action: "payment_expired" });
+      await _expirePendingPayment(paymentId, auth.userId);
+      revalidatePath("/dashboard");
+      revalidatePath("/dashboard/pending");
+      return err("Payment has expired");
     }
 
-    // Read response body for storage
-    let responsePayload: string | null = null;
+    const storedPaymentRequired = JSON.parse(payment.paymentRequirements);
+
+    const isFullFormat = !Array.isArray(storedPaymentRequired) && storedPaymentRequired.accepts;
+    const accepts = isFullFormat
+      ? storedPaymentRequired.accepts
+      : Array.isArray(storedPaymentRequired)
+        ? storedPaymentRequired
+        : [storedPaymentRequired];
+
+    const chainId = payment.chainId ?? getDefaultChainConfig().chain.id;
+    const chainConfig = getChainById(chainId);
+    const acceptedNetworks = chainConfig ? getNetworkIdentifiers(chainConfig) : [];
+    const acceptedRequirement =
+      accepts.find(
+        (r: { scheme?: string; network?: string }) =>
+          r.scheme === "exact" && r.network != null && acceptedNetworks.includes(r.network),
+      ) ?? accepts[0];
+
+    const amountRaw =
+      (acceptedRequirement && getRequirementAmount(acceptedRequirement as PaymentRequirements)) ??
+      payment.amountRaw;
+    const { displayAmount } = formatAmountForDisplay(
+      amountRaw,
+      acceptedRequirement?.asset ?? payment.asset,
+      chainId,
+    );
+    const amountForTx = parseFloat(displayAmount) || 0;
+    logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: amountForTx });
+
+    const x402Version = isFullFormat ? (storedPaymentRequired.x402Version ?? 1) : 1;
+    const resource = isFullFormat
+      ? storedPaymentRequired.resource
+      : { url: payment.url, description: "", mimeType: "" };
+    const extensions = isFullFormat ? storedPaymentRequired.extensions : undefined;
+
+    const paymentPayload: PaymentPayload = {
+      x402Version,
+      resource,
+      accepted: acceptedRequirement,
+      payload: {
+        signature: signature as Hex,
+        authorization: {
+          from: authorization.from as Hex,
+          to: authorization.to as Hex,
+          value: authorization.value,
+          validAfter: authorization.validAfter,
+          validBefore: authorization.validBefore,
+          nonce: authorization.nonce as Hex,
+        },
+      },
+      ...(extensions ? { extensions } : {}),
+    };
+
+    const paymentHeaders = buildPaymentHeaders(paymentPayload);
+
+    const storedHeaders: Record<string, string> = payment.requestHeaders
+      ? JSON.parse(payment.requestHeaders)
+      : {};
+
     try {
-      responsePayload = await paidResponse.clone().text();
-    } catch {
-      // If reading fails, leave as null
-    }
-
-    // Extract txHash from response headers
-    const settlement = extractSettleResponse(paidResponse) ?? undefined;
-    const txHash = settlement?.transaction ?? await extractTxHashFromResponse(paidResponse);
-
-    const txStatus = paidResponse.ok ? "completed" : "failed";
-
-    await createTransaction({
-      amount: amountForTx,
-      endpoint: payment.url,
-      network: acceptedRequirement?.network ?? "base",
-      status: txStatus,
-      userId: payment.userId,
-      txHash: txHash ?? undefined,
-      responsePayload,
-      errorMessage: !paidResponse.ok ? `Payment approved but server responded with ${paidResponse.status}` : undefined,
-      responseStatus: paidResponse.status,
-    });
-
-    // Store response on the PendingPayment record
-    if (paidResponse.ok) {
-      logger.info("Payment approval completed", { userId: auth.userId, paymentId, url: payment.url, action: "approve_completed", status: paidResponse.status, txHash });
-      await completePendingPayment(paymentId, auth.userId, {
-        responsePayload: responsePayload ?? "",
-        responseStatus: paidResponse.status,
-        txHash: txHash ?? undefined,
+      const paidResponse = await safeFetch(payment.url, {
+        method: payment.method,
+        headers: {
+          ...storedHeaders,
+          ...paymentHeaders,
+        },
+        ...(payment.requestBody ? { body: payment.requestBody } : {}),
+        signal: AbortSignal.timeout(30_000),
       });
-    } else {
-      logger.error("Payment approval failed - server returned error", { userId: auth.userId, paymentId, url: payment.url, action: "approve_failed", status: paidResponse.status, responseBody: responsePayload?.slice(0, 500) });
-      await failPendingPayment(paymentId, auth.userId, {
-        responsePayload: responsePayload ?? undefined,
-        responseStatus: paidResponse.status,
-      });
-    }
 
-    // Parse response data for the return value
-    let responseData: unknown = null;
-    const contentType = paidResponse.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
+      const approved = await _approvePendingPayment(paymentId, auth.userId, signature);
+      if (!approved) {
+        return err("Payment has already been processed");
+      }
+
+      let responsePayload: string | null = null;
       try {
-        responseData = JSON.parse(responsePayload ?? "");
+        responsePayload = await paidResponse.clone().text();
       } catch {
+        // If reading fails, leave as null
+      }
+
+      const settlement = extractSettleResponse(paidResponse) ?? undefined;
+      const txHash = settlement?.transaction ?? await extractTxHashFromResponse(paidResponse);
+
+      const txStatus = paidResponse.ok ? "completed" : "failed";
+
+      await createTransaction({
+        amount: amountForTx,
+        endpoint: payment.url,
+        network: acceptedRequirement?.network ?? "base",
+        status: txStatus,
+        userId: payment.userId,
+        txHash: txHash ?? undefined,
+        responsePayload,
+        errorMessage: !paidResponse.ok ? `Payment approved but server responded with ${paidResponse.status}` : undefined,
+        responseStatus: paidResponse.status,
+      });
+
+      if (paidResponse.ok) {
+        logger.info("Payment approval completed", { userId: auth.userId, paymentId, url: payment.url, action: "approve_completed", status: paidResponse.status, txHash });
+        await completePendingPayment(paymentId, auth.userId, {
+          responsePayload: responsePayload ?? "",
+          responseStatus: paidResponse.status,
+          txHash: txHash ?? undefined,
+        });
+      } else {
+        logger.error("Payment approval failed - server returned error", { userId: auth.userId, paymentId, url: payment.url, action: "approve_failed", status: paidResponse.status, responseBody: responsePayload?.slice(0, 500) });
+        await failPendingPayment(paymentId, auth.userId, {
+          responsePayload: responsePayload ?? undefined,
+          responseStatus: paidResponse.status,
+        });
+      }
+
+      let responseData: unknown = null;
+      const contentType = paidResponse.headers.get("content-type") ?? "";
+      if (contentType.includes("application/json")) {
+        try {
+          responseData = JSON.parse(responsePayload ?? "");
+        } catch {
+          responseData = responsePayload;
+        }
+      } else {
         responseData = responsePayload;
       }
-    } else {
-      responseData = responsePayload;
+
+      revalidatePath("/dashboard");
+      revalidatePath("/dashboard/pending");
+      revalidatePath("/dashboard/transactions");
+
+      if (!paidResponse.ok) {
+        return err(`Payment approved but server responded with ${paidResponse.status}`);
+      }
+
+      return ok({ status: paidResponse.status, data: responseData });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : "Network error during payment";
+
+      logger.error("Network error during payment approval", {
+        userId: auth.userId,
+        paymentId,
+        url: payment.url,
+        action: "payment_network_error",
+        error: errorMsg,
+      });
+
+      await createTransaction({
+        amount: amountForTx,
+        endpoint: payment.url,
+        network: acceptedRequirement?.network ?? "base",
+        status: "failed",
+        userId: payment.userId,
+        errorMessage: `Network error: ${errorMsg}`,
+      });
+
+      await failPendingPayment(paymentId, auth.userId, {
+        error: `Network error: ${errorMsg}`,
+      });
+
+      revalidatePath("/dashboard");
+      revalidatePath("/dashboard/pending");
+      revalidatePath("/dashboard/transactions");
+
+      return err(`Network error: ${errorMsg}`);
     }
-
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/pending");
-    revalidatePath("/dashboard/transactions");
-
-    return {
-      success: paidResponse.ok,
-      status: paidResponse.status,
-      data: responseData,
-    };
-  } catch (error) {
-    // Network error — create a failed transaction and mark PendingPayment as failed
-    const errorMsg = error instanceof Error ? error.message : "Network error during payment";
-
-    logger.error("Network error during payment approval", {
-      userId: auth.userId,
-      paymentId,
-      url: payment.url,
-      action: "payment_network_error",
-      error: errorMsg,
-    });
-
-    await createTransaction({
-      amount: amountForTx,
-      endpoint: payment.url,
-      network: acceptedRequirement?.network ?? "base",
-      status: "failed",
-      userId: payment.userId,
-      errorMessage: `Network error: ${errorMsg}`,
-    });
-
-    await failPendingPayment(paymentId, auth.userId, {
-      error: `Network error: ${errorMsg}`,
-    });
-
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/pending");
-    revalidatePath("/dashboard/transactions");
-
-    return {
-      success: false,
-      status: 0,
-      data: null,
-    };
-  }
+  });
 }
 
 export async function rejectPendingPayment(paymentId: string) {
-  const auth = await getAuthenticatedUser();
-  if (!auth) throw new Error("Unauthorized");
+  return withAuth(async (auth) => {
+    const payment = await _getPendingPayment(paymentId, auth.userId);
+    if (!payment) return err("Pending payment not found");
+    if (payment.status !== "pending") return err(`Payment is already ${payment.status}`);
 
-  const payment = await _getPendingPayment(paymentId, auth.userId);
-  if (!payment) throw new Error("Pending payment not found");
-  if (payment.status !== "pending") throw new Error(`Payment is already ${payment.status}`);
+    const rejected = await _rejectPendingPayment(paymentId, auth.userId);
+    if (!rejected) return err("Payment has already been processed");
 
-  const rejected = await _rejectPendingPayment(paymentId, auth.userId);
-  if (!rejected) {
-    throw new Error("Payment has already been processed");
-  }
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/pending");
 
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/pending");
-
-  return { success: true, status: "rejected" };
+    return ok(undefined as void);
+  });
 }

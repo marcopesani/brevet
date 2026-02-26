@@ -35,6 +35,7 @@ import {
   sendBundlerRequest,
   finalizeSessionKey,
 } from "@/app/actions/smart-account";
+import { unwrap } from "@/lib/action-result";
 import { getChainById, getUsdcGasTokenAddress } from "@/lib/chain-config";
 
 interface SessionKeyAuthCardProps {
@@ -71,7 +72,7 @@ function createBundlerTransport(chainId: number) {
   return custom(
     {
       async request({ method, params }: { method: string; params?: unknown }) {
-        return sendBundlerRequest(chainId, method, (params ?? []) as unknown[]);
+        return unwrap(await sendBundlerRequest(chainId, method, (params ?? []) as unknown[]));
       },
     },
     { retryCount: 0 },
@@ -96,7 +97,7 @@ export default function SessionKeyAuthCard({
 
       // 1. Get session key from server
       const { sessionKeyHex, smartAccountAddress: saAddress } =
-        await prepareSessionKeyAuth(chainId);
+        unwrap(await prepareSessionKeyAuth(chainId));
 
       // 2. Verify wallet is connected
       if (!walletClient) throw new Error("Wallet not connected");
@@ -221,25 +222,21 @@ export default function SessionKeyAuthCard({
 
       // 9. Finalize on server — verify tx, store serialized account, activate
       const grantTxHash = receipt.receipt.transactionHash;
-      const result = await finalizeSessionKey(
-        chainId,
-        grantTxHash,
-        serialized,
-        Number(spendLimitPerTxMicro),
-        Math.round((parseFloat(spendLimitDaily) || 500) * 1e6),
-        parseInt(expiryDays, 10) || 30,
+      return unwrap(
+        await finalizeSessionKey(
+          chainId,
+          grantTxHash,
+          serialized,
+          Number(spendLimitPerTxMicro),
+          Math.round((parseFloat(spendLimitDaily) || 500) * 1e6),
+          parseInt(expiryDays, 10) || 30,
+        ),
       );
-
-      return result;
     },
     onSuccess: (result) => {
       setStatus(null);
       queryClient.invalidateQueries({ queryKey: ["smart-account", chainId] });
       queryClient.invalidateQueries({ queryKey: ["smart-accounts-all"] });
-      if (!result.success) {
-        toast.error(result.error ?? "Session key authorization failed.");
-        return;
-      }
       toast.success("Session key authorized successfully!");
       if (result.grantTxHash) {
         toast.info(`Grant tx: ${result.grantTxHash.slice(0, 10)}...`);

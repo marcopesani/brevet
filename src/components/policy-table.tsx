@@ -47,64 +47,50 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
 
   async function handleActivate(policyId: string) {
     setActionInProgress(policyId);
-    try {
-      await activatePolicy(policyId);
+    const result = await activatePolicy(policyId);
+    if (result.success) {
       toast.success("Policy activated");
-      startTransition(() => {
-        router.refresh();
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to activate");
-    } finally {
-      setActionInProgress(null);
+      startTransition(() => router.refresh());
+    } else {
+      toast.error(result.error);
     }
+    setActionInProgress(null);
   }
 
   async function handleToggleAutoSign(policy: EndpointPolicyDTO) {
     setActionInProgress(policy._id);
-    try {
-      await toggleAutoSign(policy._id, !policy.autoSign);
-      toast.success(
-        `Auto-sign ${!policy.autoSign ? "enabled" : "disabled"}`
-      );
-      startTransition(() => {
-        router.refresh();
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update");
-    } finally {
-      setActionInProgress(null);
+    const result = await toggleAutoSign(policy._id, !policy.autoSign);
+    if (result.success) {
+      toast.success(`Auto-sign ${!policy.autoSign ? "enabled" : "disabled"}`);
+      startTransition(() => router.refresh());
+    } else {
+      toast.error(result.error);
     }
+    setActionInProgress(null);
   }
 
   async function handleArchive(policyId: string) {
     setActionInProgress(policyId);
-    try {
-      await archivePolicy(policyId);
+    const result = await archivePolicy(policyId);
+    if (result.success) {
       toast.success("Policy archived");
-      startTransition(() => {
-        router.refresh();
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to archive");
-    } finally {
-      setActionInProgress(null);
+      startTransition(() => router.refresh());
+    } else {
+      toast.error(result.error);
     }
+    setActionInProgress(null);
   }
 
   async function handleUnarchive(policyId: string) {
     setActionInProgress(policyId);
-    try {
-      await unarchivePolicy(policyId);
+    const result = await unarchivePolicy(policyId);
+    if (result.success) {
       toast.success("Policy reactivated");
-      startTransition(() => {
-        router.refresh();
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to reactivate");
-    } finally {
-      setActionInProgress(null);
+      startTransition(() => router.refresh());
+    } else {
+      toast.error(result.error);
     }
+    setActionInProgress(null);
   }
 
   function handlePolicyCreated() {

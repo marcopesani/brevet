@@ -194,7 +194,7 @@ export default function PendingPaymentCard({
       if (result.success) {
         toast.success("Payment approved and submitted");
       } else {
-        toast.error("Payment submitted but server returned an error");
+        toast.error(result.error);
       }
       invalidateAndNotify();
     } catch (err) {
@@ -208,17 +208,14 @@ export default function PendingPaymentCard({
 
   async function handleReject() {
     setActionInProgress("reject");
-    try {
-      await rejectPendingPayment(payment._id);
+    const result = await rejectPendingPayment(payment._id);
+    if (result.success) {
       toast.success("Payment rejected");
       invalidateAndNotify();
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to reject payment"
-      );
-    } finally {
-      setActionInProgress(null);
+    } else {
+      toast.error(result.error);
     }
+    setActionInProgress(null);
   }
 
   const urgencyVariant = getUrgencyVariant(remaining);
