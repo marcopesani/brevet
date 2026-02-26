@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Run tests from project root so webServer and testDir resolve correctly.
+const projectRoot = process.cwd();
+
 // Test-only config: no process.env / .env. All values are explicit for e2e.
 const E2E_ENV = {
   NODE_ENV: "development",
@@ -43,5 +46,6 @@ export default defineConfig({
     url: baseURL,
     timeout: 180_000,
     reuseExistingServer: !process.env.CI,
+    cwd: projectRoot, // ensure dev server runs from project root (no e2e/.next)
   },
 });

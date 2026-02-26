@@ -25,6 +25,7 @@ const E2E_ENV_KEYS = [
 ];
 
 async function main() {
+  process.chdir(root);
   const mongod = await MongoMemoryServer.create();
   const mongoUri = mongod.getUri();
 
@@ -32,6 +33,7 @@ async function main() {
   const childEnv = {
     PATH: env.PATH ?? process.env.Path ?? "",
     NODE_ENV: env.NODE_ENV ?? "development",
+    NEXT_TELEMETRY_DISABLED: "1",
     MONGODB_URI: mongoUri,
     ...Object.fromEntries(
       E2E_ENV_KEYS.filter((k) => env[k] != null).map((k) => [k, env[k]]),
