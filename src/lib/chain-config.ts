@@ -253,9 +253,6 @@ export function getChainById(chainId: number): ChainConfig | undefined {
   return CHAIN_CONFIGS[chainId];
 }
 
-/** @deprecated Use getChainById() */
-export const getChainConfig = getChainById;
-
 export function getChainBySlug(slug: string): ChainConfig | undefined {
   const lower = slug.toLowerCase();
   return SUPPORTED_CHAINS.find((c) => c.slug === lower);
@@ -367,13 +364,10 @@ export function getChainRpcUrlsForCsp(): string[] {
   return [...seen];
 }
 
-const defaultChainId = parseInt(
-  process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
-  10
-);
+const DEFAULT_CHAIN_ID = 8453;
 
 export function getDefaultChainConfig(): ChainConfig {
-  return CHAIN_CONFIGS[defaultChainId] ?? CHAIN_CONFIGS[8453];
+  return CHAIN_CONFIGS[DEFAULT_CHAIN_ID] ?? CHAIN_CONFIGS[8453];
 }
 
 /**

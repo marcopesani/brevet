@@ -29,7 +29,7 @@ Vitest: `unit` (excludes `src/test/e2e/`), `e2e` (only `src/test/e2e/`); `filePa
 - Policies: `src/lib/policy.ts`, longest prefix; no match → reject + draft. Auth: SIWE (auth-config, siwe-config); no middleware; (dashboard) layout protects. Routes: (auth), (dashboard), (marketing), api (auth, mcp/[humanHash], payments/pending).
 - **Must** sanitize user-supplied headers in payment flow (block auth/payment headers, strip CRLF); URL validation rejects localhost/private IPs (SSRF).
 
-Chains: `src/lib/chain-config.ts`; `getChainById`, `getDefaultChainConfig()`; `NEXT_PUBLIC_CHAIN_ID` = default UI chain; user-enabled chains per user.
+Chains: `src/lib/chain-config.ts`; `getChainById`, `getDefaultChainConfig()`; default UI chain is fixed in code (8453, Base mainnet); user-enabled chains per user.
 
 **Testing MCP:** Inspector CLI: `--transport http`, URL `.../api/mcp/{humanHash}`, auth `Authorization: Bearer brv_...` or `?api_key=`. See CLAUDE.md for full examples.
 

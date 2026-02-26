@@ -3,13 +3,26 @@ import { defineConfig, devices } from "@playwright/test";
 // Run tests from project root so webServer and testDir resolve correctly.
 const projectRoot = process.cwd();
 
+// Defaults for e2e so tests can run without setting env. Override via env for real wallet e2e.
+// E2E_METAMASK_* are for the test process (Synpress); not added to E2E_ENV (webServer) because seed has spaces.
+if (!process.env.E2E_METAMASK_SEED_PHRASE) {
+  process.env.E2E_METAMASK_SEED_PHRASE =
+    "test test test test test test test test test test test junk";
+}
+if (!process.env.E2E_METAMASK_PASSWORD) {
+  process.env.E2E_METAMASK_PASSWORD = "e2e-password";
+}
+if (!process.env.E2E_CHAIN_ID) {
+  process.env.E2E_CHAIN_ID = "80002";
+}
+
 // Test-only config: no process.env / .env. All values are explicit for e2e.
 const E2E_ENV = {
   NODE_ENV: "development",
   PORT: "3000",
   NEXT_PUBLIC_TEST_MODE: "true",
   NEXT_PUBLIC_E2E_REAL_METAMASK: "false",
-  NEXT_PUBLIC_CHAIN_ID: "80002",
+  E2E_CHAIN_ID: "80002",
   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: "e2e-walletconnect-project-id",
   NEXTAUTH_SECRET: "e2e-nextauth-secret-with-32chars",
   ZERODEV_PROJECT_ID: "e2e-zerodev-project-id",
