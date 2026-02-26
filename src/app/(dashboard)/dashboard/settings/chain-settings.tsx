@@ -50,11 +50,10 @@ export function ChainSettings({
     setEnabledChains(updated);
 
     startTransition(async () => {
-      try {
-        const result = await updateEnabledChainsAction(updated);
-        setEnabledChains(result);
-      } catch {
-        // Revert only this toggle using functional update to avoid stale closure
+      const result = await updateEnabledChainsAction(updated);
+      if (result.success) {
+        setEnabledChains(result.data);
+      } else {
         setEnabledChains((prev) =>
           checked
             ? prev.filter((id) => id !== chainId)

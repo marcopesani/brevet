@@ -7,12 +7,10 @@ export const WALLET_BALANCE_QUERY_KEY = ["wallet-balance"] as const;
 
 export function useWalletBalance(
   enabled: boolean,
-  initialData?: { balance: string; address: string },
-  chainId?: number,
+  initialData: { balance: string; address: string } | undefined,
+  chainId: number,
 ) {
-  const queryKey = chainId
-    ? [...WALLET_BALANCE_QUERY_KEY, chainId]
-    : WALLET_BALANCE_QUERY_KEY;
+  const queryKey = [...WALLET_BALANCE_QUERY_KEY, chainId];
 
   const { data, isLoading, error } = useQuery({
     queryKey,

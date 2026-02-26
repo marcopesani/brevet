@@ -1,12 +1,6 @@
-import { EndpointPolicy } from "@/lib/models/endpoint-policy";
+import { EndpointPolicy, EndpointPolicyDTO } from "@/lib/models/endpoint-policy";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
-
-/** Map a lean Mongoose doc to an object with string `id`. */
-function withId<T extends { _id: Types.ObjectId }>(doc: T): Omit<T, "_id"> & { id: string } {
-  const { _id, ...rest } = doc;
-  return { ...rest, id: _id.toString() };
-}
 
 /**
  * Get endpoint policies for a user, optionally filtered by status and/or chainId.
@@ -21,10 +15,9 @@ export async function getPolicies(userId: string, status?: string, options?: { c
     filter.chainId = options.chainId;
   }
   const docs = await EndpointPolicy.find(filter)
-    .select("-userId")
     .sort({ createdAt: -1 })
     .lean();
-  return docs.map(withId);
+  return docs.map((doc) => EndpointPolicyDTO.parse(doc));
 }
 
 /**
@@ -33,7 +26,10 @@ export async function getPolicies(userId: string, status?: string, options?: { c
 export async function getPolicy(policyId: string) {
   await connectDB();
   const doc = await EndpointPolicy.findById(policyId).lean();
-  return doc ? withId(doc) : null;
+
+  if (!doc) return null;
+
+  return EndpointPolicyDTO.parse(doc);
 }
 
 /**
@@ -65,7 +61,7 @@ export async function createPolicy(
     endpointPattern: string;
     autoSign?: boolean;
     status?: string;
-    chainId?: number;
+    chainId: number;
   },
 ) {
   const patternError = validateEndpointPattern(data.endpointPattern);
@@ -76,15 +72,11 @@ export async function createPolicy(
   await connectDB();
   const userObjectId = new Types.ObjectId(userId);
 
-  const existingFilter: Record<string, unknown> = {
+  const existing = await EndpointPolicy.findOne({
     userId: userObjectId,
     endpointPattern: data.endpointPattern,
-  };
-  if (data.chainId !== undefined) {
-    existingFilter.chainId = data.chainId;
-  }
-
-  const existing = await EndpointPolicy.findOne(existingFilter).lean();
+    chainId: data.chainId,
+  }).lean();
 
   if (existing) {
     return null;
@@ -93,12 +85,12 @@ export async function createPolicy(
   const doc = await EndpointPolicy.create({
     userId: userObjectId,
     endpointPattern: data.endpointPattern,
+    chainId: data.chainId,
     ...(data.autoSign !== undefined && { autoSign: data.autoSign }),
     ...(data.status !== undefined && { status: data.status }),
-    ...(data.chainId !== undefined && { chainId: data.chainId }),
   });
   const lean = doc.toObject();
-  return withId(lean);
+  return EndpointPolicyDTO.parse(lean);
 }
 
 /**
@@ -140,7 +132,10 @@ export async function updatePolicy(
     { $set: updateData },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+
+  if (!doc) return null;
+
+  return EndpointPolicyDTO.parse(doc);
 }
 
 /**
@@ -154,7 +149,10 @@ export async function activatePolicy(policyId: string, userId: string) {
     { $set: { status: "active" } },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+
+  if (!doc) return null;
+
+  return EndpointPolicyDTO.parse(doc);
 }
 
 /**
@@ -168,7 +166,10 @@ export async function toggleAutoSign(policyId: string, userId: string, autoSign:
     { $set: { autoSign } },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+
+  if (!doc) return null;
+
+  return EndpointPolicyDTO.parse(doc);
 }
 
 /**
@@ -182,7 +183,10 @@ export async function archivePolicy(policyId: string, userId: string) {
     { $set: { status: "archived", archivedAt: new Date() } },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+
+  if (!doc) return null;
+
+  return EndpointPolicyDTO.parse(doc);
 }
 
 /**
@@ -196,5 +200,8 @@ export async function unarchivePolicy(policyId: string, userId: string) {
     { $set: { status: "draft", archivedAt: null } },
     { returnDocument: "after" },
   ).lean();
-  return doc ? withId(doc) : null;
+
+  if (!doc) return null;
+  
+  return EndpointPolicyDTO.parse(doc);
 }

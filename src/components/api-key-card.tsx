@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
 import { regenerateApiKey } from "@/app/actions/api-key";
 
 interface ApiKeyCardProps {
@@ -34,13 +35,14 @@ export function ApiKeyCard({ apiKeyPrefix }: ApiKeyCardProps) {
 
   const handleRotate = async () => {
     setIsRotating(true);
-    try {
-      const { rawKey } = await regenerateApiKey();
-      setNewKey(rawKey);
+    const result = await regenerateApiKey();
+    if (result.success) {
+      setNewKey(result.data.rawKey);
       setCopied(false);
-    } finally {
-      setIsRotating(false);
+    } else {
+      toast.error(result.error);
     }
+    setIsRotating(false);
   };
 
   const handleCopy = async (text: string) => {

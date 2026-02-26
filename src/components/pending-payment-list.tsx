@@ -54,7 +54,7 @@ export default function PendingPaymentList({
     <div className="space-y-4">
       {payments.map((payment) => (
         <PendingPaymentCard
-          key={payment.id}
+          key={payment._id}
           payment={payment}
           walletAddress={walletAddress}
           disabled={false}

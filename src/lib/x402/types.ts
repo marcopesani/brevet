@@ -54,7 +54,7 @@ export type PaymentResult =
       /** Asset contract address from the selected requirement. */
       asset?: string;
       /** The chain ID selected for this payment. */
-      chainId?: number;
+      chainId: number;
       /** Maximum timeout in seconds from the payment requirement. */
       maxTimeoutSeconds: number;
       error?: undefined;

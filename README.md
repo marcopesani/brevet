@@ -34,8 +34,6 @@ When an AI agent hits a paid service, Brevet handles the entire payment flow: de
 - **Spending Analytics** -- Daily spending chart with summary cards
 - **Transaction History** -- Filterable list with on-chain verification via block explorers
 - **Docker Compose** -- One-command local development with MongoDB and Next.js dev server
-- **Environment-Driven Chain Config** -- Switch default chain via a single env var
-
 ## Architecture
 
 ```mermaid
@@ -309,7 +307,6 @@ brevet/
 | `NEXTAUTH_SECRET` | Yes | Secret key for NextAuth session encryption |
 | `NEXTAUTH_URL` | Production | The canonical URL of your site (default: `http://localhost:3000`) |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | Yes | WalletConnect project ID from [dashboard.reown.com](https://dashboard.reown.com) |
-| `NEXT_PUBLIC_CHAIN_ID` | No | Default chain ID: `8453` (Base mainnet, default), `84532` (Base Sepolia), `1` (Ethereum mainnet), or `11155111` (Ethereum Sepolia) |
 
 ## How x402 Works
 

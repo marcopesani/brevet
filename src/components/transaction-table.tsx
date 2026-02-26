@@ -33,24 +33,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
-
-interface Transaction {
-  id: string;
-  amount: number;
-  endpoint: string;
-  txHash: string | null;
-  network: string;
-  chainId?: number;
-  status: string;
-  type: string;
-  createdAt: string | Date;
-  responsePayload: string | null;
-  errorMessage: string | null;
-  responseStatus: number | null;
-}
+import type { TransactionDTO } from "@/lib/models/transaction";
 
 interface TransactionTableProps {
-  initialTransactions: Transaction[];
+  initialTransactions: TransactionDTO[];
 }
 
 function getExplorerUrl(tx: { chainId?: number; network: string }): string {
@@ -203,7 +189,7 @@ function TransactionDetailSheet({
   transaction,
   onClose,
 }: {
-  transaction: Transaction | null;
+  transaction: TransactionDTO | null;
   onClose: () => void;
 }) {
   return (
@@ -287,7 +273,7 @@ function TransactionDetailSheet({
 }
 
 export function TransactionTable({ initialTransactions }: TransactionTableProps) {
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
+  const [transactions, setTransactions] = useState<TransactionDTO[]>(initialTransactions);
   const [isPending, startTransition] = useTransition();
   const [since, setSince] = useState("");
   const [until, setUntil] = useState("");
@@ -295,7 +281,7 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
   const [currentPage, setCurrentPage] = useState(0);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedTransaction, setSelectedTransaction] =
-    useState<Transaction | null>(null);
+    useState<TransactionDTO | null>(null);
   const { activeChain } = useChain();
 
   useEffect(() => {
@@ -412,7 +398,7 @@ export function TransactionTable({ initialTransactions }: TransactionTableProps)
                   const isClickable = hasResponse || tx.errorMessage !== null || tx.status === "failed";
                   return (
                     <TableRow
-                      key={tx.id}
+                      key={tx._id}
                       className={
                         isClickable
                           ? "cursor-pointer hover:bg-muted/50"

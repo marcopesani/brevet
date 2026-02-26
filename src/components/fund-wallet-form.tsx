@@ -16,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getChainById, getDefaultChainConfig, getUsdcConfig } from "@/lib/chain-config";
+import { getChainById, getUsdcConfig } from "@/lib/chain-config";
 import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
 
 const ERC20_ABI = [
@@ -34,7 +34,7 @@ const ERC20_ABI = [
 
 interface FundWalletFormProps {
   accountAddress?: string;
-  chainId?: number;
+  chainId: number;
 }
 
 export default function FundWalletForm({
@@ -47,8 +47,8 @@ export default function FundWalletForm({
   const { chainId: walletChainId } = useAccount();
   const { switchChainAsync } = useSwitchChain();
 
-  const chainConfig = chainId ? getChainById(chainId) ?? getDefaultChainConfig() : getDefaultChainConfig();
-  const usdcDecimals = getUsdcConfig(chainConfig.chain.id)?.decimals ?? 6;
+  const chainConfig = getChainById(chainId)!;
+  const usdcDecimals = getUsdcConfig(chainId)?.decimals ?? 6;
 
   const { writeContract, data: txHash, isPending, error, reset } = useWriteContract();
 

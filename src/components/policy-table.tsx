@@ -26,23 +26,14 @@ import {
   archivePolicy,
   unarchivePolicy,
 } from "@/app/actions/policies";
-
-interface Policy {
-  id: string;
-  endpointPattern: string;
-  autoSign: boolean;
-  status: string;
-  archivedAt: string | Date | null;
-  createdAt: string | Date;
-  updatedAt: string | Date;
-}
+import type { EndpointPolicyDTO } from "@/lib/models/endpoint-policy";
 
 type TabFilter = "all" | "active" | "draft" | "archived";
 
 interface PolicyTableProps {
-  initialPolicies: Policy[];
+  initialPolicies: EndpointPolicyDTO[];
   chainName?: string;
-  chainId?: number;
+  chainId: number;
 }
 
 export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTableProps) {
@@ -56,64 +47,50 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
 
   async function handleActivate(policyId: string) {
     setActionInProgress(policyId);
-    try {
-      await activatePolicy(policyId);
+    const result = await activatePolicy(policyId);
+    if (result.success) {
       toast.success("Policy activated");
-      startTransition(() => {
-        router.refresh();
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to activate");
-    } finally {
-      setActionInProgress(null);
+      startTransition(() => router.refresh());
+    } else {
+      toast.error(result.error);
     }
+    setActionInProgress(null);
   }
 
-  async function handleToggleAutoSign(policy: Policy) {
-    setActionInProgress(policy.id);
-    try {
-      await toggleAutoSign(policy.id, !policy.autoSign);
-      toast.success(
-        `Auto-sign ${!policy.autoSign ? "enabled" : "disabled"}`
-      );
-      startTransition(() => {
-        router.refresh();
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update");
-    } finally {
-      setActionInProgress(null);
+  async function handleToggleAutoSign(policy: EndpointPolicyDTO) {
+    setActionInProgress(policy._id);
+    const result = await toggleAutoSign(policy._id, !policy.autoSign);
+    if (result.success) {
+      toast.success(`Auto-sign ${!policy.autoSign ? "enabled" : "disabled"}`);
+      startTransition(() => router.refresh());
+    } else {
+      toast.error(result.error);
     }
+    setActionInProgress(null);
   }
 
   async function handleArchive(policyId: string) {
     setActionInProgress(policyId);
-    try {
-      await archivePolicy(policyId);
+    const result = await archivePolicy(policyId);
+    if (result.success) {
       toast.success("Policy archived");
-      startTransition(() => {
-        router.refresh();
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to archive");
-    } finally {
-      setActionInProgress(null);
+      startTransition(() => router.refresh());
+    } else {
+      toast.error(result.error);
     }
+    setActionInProgress(null);
   }
 
   async function handleUnarchive(policyId: string) {
     setActionInProgress(policyId);
-    try {
-      await unarchivePolicy(policyId);
+    const result = await unarchivePolicy(policyId);
+    if (result.success) {
       toast.success("Policy reactivated");
-      startTransition(() => {
-        router.refresh();
-      });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to reactivate");
-    } finally {
-      setActionInProgress(null);
+      startTransition(() => router.refresh());
+    } else {
+      toast.error(result.error);
     }
+    setActionInProgress(null);
   }
 
   function handlePolicyCreated() {
@@ -219,11 +196,11 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
                 </TableHeader>
                 <TableBody>
                   {filtered.map((policy) => {
-                    const isActionTarget = actionInProgress === policy.id;
+                    const isActionTarget = actionInProgress === policy._id;
                     const isArchived = policy.status === "archived";
                     return (
                       <TableRow
-                        key={policy.id}
+                        key={policy._id}
                         className={isArchived ? "opacity-60" : ""}
                       >
                         <TableCell className="font-mono text-sm">
@@ -245,7 +222,7 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
                               size="sm"
                               variant="outline"
                               disabled={isBusy}
-                              onClick={() => handleUnarchive(policy.id)}
+                              onClick={() => handleUnarchive(policy._id)}
                             >
                               {isActionTarget ? "..." : "Reactivate"}
                             </Button>
@@ -256,7 +233,7 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
                                   size="sm"
                                   variant="default"
                                   disabled={isBusy}
-                                  onClick={() => handleActivate(policy.id)}
+                                  onClick={() => handleActivate(policy._id)}
                                 >
                                   {isActionTarget ? "..." : "Activate"}
                                 </Button>
@@ -265,7 +242,7 @@ export function PolicyTable({ initialPolicies, chainName, chainId }: PolicyTable
                                 size="sm"
                                 variant="outline"
                                 disabled={isBusy}
-                                onClick={() => handleArchive(policy.id)}
+                                onClick={() => handleArchive(policy._id)}
                               >
                                 {isActionTarget ? "..." : "Archive"}
                               </Button>

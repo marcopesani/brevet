@@ -3,20 +3,10 @@
 import { useMemo } from "react";
 import { useChain } from "@/contexts/chain-context";
 import { PolicyTable } from "@/components/policy-table";
-
-interface Policy {
-  id: string;
-  endpointPattern: string;
-  autoSign: boolean;
-  status: string;
-  archivedAt: string | Date | null;
-  createdAt: string | Date;
-  updatedAt: string | Date;
-  chainId?: number;
-}
+import type { EndpointPolicyDTO } from "@/lib/models/endpoint-policy";
 
 interface PoliciesContentProps {
-  allPolicies: Policy[];
+  allPolicies: EndpointPolicyDTO[];
 }
 
 export default function PoliciesContent({ allPolicies }: PoliciesContentProps) {

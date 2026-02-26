@@ -2,7 +2,7 @@ import type { Hex, TypedDataDomain } from "viem";
 import type { PaymentRequirements } from "@x402/core/types";
 import { authorizationTypes } from "@x402/evm";
 import crypto from "crypto";
-import { getChainConfig, getDefaultChainConfig } from "@/lib/chain-config";
+import { getChainById, getDefaultChainConfig } from "@/lib/chain-config";
 import { getRequirementAmount } from "@/lib/x402/requirements";
 
 /**
@@ -37,14 +37,14 @@ export interface WalletConnectSigningRequest {
  *
  * @param requirement  The payment requirements from the 402 response (SDK type)
  * @param userAddress  The user's connected wallet address (payer)
- * @param chainId      Optional chain ID to use for USDC domain (defaults to NEXT_PUBLIC_CHAIN_ID)
+ * @param chainId      Optional chain ID to use for USDC domain (defaults to app default chain, Base mainnet)
  */
 export function createSigningRequest(
   requirement: PaymentRequirements,
   userAddress: Hex,
   chainId?: number,
 ): WalletConnectSigningRequest {
-  const chainConfig = chainId ? getChainConfig(chainId) : undefined;
+  const chainConfig = chainId ? getChainById(chainId) : undefined;
   const usdcDomain = chainConfig?.usdcDomain ?? getDefaultChainConfig().usdcDomain;
 
   const amountStr = getRequirementAmount(requirement);

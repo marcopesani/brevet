@@ -1,84 +1,75 @@
 # AGENTS.md
 
-## Cursor Cloud specific instructions
+Guidance for AI agents working in this repo. Focus: **avoid errors and wrong patterns**.
 
-### Services overview
+## Context
 
-| Service | How to start | Notes |
-|---------|-------------|-------|
-| MongoDB | `sudo docker compose up -d mongodb` (from repo root) | Required for dev server. Port 27017. |
-| Next.js dev server | `npm run dev` | Port 3000. Hot-reloads on file changes. |
+MCP server + dashboard for x402 HTTP payments on multiple chains (USDC). Next.js 16, React 19, Mongoose 9, viem/wagmi, Reown AppKit, Vitest 4.
 
-### Development commands
-
-Standard commands are documented in `CLAUDE.md` and `package.json` scripts. Key ones:
-
-- **Lint:** `npm run lint`
-- **Unit tests:** `npm run test:run -- --project unit` (uses `mongodb-memory-server`, no external DB needed)
-- **All tests once:** `npm run test:run`
-- **Dev server:** `npm run dev`
-
-### Gotchas
-
-- **Docker daemon must be running** before `docker compose up`. In Cloud VM, start it with `sudo dockerd &>/tmp/dockerd.log &` and wait a few seconds.
-- **Docker storage driver** must be `fuse-overlayfs` and iptables must use `iptables-legacy` in the Cloud VM (nested container environment). These are configured via `/etc/docker/daemon.json` and `update-alternatives`.
-- **Unit tests do not need MongoDB running** — they use `mongodb-memory-server` (in-memory). Only the dev server and integration/MCP auth tests need the Docker MongoDB.
-- **`npm run build` has a pre-existing TypeScript error** in `e2e/helpers/auth.ts`. This does not affect the dev server or unit tests.
-- **Authentication requires an Ethereum wallet** (SIWE). The login flow uses WalletConnect/Reown AppKit. Without valid `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` and `ZERODEV_PROJECT_ID`, wallet connections and smart account features won't work, but the app still starts and serves pages.
-- **`.env.local`** must exist with at least `NEXTAUTH_SECRET` and `MONGODB_URI` for the dev server to start. See `.env.example` for all variables.
-
-### SIWE authentication for testing
-
-MetaMask browser extension popups are difficult to interact with via automated tools due to Chrome extension security boundaries. For programmatic SIWE login (e.g., testing the dashboard), use the deterministic signing approach from `e2e/helpers/auth.ts` (`signInWithSeedPhraseCredentials`):
-
-1. Derive wallet from seed phrase using `viem/accounts` (`mnemonicToAccount`)
-2. Fetch CSRF token from `/api/auth/csrf` (include the `set-cookie` header for subsequent requests)
-3. Build SIWE message with host, address, chainId, nonce, issuedAt
-4. Sign with the derived account
-5. POST to `/api/auth/callback/credentials` with the CSRF cookie
-
-The default test seed phrase is `test test test test test test test test test test test junk` (Hardhat default), producing address `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`. MetaMask password: `TestPassword123!`.
-
-To inject the resulting session into a browser (for GUI testing), set the cookies via DevTools console on the `localhost:3000` origin, then navigate to `/dashboard`.
-
-### Required secrets
-
-`NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` and `ZERODEV_PROJECT_ID` are provided as environment secrets. With these set in `.env.local`, the AppKit modal properly connects to the WalletConnect relay (no 403 errors) and smart account operations work.
-
-### MCP Inspector CLI testing
-
-To get a fresh API key (keys are hashed in DB, can't be retrieved):
+## Commands
 
 ```bash
-MONGODB_URI=mongodb://localhost:27017/brevet npx tsx -e "
-import { rotateApiKey } from './src/lib/data/users';
-import { connectDB } from './src/lib/db';
-await connectDB();
-const r = await rotateApiKey('<userId>');
-console.log(r.rawKey);
-process.exit(0);
-"
+npm run dev
+npm run build
+npm run lint
+npm run test:run
+npm run test:e2e
+docker compose up -d
 ```
 
-Then use the Inspector CLI (see `CLAUDE.md` for full reference). Example flow:
+Vitest: `unit` (excludes `src/test/e2e/`), `e2e` (only `src/test/e2e/`); `fileParallelism: false`.
 
-```bash
-MCP_URL="http://localhost:3000/api/mcp/<humanHash>"
-API_KEY="brv_..."
+## x402 & MCP: avoid these errors
 
-# List tools
-npx @modelcontextprotocol/inspector --cli "$MCP_URL" --transport http \
-  --header "Authorization: Bearer $API_KEY" --method tools/list
+- **Don't** add version branching (V1 vs V2) in payment core. Keep version at the edge only (parse/headers); normalize before business logic.
+- **Don't** assume a hot-wallet EOA signs. Signing is the **smart account session key**; encryption in `src/lib/encryption.ts`, data on smart account doc.
+- **Don't** use `userId` in the MCP URL. Route is `api/mcp/[humanHash]` (human hash from dashboard/settings).
+- **Don't** add DB or API route calls inside MCP tools. They must use `src/lib/data/` only.
+- **Don't** bypass `checkPolicy` for new x402 logic or send raw Mongoose docs to the client.
+- Policies: `src/lib/policy.ts`, longest prefix; no match → reject + draft. Auth: SIWE (auth-config, siwe-config); no middleware; (dashboard) layout protects. Routes: (auth), (dashboard), (marketing), api (auth, mcp/[humanHash], payments/pending).
+- **Must** sanitize user-supplied headers in payment flow (block auth/payment headers, strip CRLF); URL validation rejects localhost/private IPs (SSRF).
 
-# Trigger payment (creates pending payment if no smart account)
-npx @modelcontextprotocol/inspector --cli "$MCP_URL" --transport http \
-  --header "Authorization: Bearer $API_KEY" --method tools/call \
-  --tool-name x402_pay --tool-arg url=https://nickeljoke.vercel.app/api/joke
+Chains: `src/lib/chain-config.ts`; `getChainById`, `getDefaultChainConfig()`; default UI chain is fixed in code (8453, Base mainnet); user-enabled chains per user.
 
-# Check pending payment status
-npx @modelcontextprotocol/inspector --cli "$MCP_URL" --transport http \
-  --header "Authorization: Bearer $API_KEY" --method tools/call \
-  --tool-name x402_check_pending --tool-arg paymentId=<id>
-```
+**Testing MCP:** Inspector CLI: `--transport http`, URL `.../api/mcp/{humanHash}`, auth `Authorization: Bearer brv_...` or `?api_key=`. See CLAUDE.md for full examples.
 
-The SSRF protection rejects localhost/private-IP URLs in `x402_pay`. Use real public x402 endpoints (e.g., `https://nickeljoke.vercel.app/api/joke` on Base Sepolia). Active endpoint policies must exist for the target URL before payment can proceed.
+## Data and actions: avoid these errors
+
+- **Never** query DB or call HTTP from components, API routes, or MCP tools. All access via `src/lib/data/` (payments, policies, transactions, analytics, wallet, users, user, smart-account).
+- **Never** create new API routes for dashboard data. Use Server Components + data layer for reads, Server Actions for mutations.
+- **Mutations:** Must return `ActionResult<T>`; use `withAuth()` from `@/lib/action-result-server`; return `ok(data)` / `err(message)`; never throw from mutation actions.
+- **Reads** used by Server Components: use `getAuthenticatedUser()`, throw if unauthenticated (error boundaries).
+- **Client:** Check `result.success` and use `result.data` / `result.error`, or `unwrap(result)` in React Query `mutationFn` for `onError`.
+- **Never** send Mongoose documents to the client. Data layer returns DTOs only (`*DTO.parse(doc)` / `doc.toObject()`); models have `*Doc` + Zod `*DTO`; exclude sensitive fields (e.g. `apiKeyHash`) from DTO.
+- **Never** add `setInterval` or ad-hoc polling in components. Use React Query with a shared hook in `src/hooks/` (e.g. pending payments 10s poll; wallet balance refetch on focus + after mutations). Use React Query polling only for data changed outside the dashboard (e.g. MCP); otherwise `revalidatePath()` after mutations.
+
+## DB and money: avoid these errors
+
+- **Collections:** `users`, `endpointpolicies`, `transactions`, `pendingpayments`, `smartaccounts`. Models in `src/lib/models/`. **Don't** default `chainId` (or similar) from env in schema; store explicitly (required) for multi-chain safety.
+- **Money:** Smallest unit as integer (e.g. 6 decimals); never float. Store currency/asset with amount. One module for add/subtract/compare; conditional updates (read–compute–update with current-value check); append-only audit; indexes for query patterns.
+- **Migrations:** Backward-compatible reads, write new format, backfill separately; have rollback.
+
+## React: avoid these errors
+
+- **Don't** add `useMemo` / `useCallback` / `React.memo` in new code; compiler handles it.
+- Prefer Server Components; use `"use client"` only for event handlers, `useState`/`useEffect`, browser APIs (wagmi, clipboard), or interactive controls (sorting, filtering).
+
+## Conventions that prevent breakage
+
+- `@/*` → `src/*`; no barrel files; kebab-case utils, PascalCase components.
+- Zod v4 for MCP tool schemas. All DB in `src/lib/data/`; mutations in `src/app/actions/` with revalidation.
+- Bundler/AA* errors: use `toHumanReadableBundlerError` / `extractJsonRpcError` from `src/lib/bundler-errors.ts`.
+- Configurable limits from env (startup validation); no magic numbers for caps/expiry/retries.
+- Rate limit on `api/mcp/[humanHash]` and `api/payments/pending`.
+
+## Env: avoid startup/runtime errors
+
+Copy `.env.example` → `.env.local`. Required: `MONGODB_URI`, `ZERODEV_PROJECT_ID`, `NEXTAUTH_SECRET`, `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`. Optional: `ALCHEMY_API_KEY`, `HOT_WALLET_ENCRYPTION_KEY` (legacy). Docker: `docker compose up -d` (see compose file).
+
+## Cursor Cloud: avoid these gotchas
+
+- Docker daemon must be running before `docker compose up`.
+- Unit tests don't need live MongoDB (Vitest/setup); dev server needs MongoDB.
+- `npm run build` may error in `e2e/helpers/auth.ts` (Playwright); does not affect dev server or Vitest.
+- Auth requires wallet + env; `.env.local` must exist with required vars.
+- MCP URL uses **humanHash** (from dashboard), not userId. API key: `rotateApiKey(userId)` from `src/lib/data/users` (userId = Mongo ObjectId). See CLAUDE.md for SIWE testing and Inspector CLI flow.

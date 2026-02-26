@@ -20,7 +20,7 @@ interface AddPolicyDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
-  chainId?: number;
+  chainId: number;
 }
 
 export function AddPolicyDialog({
@@ -38,12 +38,15 @@ export function AddPolicyDialog({
     e.preventDefault();
     setError(null);
     setSubmitting(true);
+
     try {
       const result = await createPolicy({ endpointPattern, autoSign, chainId });
-      if (result.success === false) {
+
+      if (!result.success) {
         setError(result.error);
         return;
       }
+
       toast.success("Policy created");
       setEndpointPattern("");
       setAutoSign(false);

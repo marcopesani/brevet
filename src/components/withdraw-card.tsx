@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 import { useConnection } from "wagmi";
 import { ArrowUpRight } from "lucide-react";
 import {
@@ -12,19 +12,25 @@ import {
 import WithdrawPlaceholder from "@/components/withdraw-placeholder";
 import WithdrawForm from "@/components/withdraw-form";
 
+const emptySubscribe = () => () => {};
+const getSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 interface WithdrawCardBodyProps {
   balance?: string;
-  chainId?: number;
+  chainId: number;
 }
 
 export default function WithdrawCardBody({
   balance,
   chainId,
 }: WithdrawCardBodyProps) {
-  const [hasMounted, setHasMounted] = useState(false);
+  const hasMounted = useSyncExternalStore(
+    emptySubscribe,
+    getSnapshot,
+    getServerSnapshot,
+  );
   const { address } = useConnection();
-
-  useEffect(() => setHasMounted(true), []);
 
   const showForm = hasMounted && address;
 

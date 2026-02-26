@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -44,13 +45,20 @@ export function ChainProvider({
   enabledChains?: number[];
 }) {
   const allChains = getAllChains();
-  const enabledSet =
-    enabledChains && enabledChains.length > 0
-      ? new Set(enabledChains)
-      : null;
-  const filteredChains = enabledSet
-    ? allChains.filter((c) => enabledSet.has(c.chain.id))
-    : allChains;
+  const enabledSet = useMemo(
+    () =>
+      enabledChains && enabledChains.length > 0
+        ? new Set(enabledChains)
+        : null,
+    [enabledChains],
+  );
+  const filteredChains = useMemo(
+    () =>
+      enabledSet
+        ? allChains.filter((c) => enabledSet.has(c.chain.id))
+        : allChains,
+    [enabledSet, allChains],
+  );
 
   // Server already validates initialChainId against enabledChains
   // (resolveValidChainId in layout.tsx). Client-side check is a safety net.

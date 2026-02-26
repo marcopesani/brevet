@@ -4,6 +4,13 @@ import { revalidatePath } from "next/cache";
 import { type Hex } from "viem";
 import { z } from "zod/v4";
 import { getAuthenticatedUser } from "@/lib/auth";
+import { type ActionResult, ok, err } from "@/lib/action-result";
+import { withAuth } from "@/lib/action-result-server";
+import {
+  ALLOWED_BUNDLER_METHODS,
+  toHumanReadableBundlerError,
+  extractJsonRpcError,
+} from "@/lib/bundler-errors";
 import {
   ensureSmartAccount,
   getSmartAccount,
@@ -12,34 +19,19 @@ import {
   getAllSmartAccounts,
   storeSerializedAccount,
   activateSessionKey,
+  withdrawFromSmartAccount,
 } from "@/lib/data/smart-account";
-import { decryptPrivateKey, encryptPrivateKey } from "@/lib/hot-wallet";
-import { createChainPublicClient, getChainConfig, getZeroDevBundlerRpc } from "@/lib/chain-config";
+import { decryptPrivateKey, encryptPrivateKey } from "@/lib/encryption";
+import { createChainPublicClient, getChainById, getZeroDevBundlerRpc } from "@/lib/chain-config";
 import {
   SESSION_KEY_MAX_SPEND_PER_TX,
   SESSION_KEY_MAX_SPEND_DAILY,
   SESSION_KEY_MAX_EXPIRY_DAYS,
 } from "@/lib/smart-account-constants";
 
-export async function setupSmartAccount(chainId: number) {
-  const auth = await getAuthenticatedUser();
-  if (!auth) throw new Error("Unauthorized");
-
-  const account = await ensureSmartAccount(
-    auth.userId,
-    auth.walletAddress,
-    chainId,
-  );
-
-  revalidatePath("/dashboard/wallet");
-  revalidatePath("/dashboard");
-  return {
-    id: account.id,
-    smartAccountAddress: account.smartAccountAddress,
-    chainId: account.chainId,
-    sessionKeyStatus: account.sessionKeyStatus,
-  };
-}
+// ---------------------------------------------------------------------------
+// Reads — keep throwing (consumed by Server Components / error boundaries)
+// ---------------------------------------------------------------------------
 
 export async function getSmartAccountForChain(chainId: number) {
   const auth = await getAuthenticatedUser();
@@ -48,7 +40,7 @@ export async function getSmartAccountForChain(chainId: number) {
   return getSmartAccount(auth.userId, chainId);
 }
 
-export async function getSmartAccountBalanceAction(chainId?: number) {
+export async function getSmartAccountBalanceAction(chainId: number) {
   const auth = await getAuthenticatedUser();
   if (!auth) throw new Error("Unauthorized");
 
@@ -62,17 +54,49 @@ export async function getAllSmartAccountsAction() {
   return getAllSmartAccounts(auth.userId);
 }
 
-// Allowed bundler/paymaster JSON-RPC methods for sendBundlerRequest
-const ALLOWED_BUNDLER_METHODS = new Set([
-  "eth_sendUserOperation",
-  "eth_estimateUserOperationGas",
-  "zd_getUserOperationGasPrice",
-  "zd_sponsorUserOperation",
-  "pm_getPaymasterData",
-  "pm_getPaymasterStubData",
-  "pm_sponsorUserOperation",
-  "eth_getUserOperationReceipt",
-]);
+// ---------------------------------------------------------------------------
+// Mutations — return ActionResult<T>
+// ---------------------------------------------------------------------------
+
+export async function setupSmartAccount(chainId: number) {
+  return withAuth(async (auth) => {
+    const account = await ensureSmartAccount(
+      auth.userId,
+      auth.walletAddress,
+      chainId,
+    );
+
+    revalidatePath("/dashboard/wallet");
+    revalidatePath("/dashboard");
+
+    return ok({
+      _id: account._id,
+      smartAccountAddress: account.smartAccountAddress,
+      chainId: account.chainId,
+      sessionKeyStatus: account.sessionKeyStatus,
+    });
+  });
+}
+
+export async function withdrawFromWallet(
+  amount: number,
+  toAddress: string,
+  chainId: number,
+) {
+  return withAuth(async (auth) => {
+    const result = await withdrawFromSmartAccount(
+      auth.userId,
+      amount,
+      toAddress,
+      chainId,
+    );
+
+    revalidatePath("/dashboard/wallet");
+    revalidatePath("/dashboard/transactions");
+
+    return ok(result);
+  });
+}
 
 /**
  * Step 1: Prepare session key data for client-side signing.
@@ -80,25 +104,24 @@ const ALLOWED_BUNDLER_METHODS = new Set([
  * permission validator and sign the enable UserOp via WalletConnect.
  */
 export async function prepareSessionKeyAuth(chainId: number) {
-  const auth = await getAuthenticatedUser();
-  if (!auth) throw new Error("Unauthorized");
+  return withAuth(async (auth) => {
+    const account = await getSmartAccountWithSessionKey(auth.userId, chainId);
+    if (!account) return err("Smart account not found");
+    if (account.sessionKeyStatus !== "pending_grant") {
+      return err(
+        `Session key cannot be authorized — current status: ${account.sessionKeyStatus}`,
+      );
+    }
 
-  const account = await getSmartAccountWithSessionKey(auth.userId, chainId);
-  if (!account) throw new Error("Smart account not found");
-  if (account.sessionKeyStatus !== "pending_grant") {
-    throw new Error(
-      `Session key cannot be authorized — current status: ${account.sessionKeyStatus}`,
-    );
-  }
+    const sessionKeyHex = decryptPrivateKey(account.sessionKeyEncrypted);
 
-  const sessionKeyHex = decryptPrivateKey(account.sessionKeyEncrypted);
-
-  return {
-    sessionKeyHex,
-    smartAccountAddress: account.smartAccountAddress,
-    ownerAddress: account.ownerAddress,
-    chainId,
-  };
+    return ok({
+      sessionKeyHex,
+      smartAccountAddress: account.smartAccountAddress,
+      ownerAddress: account.ownerAddress,
+      chainId,
+    });
+  });
 }
 
 /**
@@ -109,40 +132,42 @@ export async function sendBundlerRequest(
   chainId: number,
   method: string,
   params: unknown[],
-) {
-  const auth = await getAuthenticatedUser();
-  if (!auth) throw new Error("Unauthorized");
+): Promise<ActionResult<unknown>> {
+  return withAuth(async (auth) => {
+    if (!ALLOWED_BUNDLER_METHODS.has(method)) {
+      return err(`Method not allowed: ${method}`);
+    }
 
-  if (!ALLOWED_BUNDLER_METHODS.has(method)) {
-    throw new Error(`Method not allowed: ${method}`);
-  }
-
-  // Validate that eth_sendUserOperation sender matches user's smart account
-  if (method === "eth_sendUserOperation" && Array.isArray(params) && params.length > 0) {
-    const userOp = params[0] as Record<string, unknown> | undefined;
-    const sender = userOp?.sender;
-    if (typeof sender === "string") {
-      const account = await getSmartAccount(auth.userId, chainId);
-      if (!account) {
-        throw new Error("No smart account found for this chain");
-      }
-      if (sender.toLowerCase() !== account.smartAccountAddress.toLowerCase()) {
-        throw new Error("UserOperation sender does not match your smart account");
+    if (method === "eth_sendUserOperation" && Array.isArray(params) && params.length > 0) {
+      const userOp = params[0] as Record<string, unknown> | undefined;
+      const sender = userOp?.sender;
+      if (typeof sender === "string") {
+        const account = await getSmartAccount(auth.userId, chainId);
+        if (!account) {
+          return err("No smart account found for this chain");
+        }
+        if (sender.toLowerCase() !== account.smartAccountAddress.toLowerCase()) {
+          return err("UserOperation sender does not match your smart account");
+        }
       }
     }
-  }
 
-  const rpcUrl = getZeroDevBundlerRpc(chainId);
+    const rpcUrl = getZeroDevBundlerRpc(chainId);
 
-  const response = await fetch(rpcUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    const response = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    });
+
+    const json = await response.json();
+    if (json.error) {
+      const raw = extractJsonRpcError(json.error);
+      return err(toHumanReadableBundlerError(raw));
+    }
+
+    return ok(json.result);
   });
-
-  const json = await response.json();
-  if (json.error) throw new Error(json.error.message);
-  return json.result;
 }
 
 const finalizeSessionKeySchema = z.object({
@@ -168,58 +193,53 @@ export async function finalizeSessionKey(
   spendLimitDaily: number,
   expiryDays: number,
 ) {
-  const auth = await getAuthenticatedUser();
-  if (!auth) throw new Error("Unauthorized");
+  return withAuth(async (auth) => {
+    const parsed = finalizeSessionKeySchema.safeParse({
+      chainId,
+      grantTxHash,
+      serializedAccount,
+      spendLimitPerTx,
+      spendLimitDaily,
+      expiryDays,
+    });
+    if (!parsed.success) {
+      return err(
+        `Invalid input: ${parsed.error.issues.map((i) => i.message).join(", ")}`,
+      );
+    }
 
-  // Validate inputs
-  const parsed = finalizeSessionKeySchema.safeParse({
-    chainId,
-    grantTxHash,
-    serializedAccount,
-    spendLimitPerTx,
-    spendLimitDaily,
-    expiryDays,
+    const config = getChainById(chainId);
+    if (!config) return err(`Unsupported chain: ${chainId}`);
+
+    const publicClient = createChainPublicClient(chainId);
+    const receipt = await publicClient.getTransactionReceipt({
+      hash: grantTxHash as Hex,
+    });
+    if (receipt.status !== "success") {
+      return err("Grant transaction failed");
+    }
+
+    const serializedEncrypted = encryptPrivateKey(serializedAccount);
+    await storeSerializedAccount(auth.userId, chainId, serializedEncrypted);
+
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + expiryDays);
+
+    await activateSessionKey(
+      auth.userId,
+      chainId,
+      grantTxHash,
+      expiryDate,
+      spendLimitPerTx,
+      spendLimitDaily,
+    );
+
+    revalidatePath("/dashboard/wallet");
+    revalidatePath("/dashboard");
+
+    return ok({
+      grantTxHash,
+      sessionKeyStatus: "active" as const,
+    });
   });
-  if (!parsed.success) {
-    return { success: false as const, error: `Invalid input: ${parsed.error.issues.map(i => i.message).join(", ")}` };
-  }
-
-  // Verify the grant transaction on-chain
-  const config = getChainConfig(chainId);
-  if (!config) return { success: false as const, error: `Unsupported chain: ${chainId}` };
-
-  const publicClient = createChainPublicClient(chainId);
-  const receipt = await publicClient.getTransactionReceipt({
-    hash: grantTxHash as Hex,
-  });
-  if (receipt.status !== "success") {
-    return { success: false as const, error: "Grant transaction failed" };
-  }
-
-  // Encrypt and store the serialized permission account
-  const serializedEncrypted = encryptPrivateKey(serializedAccount);
-  await storeSerializedAccount(auth.userId, chainId, serializedEncrypted);
-
-  // Compute expiry date
-  const expiryDate = new Date();
-  expiryDate.setDate(expiryDate.getDate() + expiryDays);
-
-  // Activate session key via data layer
-  await activateSessionKey(
-    auth.userId,
-    chainId,
-    grantTxHash,
-    expiryDate,
-    spendLimitPerTx,
-    spendLimitDaily,
-  );
-
-  revalidatePath("/dashboard/wallet");
-  revalidatePath("/dashboard");
-
-  return {
-    success: true as const,
-    grantTxHash,
-    sessionKeyStatus: "active" as const,
-  };
 }

@@ -1,38 +1,43 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const baseURL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
-const mongoUri = process.env.MONGODB_URI ?? process.env.E2E_MONGODB_URI;
-const walletConnectProjectId =
-  process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ??
-  process.env.E2E_WALLETCONNECT_PROJECT_ID ??
-  "e2e-walletconnect-project-id";
-const chainId = process.env.NEXT_PUBLIC_CHAIN_ID ?? process.env.E2E_CHAIN_ID ?? "80002";
-const e2eRealMetaMask = process.env.E2E_REAL_METAMASK ?? "false";
-const zeroDevProjectId =
-  process.env.ZERODEV_PROJECT_ID ??
-  process.env.E2E_ZERODEV_PROJECT_ID ??
-  "e2e-zerodev-project-id";
-const sessionKeyMaxSpendPerTx = process.env.SESSION_KEY_MAX_SPEND_PER_TX ?? "1000000000000";
-const sessionKeyMaxSpendDaily = process.env.SESSION_KEY_MAX_SPEND_DAILY ?? "10000000000000";
-const sessionKeyMaxExpiryDays = process.env.SESSION_KEY_MAX_EXPIRY_DAYS ?? "365";
-const sessionKeyDefaultExpiryDays = process.env.SESSION_KEY_DEFAULT_EXPIRY_DAYS ?? "30";
-const hotWalletEncryptionKey =
-  process.env.HOT_WALLET_ENCRYPTION_KEY ??
-  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+// Run tests from project root so webServer and testDir resolve correctly.
+const projectRoot = process.cwd();
+
+// Defaults for e2e so tests can run without setting env. Override via env for real wallet e2e.
+// E2E_METAMASK_* are for the test process (Synpress); not added to E2E_ENV (webServer) because seed has spaces.
+if (!process.env.E2E_METAMASK_SEED_PHRASE) {
+  process.env.E2E_METAMASK_SEED_PHRASE =
+    "test test test test test test test test test test test junk";
+}
+if (!process.env.E2E_METAMASK_PASSWORD) {
+  process.env.E2E_METAMASK_PASSWORD = "e2e-password";
+}
+if (!process.env.E2E_CHAIN_ID) {
+  process.env.E2E_CHAIN_ID = "80002";
+}
+
+// Test-only config: no process.env / .env. All values are explicit for e2e.
+const E2E_ENV = {
+  NODE_ENV: "development",
+  PORT: "3000",
+  NEXT_PUBLIC_TEST_MODE: "true",
+  NEXT_PUBLIC_E2E_REAL_METAMASK: "false",
+  E2E_CHAIN_ID: "80002",
+  NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: "e2e-walletconnect-project-id",
+  NEXTAUTH_SECRET: "e2e-nextauth-secret-with-32chars",
+  ZERODEV_PROJECT_ID: "e2e-zerodev-project-id",
+  SESSION_KEY_MAX_SPEND_PER_TX: "1000000000000",
+  SESSION_KEY_MAX_SPEND_DAILY: "10000000000000",
+  SESSION_KEY_MAX_EXPIRY_DAYS: "365",
+  SESSION_KEY_DEFAULT_EXPIRY_DAYS: "30",
+  HOT_WALLET_ENCRYPTION_KEY:
+    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+} as const;
+
+const baseURL = "http://127.0.0.1:3000";
 const webServerCommand = [
-  "NEXT_PUBLIC_TEST_MODE=true",
-  `NEXT_PUBLIC_E2E_REAL_METAMASK=${e2eRealMetaMask}`,
-  `NEXT_PUBLIC_CHAIN_ID=${chainId}`,
-  `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=${walletConnectProjectId}`,
-  "NEXTAUTH_SECRET=e2e-nextauth-secret-with-32chars",
-  `ZERODEV_PROJECT_ID=${zeroDevProjectId}`,
-  `SESSION_KEY_MAX_SPEND_PER_TX=${sessionKeyMaxSpendPerTx}`,
-  `SESSION_KEY_MAX_SPEND_DAILY=${sessionKeyMaxSpendDaily}`,
-  `SESSION_KEY_MAX_EXPIRY_DAYS=${sessionKeyMaxExpiryDays}`,
-  `SESSION_KEY_DEFAULT_EXPIRY_DAYS=${sessionKeyDefaultExpiryDays}`,
-  `HOT_WALLET_ENCRYPTION_KEY=${hotWalletEncryptionKey}`,
-  ...(mongoUri ? [`MONGODB_URI=${mongoUri}`] : []),
-  "node scripts/e2e-dev-server.mjs",
+  ...Object.entries(E2E_ENV).map(([k, v]) => `${k}=${v}`),
+  "node e2e/helpers/dev-server.mjs",
 ].join(" ");
 
 export default defineConfig({
@@ -54,5 +59,6 @@ export default defineConfig({
     url: baseURL,
     timeout: 180_000,
     reuseExistingServer: !process.env.CI,
+    cwd: projectRoot, // ensure dev server runs from project root (no e2e/.next)
   },
 });

@@ -28,22 +28,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Clock, Check, X, Loader2 } from "lucide-react";
-
-export interface PendingPayment {
-  id: string;
-  url: string;
-  amount?: number;
-  amountRaw?: string;
-  asset?: string;
-  chainId?: number;
-  paymentRequirements: string;
-  status: string;
-  expiresAt: string;
-  createdAt: string;
-}
+import type { PendingPaymentDTO } from "@/lib/models/pending-payment";
 
 interface PendingPaymentCardProps {
-  payment: PendingPayment;
+  payment: PendingPaymentDTO;
   walletAddress: string;
   disabled: boolean;
   onAction: () => void;
@@ -191,7 +179,7 @@ export default function PendingPaymentCard({
       });
 
       const result = await approvePendingPayment(
-        payment.id,
+        payment._id,
         signature,
         {
           from: authorization.from,
@@ -206,7 +194,7 @@ export default function PendingPaymentCard({
       if (result.success) {
         toast.success("Payment approved and submitted");
       } else {
-        toast.error("Payment submitted but server returned an error");
+        toast.error(result.error);
       }
       invalidateAndNotify();
     } catch (err) {
@@ -221,9 +209,13 @@ export default function PendingPaymentCard({
   async function handleReject() {
     setActionInProgress("reject");
     try {
-      await rejectPendingPayment(payment.id);
-      toast.success("Payment rejected");
-      invalidateAndNotify();
+      const result = await rejectPendingPayment(payment._id);
+      if (result.success) {
+        toast.success("Payment rejected");
+        invalidateAndNotify();
+      } else {
+        toast.error(result.error);
+      }
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to reject payment"

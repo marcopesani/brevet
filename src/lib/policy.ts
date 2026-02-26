@@ -1,5 +1,5 @@
 import { connectDB } from "@/lib/db";
-import { EndpointPolicy, IEndpointPolicyDocument } from "@/lib/models/endpoint-policy";
+import { EndpointPolicy } from "@/lib/models/endpoint-policy";
 import { Types } from "mongoose";
 
 export type PolicyAction = "auto_sign" | "manual_approval" | "rejected";
@@ -13,23 +13,21 @@ export interface PolicyCheckResult {
   autoSign?: boolean;
 }
 
-const defaultChainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || "8453", 10);
-
 /**
  * Find the best-matching EndpointPolicy for a given endpoint URL.
  * Matches by longest prefix: an EndpointPolicy with endpointPattern "https://api.example.com"
  * matches URLs like "https://api.example.com/foo/bar".
  * Only returns active policies for the specified chain.
  */
-async function findMatchingPolicy(userId: string, endpoint: string, chainId?: number) {
+async function findMatchingPolicy(userId: string, endpoint: string, chainId: number) {
   const filter: Record<string, unknown> = {
     userId: new Types.ObjectId(userId),
     status: "active",
-    chainId: chainId ?? defaultChainId,
+    chainId,
   };
   const policies = await EndpointPolicy.find(filter);
 
-  let bestMatch: IEndpointPolicyDocument | null = null;
+  let bestMatch: (typeof policies)[number] | null = null;
   for (const policy of policies) {
     if (endpoint.startsWith(policy.endpointPattern)) {
       // Verify the character after the pattern is a URL boundary (/, ?, #, or end-of-string)
@@ -79,12 +77,11 @@ export async function checkPolicy(
   _amount: number,
   endpoint: string,
   userId: string,
-  chainId?: number,
+  chainId: number,
 ): Promise<PolicyCheckResult> {
   await connectDB();
 
-  const resolvedChainId = chainId ?? defaultChainId;
-  const policy = await findMatchingPolicy(userId, endpoint, resolvedChainId);
+  const policy = await findMatchingPolicy(userId, endpoint, chainId);
 
   if (!policy) {
     // Auto-create a draft policy so the user can review and activate it
@@ -93,8 +90,8 @@ export async function checkPolicy(
 
     // Upsert: create a draft if none exists, or reactivate an archived policy
     await EndpointPolicy.findOneAndUpdate(
-      { userId: userObjectId, endpointPattern: host, chainId: resolvedChainId },
-      { $set: { status: "draft", archivedAt: null }, $setOnInsert: { endpointPattern: host, userId: userObjectId, chainId: resolvedChainId } },
+      { userId: userObjectId, endpointPattern: host, chainId },
+      { $set: { status: "draft", archivedAt: null }, $setOnInsert: { endpointPattern: host, userId: userObjectId, chainId } },
       { upsert: true, returnDocument: "after" },
     );
 

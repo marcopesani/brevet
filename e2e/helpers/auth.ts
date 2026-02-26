@@ -40,16 +40,19 @@ function startNotificationAutoApprover(metamask: MetaMask, timeoutMs = 30_000) {
         .pages()
         .filter(
           (candidate) =>
-            !candidate.isClosed() && candidate.url().startsWith(extensionPrefix),
+            !candidate.isClosed() &&
+            candidate.url().startsWith(extensionPrefix),
         );
       let notificationPage =
-        extensionPages.find((candidate) => candidate.url().includes("/notification.html")) ??
-        extensionPages[0];
+        extensionPages.find((candidate) =>
+          candidate.url().includes("/notification.html"),
+        ) ?? extensionPages[0];
 
       if (!notificationPage) {
         try {
           notificationPage = await metamask.context.waitForEvent("page", {
-            predicate: (candidate) => candidate.url().startsWith(extensionPrefix),
+            predicate: (candidate) =>
+              candidate.url().startsWith(extensionPrefix),
             timeout: 500,
           });
         } catch {
@@ -64,31 +67,63 @@ function startNotificationAutoApprover(metamask: MetaMask, timeoutMs = 30_000) {
       }
 
       try {
-        const unlockPasswordInput = notificationPage.getByTestId("unlock-password");
-        if ((await unlockPasswordInput.count()) > 0 && (await unlockPasswordInput.first().isVisible())) {
+        const unlockPasswordInput =
+          notificationPage.getByTestId("unlock-password");
+        if (
+          (await unlockPasswordInput.count()) > 0 &&
+          (await unlockPasswordInput.first().isVisible())
+        ) {
           await unlockPasswordInput.first().fill(metamask.password);
-          await notificationPage.getByTestId("unlock-submit").first().click().catch(() => undefined);
+          await notificationPage
+            .getByTestId("unlock-submit")
+            .first()
+            .click()
+            .catch(() => undefined);
           await sleep(120);
           continue;
         }
 
-        const nextButton = notificationPage.getByTestId("page-container-footer-next");
-        if ((await nextButton.count()) > 0 && (await nextButton.first().isVisible())) {
-          await nextButton.first().click().catch(() => undefined);
+        const nextButton = notificationPage.getByTestId(
+          "page-container-footer-next",
+        );
+        if (
+          (await nextButton.count()) > 0 &&
+          (await nextButton.first().isVisible())
+        ) {
+          await nextButton
+            .first()
+            .click()
+            .catch(() => undefined);
           await sleep(120);
           continue;
         }
 
-        const connectButton = notificationPage.getByRole("button", { name: /^Connect$/i });
-        if ((await connectButton.count()) > 0 && (await connectButton.first().isVisible())) {
-          await connectButton.first().click().catch(() => undefined);
+        const connectButton = notificationPage.getByRole("button", {
+          name: /^Connect$/i,
+        });
+        if (
+          (await connectButton.count()) > 0 &&
+          (await connectButton.first().isVisible())
+        ) {
+          await connectButton
+            .first()
+            .click()
+            .catch(() => undefined);
           await sleep(120);
           continue;
         }
 
-        const confirmButton = notificationPage.getByRole("button", { name: /^Confirm$/i });
-        if ((await confirmButton.count()) > 0 && (await confirmButton.first().isVisible())) {
-          await confirmButton.first().click().catch(() => undefined);
+        const confirmButton = notificationPage.getByRole("button", {
+          name: /^Confirm$/i,
+        });
+        if (
+          (await confirmButton.count()) > 0 &&
+          (await confirmButton.first().isVisible())
+        ) {
+          await confirmButton
+            .first()
+            .click()
+            .catch(() => undefined);
           await sleep(120);
           continue;
         }
@@ -136,17 +171,20 @@ Issued At: ${issuedAt}`;
 }
 
 async function signInWithSeedPhraseCredentials(page: Page) {
-  const seedPhrase =
-    process.env.E2E_METAMASK_SEED_PHRASE ??
-    "test test test test test test test test test test test junk";
+  if (!process.env.E2E_METAMASK_SEED_PHRASE) {
+    throw new Error("E2E_METAMASK_SEED_PHRASE is not set");
+  }
+
+  if (!process.env.E2E_CHAIN_ID) {
+    throw new Error("E2E_CHAIN_ID is not set");
+  }
+
+  const seedPhrase = process.env.E2E_METAMASK_SEED_PHRASE;
   const seedAccount = mnemonicToAccount(seedPhrase);
 
   const origin = new URL(appBaseUrl).origin;
   const host = new URL(appBaseUrl).host;
-  const chainId = Number.parseInt(
-    process.env.NEXT_PUBLIC_CHAIN_ID ?? process.env.E2E_CHAIN_ID ?? "80002",
-    10,
-  );
+  const chainId = Number.parseInt(process.env.E2E_CHAIN_ID, 10);
 
   const address = seedAccount.address;
 
@@ -155,7 +193,8 @@ async function signInWithSeedPhraseCredentials(page: Page) {
   const csrfResponse = await workingPage.request.get(`${origin}/api/auth/csrf`);
   const csrfJson = (await csrfResponse.json()) as { csrfToken?: string };
   const nonce = csrfJson.csrfToken;
-  if (!nonce) throw new Error("Could not fetch CSRF token for credentials sign-in");
+  if (!nonce)
+    throw new Error("Could not fetch CSRF token for credentials sign-in");
 
   const message = buildSiweMessage({
     host,
@@ -189,21 +228,24 @@ async function signInWithSeedPhraseCredentials(page: Page) {
   await workingPage.goto(`${origin}/dashboard`);
 }
 
-async function signInViaInjectedProvider(
-  page: Page,
-  metamask: MetaMask,
-) {
+async function signInViaInjectedProvider(page: Page, metamask: MetaMask) {
   const initialOrigin = new URL(appBaseUrl).origin;
   let activePage = page;
   const ensureActivePage = () => {
-    if (!activePage.isClosed() && activePage.url().startsWith("http")) return activePage;
+    if (!activePage.isClosed() && activePage.url().startsWith("http"))
+      return activePage;
 
     const httpPage = metamask.context
       .pages()
-      .find((candidate) => !candidate.isClosed() && candidate.url().startsWith("http"));
+      .find(
+        (candidate) =>
+          !candidate.isClosed() && candidate.url().startsWith("http"),
+      );
 
     if (!httpPage) {
-      throw new Error("No active dapp page available for injected-provider fallback");
+      throw new Error(
+        "No active dapp page available for injected-provider fallback",
+      );
     }
 
     activePage = httpPage;
@@ -259,63 +301,65 @@ async function signInViaInjectedProvider(
 
   await withActivePage(async (currentPage) =>
     currentPage.evaluate(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const windowWithState = window as any;
-    windowWithState.__e2eRequestAccountsResult = undefined;
-
-    const existingButton = document.getElementById("__e2e-request-accounts-trigger");
-    if (existingButton) {
-      return;
-    }
-
-    const triggerButton = document.createElement("button");
-    triggerButton.id = "__e2e-request-accounts-trigger";
-    triggerButton.type = "button";
-    triggerButton.style.position = "fixed";
-    triggerButton.style.bottom = "8px";
-    triggerButton.style.right = "8px";
-    triggerButton.style.opacity = "0.01";
-    triggerButton.style.zIndex = "2147483647";
-    triggerButton.textContent = "request-accounts";
-    triggerButton.addEventListener("click", async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const provider = (window as any).ethereum;
-      if (!provider) {
-        windowWithState.__e2eRequestAccountsResult = {
-          ok: false,
-          error: "window.ethereum is not available",
-        };
+      const windowWithState = window as any;
+      windowWithState.__e2eRequestAccountsResult = undefined;
+
+      const existingButton = document.getElementById(
+        "__e2e-request-accounts-trigger",
+      );
+      if (existingButton) {
         return;
       }
 
-      try {
-        const accounts = (await provider.request({
-          method: "eth_requestAccounts",
-        })) as string[];
-        windowWithState.__e2eRequestAccountsResult = { ok: true, accounts };
-      } catch (error) {
-        if (error instanceof Error) {
+      const triggerButton = document.createElement("button");
+      triggerButton.id = "__e2e-request-accounts-trigger";
+      triggerButton.type = "button";
+      triggerButton.style.position = "fixed";
+      triggerButton.style.bottom = "8px";
+      triggerButton.style.right = "8px";
+      triggerButton.style.opacity = "0.01";
+      triggerButton.style.zIndex = "2147483647";
+      triggerButton.textContent = "request-accounts";
+      triggerButton.addEventListener("click", async () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const provider = (window as any).ethereum;
+        if (!provider) {
           windowWithState.__e2eRequestAccountsResult = {
             ok: false,
-            error: error.message,
+            error: "window.ethereum is not available",
           };
           return;
         }
-        if (typeof error === "object" && error !== null) {
-          windowWithState.__e2eRequestAccountsResult = {
-            ok: false,
-            error: JSON.stringify(error),
-          };
-          return;
-        }
-        windowWithState.__e2eRequestAccountsResult = {
-          ok: false,
-          error: String(error),
-        };
-      }
-    });
 
-    document.body.appendChild(triggerButton);
+        try {
+          const accounts = (await provider.request({
+            method: "eth_requestAccounts",
+          })) as string[];
+          windowWithState.__e2eRequestAccountsResult = { ok: true, accounts };
+        } catch (error) {
+          if (error instanceof Error) {
+            windowWithState.__e2eRequestAccountsResult = {
+              ok: false,
+              error: error.message,
+            };
+            return;
+          }
+          if (typeof error === "object" && error !== null) {
+            windowWithState.__e2eRequestAccountsResult = {
+              ok: false,
+              error: JSON.stringify(error),
+            };
+            return;
+          }
+          windowWithState.__e2eRequestAccountsResult = {
+            ok: false,
+            error: String(error),
+          };
+        }
+      });
+
+      document.body.appendChild(triggerButton);
     }),
   );
 
@@ -348,7 +392,8 @@ async function signInViaInjectedProvider(
     );
     const csrfJson = (await csrfResponse.json()) as { csrfToken?: string };
     const nonce = csrfJson.csrfToken;
-    if (!nonce) throw new Error("Could not fetch CSRF token for credentials sign-in");
+    if (!nonce)
+      throw new Error("Could not fetch CSRF token for credentials sign-in");
 
     const message = buildSiweMessage({
       host,
@@ -373,15 +418,18 @@ async function signInViaInjectedProvider(
     );
 
     const callbackResponse = await withActivePage((currentPage) =>
-      currentPage.request.post(`${origin}/api/auth/callback/credentials?json=true`, {
-        form: {
-          csrfToken: nonce,
-          message,
-          signature,
-          callbackUrl: `${origin}/dashboard`,
-          json: "true",
+      currentPage.request.post(
+        `${origin}/api/auth/callback/credentials?json=true`,
+        {
+          form: {
+            csrfToken: nonce,
+            message,
+            signature,
+            callbackUrl: `${origin}/dashboard`,
+            json: "true",
+          },
         },
-      }),
+      ),
     );
 
     if (!callbackResponse.ok()) {
@@ -397,11 +445,13 @@ async function signInViaInjectedProvider(
   async function triggerRequestAccounts() {
     await withActivePage((currentPage) =>
       currentPage.evaluate(() => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).__e2eRequestAccountsResult = undefined;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (window as any).__e2eRequestAccountsResult = undefined;
       }),
     );
-    await withActivePage((currentPage) => currentPage.click("#__e2e-request-accounts-trigger"));
+    await withActivePage((currentPage) =>
+      currentPage.click("#__e2e-request-accounts-trigger"),
+    );
   }
 
   async function waitForRequestResult(timeout: number) {
@@ -443,12 +493,12 @@ async function signInViaInjectedProvider(
 
   let requestAccountsResult = await withActivePage((currentPage) =>
     currentPage.evaluate(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (window as any).__e2eRequestAccountsResult as {
-      ok: boolean;
-      accounts?: string[];
-      error?: string;
-    };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (window as any).__e2eRequestAccountsResult as {
+        ok: boolean;
+        accounts?: string[];
+        error?: string;
+      };
     }),
   );
 
@@ -464,7 +514,9 @@ async function signInViaInjectedProvider(
         currentPage.evaluate(async () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const provider = (window as any).ethereum;
-          return provider.request({ method: "eth_accounts" }) as Promise<string[]>;
+          return provider.request({ method: "eth_accounts" }) as Promise<
+            string[]
+          >;
         }),
       );
 
@@ -478,7 +530,9 @@ async function signInViaInjectedProvider(
   }
 
   if (!requestAccountsResult.ok) {
-    throw new Error(`Failed to request wallet accounts: ${requestAccountsResult.error}`);
+    throw new Error(
+      `Failed to request wallet accounts: ${requestAccountsResult.error}`,
+    );
   }
 
   const accounts = requestAccountsResult.accounts;
@@ -493,14 +547,16 @@ async function signInViaInjectedProvider(
     }),
   );
   const chainId = parseInt(chainIdHex, 16);
-  if (!Number.isFinite(chainId)) throw new Error(`Invalid chainId from provider: ${chainIdHex}`);
+  if (!Number.isFinite(chainId))
+    throw new Error(`Invalid chainId from provider: ${chainIdHex}`);
 
   const csrfResponse = await withActivePage(async (currentPage) =>
     currentPage.request.get(`${origin}/api/auth/csrf`),
   );
   const csrfJson = (await csrfResponse.json()) as { csrfToken?: string };
   const nonce = csrfJson.csrfToken;
-  if (!nonce) throw new Error("Could not fetch CSRF token for credentials sign-in");
+  if (!nonce)
+    throw new Error("Could not fetch CSRF token for credentials sign-in");
 
   const message = buildSiweMessage({
     host,
@@ -532,15 +588,18 @@ async function signInViaInjectedProvider(
   const signature = await signPromise;
 
   const callbackResponse = await withActivePage((currentPage) =>
-    currentPage.request.post(`${origin}/api/auth/callback/credentials?json=true`, {
-      form: {
-        csrfToken: nonce,
-        message,
-        signature,
-        callbackUrl: `${origin}/dashboard`,
-        json: "true",
+    currentPage.request.post(
+      `${origin}/api/auth/callback/credentials?json=true`,
+      {
+        form: {
+          csrfToken: nonce,
+          message,
+          signature,
+          callbackUrl: `${origin}/dashboard`,
+          json: "true",
+        },
       },
-    }),
+    ),
   );
 
   if (!callbackResponse.ok()) {
@@ -575,7 +634,8 @@ async function signInViaAppKit(page: Page, metamask: MetaMask) {
 
 export async function signInWithMetaMask(page: Page, metamask: MetaMask) {
   const useRealMetaMaskFlow = process.env.E2E_REAL_METAMASK === "true";
-  const useStrictRealMetaMaskFlow = process.env.E2E_REAL_METAMASK_STRICT === "true";
+  const useStrictRealMetaMaskFlow =
+    process.env.E2E_REAL_METAMASK_STRICT === "true";
 
   if (useRealMetaMaskFlow) {
     await prepareMetaMask(metamask);

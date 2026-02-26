@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import type { TransactionDTO } from "@/lib/models/transaction"
 
 function statusVariant(status: string) {
   switch (status) {
@@ -32,15 +33,7 @@ function statusVariant(status: string) {
   }
 }
 
-interface Transaction {
-  id: string
-  createdAt: Date
-  endpoint: string
-  amount: number
-  status: string
-}
-
-export function RecentTransactions({ transactions }: { transactions: Transaction[] }) {
+export function RecentTransactions({ transactions }: { transactions: TransactionDTO[] }) {
   return (
     <div className="px-4 lg:px-6">
       <Card>
@@ -73,7 +66,7 @@ export function RecentTransactions({ transactions }: { transactions: Transaction
               </TableHeader>
               <TableBody>
                 {transactions.map((tx) => (
-                  <TableRow key={tx.id}>
+                  <TableRow key={tx._id}>
                     <TableCell className="text-muted-foreground">
                       {new Date(tx.createdAt).toLocaleDateString("en-US", {
                         month: "short",

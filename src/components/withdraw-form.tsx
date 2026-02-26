@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import {
@@ -10,13 +10,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getChainConfig, getDefaultChainConfig } from "@/lib/chain-config";
-import { withdrawFromWallet } from "@/app/actions/wallet";
+import { getChainById } from "@/lib/chain-config";
+import { withdrawFromWallet } from "@/app/actions/smart-account";
 import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
 
 interface WithdrawFormProps {
   balance?: string;
-  chainId?: number;
+  chainId: number;
   address?: `0x${string}`;
 }
 
@@ -31,12 +31,16 @@ export default function WithdrawForm({
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  const chainConfig = chainId
-    ? getChainConfig(chainId) ?? getDefaultChainConfig()
-    : getDefaultChainConfig();
+  const chainConfig = getChainById(chainId)!;
   const explorerName = chainConfig.explorerUrl
     .replace("https://", "")
     .split("/")[0];
+
+  useEffect(() => {
+    if (txHash) {
+      queryClient.invalidateQueries({ queryKey: [...WALLET_BALANCE_QUERY_KEY, chainId] });
+    }
+  }, [txHash, queryClient, chainId]);
 
   function handleMax() {
     if (balance) setAmount(balance);
@@ -49,20 +53,20 @@ export default function WithdrawForm({
     setError(null);
     setTxHash(null);
 
-    try {
-      const data = await withdrawFromWallet(
-        parseFloat(amount),
-        address,
-        chainId,
-      );
-      setTxHash(data.txHash);
+    const result = await withdrawFromWallet(
+      parseFloat(amount),
+      address,
+      chainId,
+    );
+
+    if (!result.success) {
+      setError(result.error);
+    } else {
+      setTxHash(result.data.txHash);
       setAmount("");
-      queryClient.invalidateQueries({ queryKey: WALLET_BALANCE_QUERY_KEY });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Withdrawal failed");
-    } finally {
-      setLoading(false);
     }
+
+    setLoading(false);
   }
 
   return (

@@ -1,17 +1,8 @@
-import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
-  createWalletClient,
-  http,
   formatUnits,
-  parseUnits,
-  isAddress,
 } from "viem";
 import crypto from "crypto";
-import { connectDB } from "@/lib/db";
-import { HotWallet as HotWalletModel } from "@/lib/models/hot-wallet";
-import { createTransaction } from "@/lib/data/transactions";
-import { Types } from "mongoose";
-import { createChainPublicClient, getChainById, getDefaultChainConfig, getUsdcConfig } from "@/lib/chain-config";
+import { createChainPublicClient, getChainById, getUsdcConfig } from "@/lib/chain-config";
 import { reportRpcError, reportRpcSuccess } from "@/lib/rpc-health";
 
 const USDC_ABI = [
@@ -75,24 +66,10 @@ export function decryptPrivateKey(encryptedData: string): string {
   return decrypted.toString("utf8");
 }
 
-export function createHotWallet(): {
-  address: string;
-  encryptedPrivateKey: string;
-} {
-  const privateKey = generatePrivateKey();
-  const account = privateKeyToAccount(privateKey);
-  const encryptedPrivateKey = encryptPrivateKey(privateKey);
-  return {
-    address: account.address,
-    encryptedPrivateKey,
-  };
-}
-
-function resolveChainConfig(chainId?: number) {
-  const id = chainId ?? getDefaultChainConfig().chain.id;
-  const config = getChainById(id);
+function resolveChainConfig(chainId: number) {
+  const config = getChainById(chainId);
   if (!config) {
-    throw new Error(`Unsupported chain: ${id}`);
+    throw new Error(`Unsupported chain: ${chainId}`);
   }
   return config;
 }
@@ -115,7 +92,7 @@ export function isRpcRateLimitError(error: unknown): boolean {
 
 export async function getUsdcBalance(
   address: string,
-  chainId?: number,
+  chainId: number,
 ): Promise<string> {
   const config = resolveChainConfig(chainId);
   const resolvedChainId = config.chain.id;
@@ -135,73 +112,4 @@ export async function getUsdcBalance(
     reportRpcError(resolvedChainId, error);
     throw error;
   }
-}
-
-export async function withdrawFromHotWallet(
-  userId: string,
-  amount: number,
-  toAddress: string,
-  chainId?: number,
-): Promise<{ txHash: string }> {
-  if (!isAddress(toAddress)) {
-    throw new Error("Invalid destination address");
-  }
-  if (amount <= 0) {
-    throw new Error("Amount must be greater than 0");
-  }
-
-  const resolvedChainId = chainId ?? getDefaultChainConfig().chain.id;
-  const config = resolveChainConfig(resolvedChainId);
-  const usdcToken = getUsdcConfig(resolvedChainId);
-  const decimals = usdcToken?.decimals ?? 6;
-
-  await connectDB();
-
-  // Look up the user's hot wallet for this chain
-  const hotWallet = await HotWalletModel.findOne({
-    userId: new Types.ObjectId(userId),
-    chainId: resolvedChainId,
-  });
-  if (!hotWallet) {
-    throw new Error("No hot wallet found for this user");
-  }
-
-  // Check balance on the specific chain
-  const balance = await getUsdcBalance(hotWallet.address, resolvedChainId);
-  if (parseFloat(balance) < amount) {
-    throw new Error(
-      `Insufficient balance: ${balance} USDC available, ${amount} requested`,
-    );
-  }
-
-  // Decrypt private key and create wallet client
-  const privateKey = decryptPrivateKey(hotWallet.encryptedPrivateKey);
-  const account = privateKeyToAccount(privateKey as `0x${string}`);
-  const walletClient = createWalletClient({
-    account,
-    chain: config.chain,
-    transport: http(),
-  });
-
-  // Submit ERC-20 transfer
-  const txHash = await walletClient.writeContract({
-    address: config.usdcAddress,
-    abi: USDC_ABI,
-    functionName: "transfer",
-    args: [toAddress as `0x${string}`, parseUnits(String(amount), decimals)],
-  });
-
-  // Log withdrawal transaction via data layer
-  await createTransaction({
-    amount,
-    endpoint: `withdrawal:${toAddress}`,
-    txHash,
-    network: config.networkString,
-    chainId: resolvedChainId,
-    status: "completed",
-    type: "withdrawal",
-    userId,
-  });
-
-  return { txHash };
 }

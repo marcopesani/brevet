@@ -1,53 +1,58 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { z } from "zod/v4";
 
-const defaultChainId = parseInt(
-  process.env.NEXT_PUBLIC_CHAIN_ID || "8453",
-  10,
-);
-
-export interface ISmartAccount {
+type SmartAccountDoc = Document & {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
   chainId: number;
-
-  // Smart account (on-chain)
   ownerAddress: string;
   smartAccountAddress: string;
   smartAccountVersion: string;
-
-  // Session key (server-side)
   sessionKeyAddress: string;
-  sessionKeyEncrypted: string;
-  serializedAccount?: string;
-  sessionKeyStatus:
-    | "pending_grant"
-    | "active"
-    | "expired"
-    | "revoked";
+  sessionKeyEncrypted: string; // sensitive -- excluded from DTO
+  serializedAccount?: string;  // sensitive -- excluded from DTO
+  sessionKeyStatus: "pending_grant" | "active" | "expired" | "revoked";
   sessionKeyGrantTxHash?: string;
   sessionKeyExpiry?: Date;
   spendLimitPerTx?: number;
   spendLimitDaily?: number;
-
   createdAt: Date;
   updatedAt: Date;
-}
+};
 
-export interface ISmartAccountDocument
-  extends Omit<ISmartAccount, "_id">,
-    Document {}
+export const SmartAccountDTO = z.object({
+  _id: z.instanceof(Types.ObjectId).transform((v) => v.toString()),
+  userId: z.instanceof(Types.ObjectId).transform((v) => v.toString()),
+  chainId: z.number(),
+  ownerAddress: z.string(),
+  smartAccountAddress: z.string(),
+  smartAccountVersion: z.string(),
+  sessionKeyAddress: z.string(),
+  sessionKeyStatus: z.enum(["pending_grant", "active", "expired", "revoked"]),
+  sessionKeyGrantTxHash: z.string().optional(),
+  sessionKeyExpiry: z.instanceof(Date).optional().transform((v) => v?.toISOString()),
+  spendLimitPerTx: z.number().optional(),
+  spendLimitDaily: z.number().optional(),
+  createdAt: z.instanceof(Date).transform((v) => v.toISOString()),
+  updatedAt: z.instanceof(Date).transform((v) => v.toISOString()),
+});
 
-const smartAccountSchema = new Schema<ISmartAccountDocument>(
+export type SmartAccountDTO = z.output<typeof SmartAccountDTO>;
+
+export const SmartAccountWithKeyDTO = SmartAccountDTO.extend({
+  sessionKeyEncrypted: z.string(),
+  serializedAccount: z.string().optional(),
+});
+
+export type SmartAccountWithKeyDTO = z.output<typeof SmartAccountWithKeyDTO>;
+
+const smartAccountSchema = new Schema<SmartAccountDoc>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    chainId: { type: Number, required: true, default: defaultChainId },
-
-    // Smart account (on-chain)
+    chainId: { type: Number, required: true },
     ownerAddress: { type: String, required: true },
     smartAccountAddress: { type: String, required: true },
     smartAccountVersion: { type: String, required: true, default: "0.3.3" },
-
-    // Session key (server-side)
     sessionKeyAddress: { type: String, required: true },
     sessionKeyEncrypted: { type: String, required: true },
     serializedAccount: { type: String },
@@ -65,17 +70,11 @@ const smartAccountSchema = new Schema<ISmartAccountDocument>(
   {
     timestamps: true,
     collection: "smartaccounts",
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
-  },
+  }
 );
-
-smartAccountSchema.virtual("id").get(function () {
-  return this._id.toString();
-});
 
 smartAccountSchema.index({ userId: 1, chainId: 1 }, { unique: true });
 
-export const SmartAccount: Model<ISmartAccountDocument> =
+export const SmartAccount: Model<SmartAccountDoc> =
   mongoose.models.SmartAccount ||
-  mongoose.model<ISmartAccountDocument>("SmartAccount", smartAccountSchema);
+  mongoose.model<SmartAccountDoc>("SmartAccount", smartAccountSchema);

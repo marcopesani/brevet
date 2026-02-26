@@ -1,20 +1,32 @@
 import mongoose, { Schema, Document, Model, Types } from "mongoose";
+import { z } from "zod/v4";
 
-export interface IUser {
+type UserDoc = Document & {
   _id: Types.ObjectId;
   email: string | null;
   walletAddress: string | null;
   humanHash: string | null;
-  apiKeyHash: string | null;
+  apiKeyHash: string | null;   // sensitive -- excluded from DTO
   apiKeyPrefix: string | null;
   enabledChains: number[];
   createdAt: Date;
   updatedAt: Date;
-}
+};
 
-export interface IUserDocument extends Omit<IUser, "_id">, Document {}
+export const UserDTO = z.object({
+  _id: z.instanceof(Types.ObjectId).transform((v) => v.toString()),
+  email: z.string().nullable(),
+  walletAddress: z.string().nullable(),
+  humanHash: z.string().nullable(),
+  apiKeyPrefix: z.string().nullable(),
+  enabledChains: z.array(z.number()),
+  createdAt: z.instanceof(Date).transform((v) => v.toISOString()),
+  updatedAt: z.instanceof(Date).transform((v) => v.toISOString()),
+});
 
-const userSchema = new Schema<IUserDocument>(
+export type UserDTO = z.output<typeof UserDTO>;
+
+const userSchema = new Schema<UserDoc>(
   {
     email: { type: String, default: null },
     walletAddress: { type: String, default: null },
@@ -26,31 +38,19 @@ const userSchema = new Schema<IUserDocument>(
   {
     timestamps: true,
     collection: "users",
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
   }
 );
 
-userSchema.virtual("id").get(function () {
-  return this._id.toString();
-});
-
 userSchema.index(
   { email: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { email: { $exists: true, $ne: null } },
-  }
+  { unique: true, partialFilterExpression: { email: { $exists: true, $ne: null } } }
 );
 userSchema.index({ walletAddress: 1 }, { unique: true, sparse: true });
 userSchema.index({ humanHash: 1 }, { unique: true, sparse: true });
 userSchema.index(
   { apiKeyHash: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { apiKeyHash: { $exists: true, $ne: null } },
-  }
+  { unique: true, partialFilterExpression: { apiKeyHash: { $exists: true, $ne: null } } }
 );
 
-export const User: Model<IUserDocument> =
-  mongoose.models.User || mongoose.model<IUserDocument>("User", userSchema);
+export const User: Model<UserDoc> =
+  mongoose.models.User || mongoose.model<UserDoc>("User", userSchema);
