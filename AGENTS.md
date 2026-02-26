@@ -37,8 +37,9 @@ Chains: `src/lib/chain-config.ts`; `getChainById`, `getDefaultChainConfig()`; de
 
 - **Never** query DB or call HTTP from components, API routes, or MCP tools. All access via `src/lib/data/` (payments, policies, transactions, analytics, wallet, users, user, smart-account).
 - **Never** create new API routes for dashboard data. Use Server Components + data layer for reads, Server Actions for mutations.
+- **User scoping:** Data layer: every read/mutation takes `userId`, all queries filter by it (no unscoped `findById`). Actions: reads use `withAuthRead()`, mutations use `withAuth()`; pass `auth.userId` into data layer.
 - **Mutations:** Must return `ActionResult<T>`; use `withAuth()` from `@/lib/action-result-server`; return `ok(data)` / `err(message)`; never throw from mutation actions.
-- **Reads** used by Server Components: use `getAuthenticatedUser()`, throw if unauthenticated (error boundaries).
+- **Reads** used by Server Components: use `withAuthRead()` (throws if unauthenticated; error boundaries).
 - **Client:** Check `result.success` and use `result.data` / `result.error`, or `unwrap(result)` in React Query `mutationFn` for `onError`.
 - **Never** send Mongoose documents to the client. Data layer returns DTOs only (`*DTO.parse(doc)` / `doc.toObject()`); models have `*Doc` + Zod `*DTO`; exclude sensitive fields (e.g. `apiKeyHash`) from DTO.
 - **Never** add `setInterval` or ad-hoc polling in components. Use React Query with a shared hook in `src/hooks/` (e.g. pending payments 10s poll; wallet balance refetch on focus + after mutations). Use React Query polling only for data changed outside the dashboard (e.g. MCP); otherwise `revalidatePath()` after mutations.
