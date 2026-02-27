@@ -6,6 +6,10 @@ import { Geist_Mono } from "next/font/google";
 import AuthAwareProviders from "./auth-aware-providers";
 import "./globals.css";
 
+// Needed for CSP nonce-based headers.
+// https://nextjs.org/docs/app/building-your-application/routing/middleware#csp-nonce-based-headers
+export const dynamic = "force-dynamic";
+
 const roobert = localFont({
   src: "../../public/fonts/roobert.woff2",
   variable: "--font-roobert",
