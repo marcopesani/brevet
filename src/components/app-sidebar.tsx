@@ -3,11 +3,11 @@
 import * as React from "react"
 import {
   LayoutDashboard,
-  Clock,
   Shield,
   ArrowUpDown,
   Wallet,
   Settings,
+  Bot,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -50,9 +50,14 @@ export function AppSidebar({
       icon: LayoutDashboard,
     },
     {
-      title: "Pending Payments",
-      url: "/dashboard/pending",
-      icon: Clock,
+      title: "Account",
+      url: "/dashboard/wallet",
+      icon: Wallet,
+    },
+    {
+      title: "Transactions",
+      url: "/dashboard/transactions",
+      icon: ArrowUpDown,
       badge: pendingCount,
     },
     {
@@ -61,14 +66,9 @@ export function AppSidebar({
       icon: Shield,
     },
     {
-      title: "Transactions",
-      url: "/dashboard/transactions",
-      icon: ArrowUpDown,
-    },
-    {
-      title: "Account",
-      url: "/dashboard/wallet",
-      icon: Wallet,
+      title: "MCP Configuration",
+      url: "/dashboard/mcp",
+      icon: Bot,
     },
   ]
 

@@ -13,6 +13,7 @@ const pageTitles: Record<string, string> = {
   "/dashboard/wallet": "Account",
   "/dashboard/history": "History",
   "/dashboard/settings": "Settings",
+  "/dashboard/mcp": "MCP Configuration",
 }
 
 export function SiteHeader() {
