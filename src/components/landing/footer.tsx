@@ -2,6 +2,14 @@ import Link from "next/link";
 import { Github } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
+const supportedChains = [
+  "Ethereum",
+  "Base",
+  "Optimism",
+  "Polygon",
+  "Arbitrum",
+];
+
 export function Footer() {
   return (
     <footer className="border-t">
@@ -10,7 +18,7 @@ export function Footer() {
           <div>
             <p className="font-semibold">Brevet</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Built with x402 protocol on Base
+              100% open source &middot; Built with x402 protocol
             </p>
           </div>
 
@@ -33,6 +41,17 @@ export function Footer() {
               Documentation
             </Link>
           </nav>
+        </div>
+
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          {supportedChains.map((chain) => (
+            <span
+              key={chain}
+              className="rounded-full border px-3 py-1 text-xs text-muted-foreground"
+            >
+              {chain}
+            </span>
+          ))}
         </div>
 
         <Separator className="my-8" />

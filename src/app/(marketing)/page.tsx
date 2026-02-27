@@ -3,26 +3,27 @@ import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { Hero } from "@/components/landing/hero";
 import { HowItWorks } from "@/components/landing/how-it-works";
+import { UseCases } from "@/components/landing/use-cases";
 import { Features } from "@/components/landing/features";
 import { Security } from "@/components/landing/security";
 import { CtaSection } from "@/components/landing/cta-section";
 import { Footer } from "@/components/landing/footer";
 
 export const metadata: Metadata = {
-  title: "Brevet — Your Agent's Spending Authority",
+  title: "Brevet — Pay with internet money",
   description:
-    "Connect your wallet. Let your agents pay for APIs autonomously. Spending policies, tiered signing, dashboard.",
+    "The open-source MCP wallet for AI agent payments. Deploy, fund, and let your agents pay for APIs, data, and goods on any chain.",
   openGraph: {
-    title: "Brevet — Your Agent's Spending Authority",
+    title: "Brevet — Pay with internet money",
     description:
-      "Connect your wallet. Let your agents pay for APIs autonomously. Spending policies, tiered signing, dashboard.",
+      "The open-source MCP wallet for AI agent payments. Deploy, fund, and let your agents pay for APIs, data, and goods on any chain.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Brevet — Your Agent's Spending Authority",
+    title: "Brevet — Pay with internet money",
     description:
-      "Connect your wallet. Let your agents pay for APIs autonomously. Spending policies, tiered signing, dashboard.",
+      "The open-source MCP wallet for AI agent payments. Deploy, fund, and let your agents pay for APIs, data, and goods on any chain.",
   },
 };
 
@@ -31,7 +32,7 @@ const jsonLd = {
   "@type": "WebApplication",
   name: "Brevet",
   description:
-    "Connect your wallet. Let your agents pay for APIs autonomously using the x402 HTTP payment protocol with USDC on Base.",
+    "The open-source MCP wallet for AI agent payments. Deploy, fund, and let your agents pay for APIs, data, and goods on any chain.",
   applicationCategory: "FinanceApplication",
   operatingSystem: "Web",
   offers: {
@@ -57,6 +58,7 @@ export default async function Home() {
       />
       <Hero />
       <HowItWorks />
+      <UseCases />
       <Features />
       <Security />
       <CtaSection />
