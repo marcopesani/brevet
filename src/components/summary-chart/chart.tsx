@@ -39,7 +39,7 @@ function formatMetricValue(value: number, metric: MetricType): string {
 
 function formatYAxisTick(value: number, metric: MetricType): string {
   if (metric === "spending") {
-    return `$${value.toFixed(0)}`;
+    return `$${value.toFixed(2)}`;
   }
   if (metric === "successRate") {
     return `${value.toFixed(0)}%`;
@@ -78,14 +78,14 @@ export function ChartArea({ dailyMetrics, activeMetric, timeRange }: ChartAreaPr
 
   if (!dailyMetrics.length) {
     return (
-      <div className="flex h-[250px] items-center justify-center text-muted-foreground text-sm">
+      <div className="flex h-full items-center justify-center text-muted-foreground text-sm">
         No transaction data yet.
       </div>
     );
   }
 
   return (
-    <ChartContainer config={chartConfig} className="aspect-auto h-[250px] w-full">
+    <ChartContainer config={chartConfig} className="h-full w-full">
       <AreaChart data={filteredData} margin={{ top: 5, right: 16, bottom: 5, left: 0 }}>
         <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-muted" />
         <XAxis

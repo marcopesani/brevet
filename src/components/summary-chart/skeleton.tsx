@@ -5,5 +5,5 @@ export function ValueSkeleton() {
 }
 
 export function ChartSkeleton() {
-  return <Skeleton className="h-[250px] w-full" />;
+  return <Skeleton className="h-full w-full" />;
 }

@@ -21,7 +21,7 @@ function MetricTabShell({ value, label, children, isActive }: MetricTabShellProp
   return (
     <TabsTrigger
       value={value}
-      className={`flex-1 lg:flex-none lg:w-48 flex-col items-start px-4 py-3 h-auto !bg-white border-0 border-r border-border rounded-none cursor-pointer after:-translate-y-[4px] ${isActive ? "data-[state=active]:after:translate-y-[4px]" : ""}`}
+      className={`flex-1 lg:flex-none lg:w-48 flex-col items-start px-4 py-3 h-auto !bg-white border-0 border-r border-border rounded-none cursor-pointer after:-translate-y-[4px] ${isActive ? "data-[state=active]:after:translate-y-[-4px]" : ""}`}
     >
       <span className="text-sm text-muted-foreground">{label}</span>
       <span className="flex h-9 items-center text-3xl font-semibold tabular-nums">
@@ -50,7 +50,7 @@ export function ChartShell({
 }: ChartShellProps) {
   return (
     <Card className="@container/card p-0 gap-0 overflow-hidden">
-      <CardHeader className="p-0 gap-0 !pb-0 border-b h-auto">
+      <CardHeader className="p-0 gap-0 !pb-0 border-b">
         <Tabs
           value={activeMetric}
           onValueChange={(v) => onMetricChange(v as MetricType)}
@@ -76,7 +76,7 @@ export function ChartShell({
           </TabsList>
         </Tabs>
       </CardHeader>
-      <CardContent className="px-0 pt-4 pr-4 pb-4 sm:pt-6 h-[250px]">
+      <CardContent className="px-0 pt-4 pr-4 pb-4 sm:pt-6 h-[300px]">
         {chartSlot}
       </CardContent>
     </Card>
@@ -90,7 +90,7 @@ interface EmptyChartShellProps {
 export function EmptyChartShell({ children }: EmptyChartShellProps) {
   return (
     <Card>
-      <CardHeader className="h-auto">
+      <CardHeader>
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-semibold tracking-tight text-sm">No Data Available</h3>
@@ -100,7 +100,7 @@ export function EmptyChartShell({ children }: EmptyChartShellProps) {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="h-[250px]">{children}</CardContent>
+      <CardContent className="h-[300px]">{children}</CardContent>
     </Card>
   );
 }
