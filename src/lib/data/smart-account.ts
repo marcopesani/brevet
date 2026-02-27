@@ -59,7 +59,7 @@ export async function getAllSmartAccounts(userId: string): Promise<SmartAccountD
  * Get the USDC balance of the user's smart account on a specific chain.
  * Returns null if no smart account exists on that chain.
  */
-export async function getSmartAccountBalance(userId: string, chainId: number) {
+export async function getSmartAccountBalance(userId: string, chainId: number): Promise<{ balance: string; address: string } | null> {
   await connectDB();
   const doc = await SmartAccount.findOne({
     userId: new Types.ObjectId(userId),
