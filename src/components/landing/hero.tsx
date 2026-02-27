@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { VERCEL_DEPLOY_URL } from "@/lib/deploy-url";
 
 export function Hero() {
   return (
@@ -44,7 +45,7 @@ export function Hero() {
               <span className="text-xs text-muted-foreground">(Base Sepolia)</span>
             </div>
             <Button asChild variant="outline" size="lg" className="text-base">
-              <a href="https://vercel.com/new/clone?repository-url=https://github.com/marcopesani/brevet">
+              <a href={VERCEL_DEPLOY_URL}>
                 Deploy on Vercel
               </a>
             </Button>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { VERCEL_DEPLOY_URL } from "@/lib/deploy-url";
 
 export function CtaSection() {
   return (
@@ -21,7 +22,7 @@ export function CtaSection() {
           </Button>
           <Button asChild variant="outline" size="lg" className="text-base">
             <a
-              href="https://vercel.com/new/clone?repository-url=https://github.com/marcopesani/brevet"
+              href={VERCEL_DEPLOY_URL}
               target="_blank"
               rel="noopener noreferrer"
             >
