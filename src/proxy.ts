@@ -1,12 +1,18 @@
 /**
- * Next.js 16 Proxy: auth redirects + security headers with nonce-based CSP.
+ * Next.js 16 Proxy: auth redirects + security headers with CSP.
  *
  * CSP is built declaratively from layered source maps (base, Reown, Vercel
  * preview, dev). Each layer contributes sources per directive; layers are
- * merged at startup and the per-request nonce is injected at runtime.
+ * merged at startup.
+ *
+ * Nonce-based CSP (`strict-dynamic`) is incompatible with Partial Prerendering
+ * (PPR / `cacheComponents`): the static HTML shell is generated at build time
+ * so its script tags cannot receive per-request nonces. We use `'self'` +
+ * `'unsafe-inline'` instead, which allows same-origin scripts and the inline
+ * bootstrap scripts Next.js injects, while still blocking cross-origin injection.
  *
  * @see https://nextjs.org/docs/app/getting-started/proxy
- * @see https://nextjs.org/docs/app/guides/content-security-policy
+ * @see https://nextjs.org/docs/app/guides/content-security-policy#without-nonces
  * @see https://docs.reown.com/advanced/security/content-security-policy
  * @see https://vercel.com/docs/workflow-collaboration/vercel-toolbar/managing-toolbar#using-a-content-security-policy
  */
@@ -43,11 +49,7 @@ const WC = "*.walletconnect.com *.walletconnect.org *.web3modal.com *.web3modal.
 
 const BASE_SOURCES: CspSources = {
   "default-src":      ["'self'"],
-  "script-src": [
-    "'self'",
-    ...(isVercelPreview ? [] : ["'strict-dynamic'"]),
-    "blob:",
-  ],
+  "script-src":       ["'self'", "'unsafe-inline'", "blob:"],
   "style-src":        ["'self'", "'unsafe-inline'"],
   "img-src":          ["'self'", "data:", "blob:"],
   "font-src":         ["'self'"],
@@ -68,7 +70,6 @@ const REOWN_SOURCES: CspSources = {
   "frame-src":    [WC],
 };
 
-// RPC endpoints from all supported viem chains (session key auth, chainId, etc.).
 const CHAIN_RPC_SOURCES: CspSources = {
   "connect-src": getChainRpcUrlsForCsp(),
 };
@@ -84,7 +85,6 @@ const VERCEL_PREVIEW_SOURCES: CspSources = {
 
 const DEV_SOURCES: CspSources = {
   "script-src": ["'unsafe-eval'"],
-  // Cursor debug instrumentation ingest (development only)
   "connect-src": ["http://127.0.0.1:7245"],
 };
 
@@ -110,18 +110,9 @@ const activeLayers: CspSources[] = [
   ...(isDev ? [DEV_SOURCES] : []),
 ];
 
-const mergedSources = mergeCspSources(...activeLayers);
-
-export function buildCsp(nonce: string): string {
-  const withNonce: CspSources = {
-    ...mergedSources,
-    "script-src": [`'nonce-${nonce}'`, ...mergedSources["script-src"]],
-  };
-
-  return Object.entries(withNonce)
-    .map(([directive, sources]) => `${directive} ${sources.join(" ")}`)
-    .join("; ");
-}
+const cspHeaderValue = Object.entries(mergeCspSources(...activeLayers))
+  .map(([directive, sources]) => `${directive} ${sources.join(" ")}`)
+  .join("; ");
 
 // ---------------------------------------------------------------------------
 // Security headers (non-CSP)
@@ -136,11 +127,11 @@ const SECURITY_HEADERS: Record<string, string> = {
   "X-DNS-Prefetch-Control":     "on",
 };
 
-function applyHeaders(response: NextResponse, csp: string): NextResponse {
+function applyHeaders(response: NextResponse): NextResponse {
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
     response.headers.set(key, value);
   }
-  response.headers.set("Content-Security-Policy", csp);
+  response.headers.set("Content-Security-Policy", cspHeaderValue);
   return response;
 }
 
@@ -149,9 +140,6 @@ function applyHeaders(response: NextResponse, csp: string): NextResponse {
 // ---------------------------------------------------------------------------
 
 export function proxy(request: NextRequest): NextResponse {
-  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const csp = buildCsp(nonce);
-
   const { pathname } = request.nextUrl;
 
   if (
@@ -159,15 +147,11 @@ export function proxy(request: NextRequest): NextResponse {
     !hasSessionCookie(request)
   ) {
     const loginUrl = new URL("/login", request.url);
-    return applyHeaders(NextResponse.redirect(loginUrl, 307), csp);
+    return applyHeaders(NextResponse.redirect(loginUrl, 307));
   }
 
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-nonce", nonce);
-  requestHeaders.set("Content-Security-Policy", csp);
-
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
-  return applyHeaders(response, csp);
+  const response = NextResponse.next();
+  return applyHeaders(response);
 }
 
 // ---------------------------------------------------------------------------
