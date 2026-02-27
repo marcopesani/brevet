@@ -1,10 +1,10 @@
 import {
   Zap,
   Shield,
-  CheckCircle,
-  History,
-  Plug,
-  Layers,
+  MessageSquare,
+  Globe,
+  Smartphone,
+  Compass,
 } from "lucide-react";
 import {
   Card,
@@ -18,38 +18,38 @@ const features = [
   {
     title: "Automatic Payments",
     description:
-      "Smart account auto-signs small payments so your agents never stall on a 402 response.",
+      "Your agent never stalls on a paywall. Small payments are signed automatically so tasks keep moving.",
     icon: Zap,
   },
   {
     title: "Spending Controls",
     description:
-      "Set per-endpoint policies with configurable limits to keep spending predictable.",
+      "Set per-site budgets and limits. You decide how much any agent can spend, and where.",
     icon: Shield,
   },
   {
-    title: "Approval Workflow",
+    title: "Works in ChatGPT & Claude",
     description:
-      "Larger payments surface for review. Approve or reject via WalletConnect on any device.",
-    icon: CheckCircle,
+      "Connect from any chat client, web app, or mobile device. No CLI required — just add the server URL.",
+    icon: MessageSquare,
   },
   {
-    title: "Transaction History",
+    title: "Multichain",
     description:
-      "Full audit trail for every payment with on-chain verification through BaseScan.",
-    icon: History,
+      "Pay with USDC on Ethereum, Base, Optimism, Polygon, and Arbitrum. More chains and tokens coming soon.",
+    icon: Globe,
   },
   {
-    title: "MCP Integration",
+    title: "Mobile & Web Access",
     description:
-      "Works with any MCP-compatible AI agent. Connect once, pay for any 402-enabled API.",
-    icon: Plug,
+      "Manage payments from your phone or browser. Unlike CLI-only wallets, brevet works wherever you chat.",
+    icon: Smartphone,
   },
   {
-    title: "Base Network",
+    title: "Discovery Built In",
     description:
-      "Fast, cheap USDC transactions on Base L2. Sub-cent fees and near-instant settlement.",
-    icon: Layers,
+      "Your agent can find services that accept payments automatically. No need to hunt for compatible APIs.",
+    icon: Compass,
   },
 ];
 
@@ -59,11 +59,11 @@ export function Features() {
       <div className="mx-auto max-w-5xl px-6">
         <div className="text-center">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Built for agents that need to pay for things.
+            Why brevet?
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Spending controls, tiered signing, full audit trail. Everything your
-            agents need to pay for APIs on your terms.
+            Your agents pay for APIs, data, and services — on your terms, from
+            any device.
           </p>
         </div>
 
