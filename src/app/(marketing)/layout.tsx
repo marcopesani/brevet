@@ -19,6 +19,7 @@ export default function MarketingLayout({
               href="https://github.com/marcopesani/brevet"
               target="_blank"
               rel="noopener noreferrer"
+              aria-label="GitHub repository"
               className="text-muted-foreground hover:text-foreground transition-colors"
             >
               <Github className="size-4" />
