@@ -11,19 +11,19 @@ const useCases = [
   {
     title: "Agentic Shopping on Bitrefill",
     description:
-      "Your AI agent browses gift cards, mobile top-ups, and eSIMs on Bitrefill — then pays with crypto in one step, no human in the loop.",
+      "Your AI agent browses gift cards, mobile top-ups, and eSIMs on Bitrefill. It pays with crypto in one step, no human in the loop.",
     icon: ShoppingBag,
   },
   {
     title: "Crypto Alpha from Paid APIs",
     description:
-      "Let trading bots access x402-protected market data, on-chain analytics, and alpha signals — paying per-call so you only spend when there's value.",
+      "Let trading bots access paid market data, on-chain analytics, and alpha signals. They pay per call. You spend only when there's signal.",
     icon: TrendingUp,
   },
   {
     title: "Discover and Pay via MCP",
     description:
-      "Drop your Brevet MCP endpoint into ChatGPT or any agent. It discovers x402 merchants and services, then pays automatically.",
+      "Drop your Brevet MCP server into ChatGPT or any agent. It finds merchants that accept crypto, then pays on the spot.",
     icon: Search,
   },
 ];

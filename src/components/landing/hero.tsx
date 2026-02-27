@@ -22,7 +22,7 @@ export function Hero() {
             <Badge variant="secondary">100% Open Source</Badge>
             <Badge variant="secondary">Multichain</Badge>
             <Badge variant="secondary">MCP Native</Badge>
-            <Badge variant="secondary">Account Abstraction</Badge>
+            <Badge variant="secondary">Smart Accounts</Badge>
           </div>
 
           <h1 className="max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
@@ -30,8 +30,8 @@ export function Hero() {
           </h1>
 
           <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground sm:text-xl">
-            The open-source MCP wallet that lets AI agents pay for APIs, data,
-            and goods — from ChatGPT, Claude, or any MCP client.
+            An open-source wallet that lets your AI agents pay for things.
+            Works in ChatGPT, Claude, and any MCP-compatible client.
           </p>
 
           <div className="mt-10 flex flex-col gap-4 sm:flex-row">

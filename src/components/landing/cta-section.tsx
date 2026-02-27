@@ -11,7 +11,7 @@ export function CtaSection() {
           Start paying with internet money
         </h2>
         <p className="mt-4 text-lg text-muted-foreground">
-          Free to deploy. Open source. You only pay for what your agents use.
+          Open source and free to run. You only pay for what your agents spend.
         </p>
         <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:justify-center">
           <Button asChild size="lg" className="text-base">

@@ -30,13 +30,13 @@ const features = [
   {
     title: "Works in ChatGPT & Claude",
     description:
-      "Connect from any chat client, web app, or mobile device. No CLI required — just add the server URL.",
+      "Connect from any chat client, web app, or mobile device. No CLI required: just add the server URL.",
     icon: MessageSquare,
   },
   {
     title: "Multichain",
     description:
-      "Pay with USDC on Ethereum, Base, Optimism, Polygon, and Arbitrum. More chains and tokens coming soon.",
+      "Pay with USDC on Ethereum, Base, Optimism, Polygon, and Arbitrum. More chains and tokens ahead.",
     icon: Globe,
   },
   {
@@ -46,7 +46,7 @@ const features = [
     icon: Smartphone,
   },
   {
-    title: "Discovery Built In",
+    title: "Built-in Discovery",
     description:
       "Your agent can find services that accept payments automatically. No need to hunt for compatible APIs.",
     icon: Compass,
@@ -59,10 +59,10 @@ export function Features() {
       <div className="mx-auto max-w-5xl px-6">
         <div className="text-center">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Why brevet?
+            Why Brevet?
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Your agents pay for APIs, data, and services — on your terms, from
+            Your agents pay for APIs, data, and services. On your terms, from
             any device.
           </p>
         </div>

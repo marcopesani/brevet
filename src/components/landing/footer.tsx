@@ -18,7 +18,7 @@ export function Footer() {
           <div>
             <p className="font-semibold">Brevet</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              100% open source &middot; Built with x402 protocol
+              100% open source &middot; Built on the x402 HTTP payment standard
             </p>
           </div>
 
@@ -38,7 +38,7 @@ export function Footer() {
               rel="noopener noreferrer"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              Documentation
+              README
             </Link>
           </nav>
         </div>

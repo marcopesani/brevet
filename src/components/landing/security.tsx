@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge";
 
 const trustItems = [
   "Open Source",
-  "Account Abstraction (ERC-4337)",
+  "Smart Accounts",
   "On-Chain Verification",
   "Encrypted Keys",
   "Auditable",

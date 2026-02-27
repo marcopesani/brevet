@@ -12,14 +12,14 @@ const steps = [
     step: 1,
     title: "Deploy Brevet",
     description:
-      "Deploy the Brevet server to start accepting x402 payments. One click and your payment infrastructure is live.",
+      "One-click deploy on Vercel. Your wallet is ready in under two minutes.",
     icon: Rocket,
   },
   {
     step: 2,
     title: "Create & Fund Your Smart Account",
     description:
-      "Connect your wallet and fund your smart account with USDC. It handles small payments automatically on your behalf.",
+      "Connect your wallet, deposit USDC. Small payments happen automatically.",
     icon: Wallet,
   },
   {
@@ -33,7 +33,7 @@ const steps = [
     step: 4,
     title: "Start Shopping",
     description:
-      "Your agent discovers 402-protected APIs and pays automatically. Large payments require your approval via WalletConnect.",
+      "Your agent finds paid services and pays automatically. Large purchases need your approval.",
     icon: ShoppingCart,
   },
 ];

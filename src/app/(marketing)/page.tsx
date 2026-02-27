@@ -16,14 +16,14 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Brevet — Pay with internet money",
     description:
-      "The open-source MCP wallet for AI agent payments. Deploy, fund, and let your agents pay for APIs, data, and goods on any chain.",
+      "Let your AI agents pay for APIs, data, and goods with crypto. Open source, multichain, works in ChatGPT and Claude.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
     title: "Brevet — Pay with internet money",
     description:
-      "The open-source MCP wallet for AI agent payments. Deploy, fund, and let your agents pay for APIs, data, and goods on any chain.",
+      "Your AI agents can pay for things now. Open-source wallet, works in ChatGPT and Claude.",
   },
 };
 
