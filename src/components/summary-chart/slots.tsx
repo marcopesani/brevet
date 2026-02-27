@@ -1,7 +1,7 @@
 import { cache, Suspense } from "react";
 import { getAnalytics } from "@/lib/data/analytics";
 import type { DailyMetrics } from "@/lib/data/analytics";
-import { ValueSkeleton, ChartSkeleton } from "./skeleton";
+import { ValueSkeleton } from "./skeleton";
 
 const getChartData = cache(async (userId: string, chainId: number) => {
   const analytics = await getAnalytics(userId, chainId);

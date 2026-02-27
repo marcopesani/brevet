@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
-import { useIsMobile } from "@/hooks/use-mobile";
 import {
   ChartContainer,
   ChartTooltip,
@@ -54,8 +53,6 @@ interface ChartAreaProps {
 }
 
 export function ChartArea({ dailyMetrics, activeMetric, timeRange }: ChartAreaProps) {
-  const isMobile = useIsMobile();
-
   const filteredData = React.useMemo(() => {
     if (!dailyMetrics.length) return [];
     const referenceDate = new Date(dailyMetrics[dailyMetrics.length - 1].date);
