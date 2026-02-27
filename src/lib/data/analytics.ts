@@ -47,10 +47,11 @@ function isFailureStatus(status: string): boolean {
 /**
  * Get aggregated spending analytics for a user (last 30 days).
  * Wrapped with React cache() to deduplicate within a single server request.
+ * Uses primitive arguments for proper cache hit detection (Object.is() comparison).
  */
 export const getAnalytics = cache(async function getAnalytics(
   userId: string,
-  options?: { chainId?: number }
+  chainId?: number
 ): Promise<AnalyticsData> {
   await connectDB();
   const now = new Date();
@@ -72,8 +73,8 @@ export const getAnalytics = cache(async function getAnalytics(
     type: "payment",
     createdAt: { $gte: thirtyDaysAgo },
   };
-  if (options?.chainId !== undefined) {
-    txFilter.chainId = options.chainId;
+  if (chainId !== undefined) {
+    txFilter.chainId = chainId;
   }
 
   const transactions = await Transaction.find(txFilter)

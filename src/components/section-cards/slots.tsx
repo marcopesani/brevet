@@ -14,7 +14,7 @@ const getBalanceCardData = cache(async (userId: string, chainId: number) => {
 });
 
 const getSummaryCardData = cache(async (userId: string, chainId: number) => {
-  const analytics = await getAnalytics(userId, { chainId });
+  const analytics = await getAnalytics(userId, chainId);
   return analytics.summary;
 });
 
@@ -27,14 +27,24 @@ export async function BalanceFooterDetail({ userId, chainId }: CardDataProps) {
   const { wallet, chainConfig } = await getBalanceCardData(userId, chainId);
   if (!wallet) return <>No account found</>;
 
+  const truncatedAddress = `${wallet.address.slice(0, 12)}...${wallet.address.slice(-4)}`;
+
+  if (!chainConfig?.explorerUrl) {
+    return (
+      <span className="text-muted-foreground flex items-center gap-1">
+        {truncatedAddress}
+      </span>
+    );
+  }
+
   return (
     <a
-      href={`${chainConfig?.explorerUrl}/address/${wallet.address}`}
+      href={`${chainConfig.explorerUrl}/address/${wallet.address}`}
       target="_blank"
       rel="noopener noreferrer"
       className="text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
     >
-      {wallet.address.slice(0, 12)}...{wallet.address.slice(-4)}
+      {truncatedAddress}
       <IconExternalLink className="size-3" />
     </a>
   );

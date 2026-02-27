@@ -4,7 +4,7 @@ import type { DailyMetrics } from "@/lib/data/analytics";
 import { ValueSkeleton, ChartSkeleton } from "./skeleton";
 
 const getChartData = cache(async (userId: string, chainId: number) => {
-  const analytics = await getAnalytics(userId, { chainId });
+  const analytics = await getAnalytics(userId, chainId);
   return {
     dailyMetrics: analytics.dailyMetrics,
     metricsSummary: analytics.metricsSummary,
