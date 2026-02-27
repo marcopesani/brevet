@@ -1,9 +1,5 @@
 import { x402HTTPClient, x402Client } from "@x402/core/client";
 import type { PaymentRequired, PaymentPayload } from "@x402/core/types";
-import {
-  decodePaymentResponseHeader,
-  encodePaymentSignatureHeader,
-} from "@x402/core/http";
 import type { SettleResponse } from "@x402/core/types";
 
 /**
@@ -49,14 +45,6 @@ export function buildPaymentHeaders(
 }
 
 /**
- * Encode a payment payload into a base64 header value string.
- *
- * This is a lower-level utility — prefer `buildPaymentHeaders` which returns
- * the complete header name+value pair.
- */
-export { encodePaymentSignatureHeader };
-
-/**
  * Extract payment settlement response from HTTP headers.
  *
  * Parses the Payment-Response header (V2) or X-PAYMENT-RESPONSE (V1)
@@ -73,46 +61,3 @@ export function extractSettleResponse(
   }
 }
 
-/**
- * Extract a transaction hash from a facilitator's response.
- *
- * Checks (in order):
- * 1. Payment-Response / X-PAYMENT-RESPONSE header (SDK parsed)
- * 2. `X-PAYMENT-TX-HASH` response header (legacy)
- * 3. JSON body `txHash` field (if content-type is JSON)
- *
- * Returns null if no hash is found.
- */
-export async function extractTxHashFromResponse(
-  response: Response,
-): Promise<string | null> {
-  // Try SDK-parsed settle response first
-  const settleResponse = extractSettleResponse(response);
-  if (settleResponse?.transaction) {
-    return settleResponse.transaction;
-  }
-
-  // Legacy: try X-PAYMENT-TX-HASH header
-  const headerHash = response.headers.get("X-PAYMENT-TX-HASH");
-  if (headerHash && headerHash.startsWith("0x")) {
-    return headerHash;
-  }
-
-  // Legacy: try JSON body
-  const contentType = response.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) {
-    try {
-      const cloned = response.clone();
-      const body = await cloned.json();
-      if (typeof body?.txHash === "string" && body.txHash.startsWith("0x")) {
-        return body.txHash;
-      }
-    } catch {
-      // Body isn't valid JSON or can't be read — ignore
-    }
-  }
-
-  return null;
-}
-
-export { decodePaymentResponseHeader };

@@ -8,7 +8,7 @@ import { decryptPrivateKey, getUsdcBalance } from "@/lib/encryption";
 import { checkPolicy } from "@/lib/policy";
 import { createSmartAccountSignerFromSerialized, createSmartAccountSigner } from "@/lib/smart-account";
 import { SESSION_KEY_DEFAULT_EXPIRY_DAYS } from "@/lib/smart-account-constants";
-import { parsePaymentRequired, extractTxHashFromResponse, extractSettleResponse } from "./headers";
+import { parsePaymentRequired, extractSettleResponse } from "./headers";
 import { getRequirementAmount } from "./requirements";
 import type {
 PaymentResult, SigningStrategy, ClientEvmSigner } from "./types";
@@ -462,13 +462,18 @@ export async function executePayment(
 
   // Step 10: Extract settlement response and transaction hash from facilitator response
   const settlement = extractSettleResponse(paidResponse) ?? undefined;
-  const txHash = settlement?.transaction ?? await extractTxHashFromResponse(paidResponse);
+  const txHash = settlement?.transaction ?? null;
 
   // Step 11: Log transaction with chainId
   const txStatus = paidResponse.ok ? "completed" : "failed";
   await createTransaction({
     amount: amountUsd,
     endpoint: url,
+    payTo: selectedRequirement.payTo,
+    asset: selectedRequirement.asset,
+    scheme: selectedRequirement.scheme,
+    maxTimeoutSeconds: selectedRequirement.maxTimeoutSeconds,
+    extra: Object.keys(selectedRequirement.extra).length > 0 ? selectedRequirement.extra : undefined,
     txHash,
     network: selectedRequirement.network,
     chainId: selectedChainId,
