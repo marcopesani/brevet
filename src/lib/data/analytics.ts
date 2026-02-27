@@ -1,6 +1,7 @@
 import { Transaction } from "@/lib/models/transaction";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
+import { cache } from "react";
 
 export interface AnalyticsSummary {
   today: number;
@@ -45,8 +46,12 @@ function isFailureStatus(status: string): boolean {
 
 /**
  * Get aggregated spending analytics for a user (last 30 days).
+ * Wrapped with React cache() to deduplicate within a single server request.
  */
-export async function getAnalytics(userId: string, options?: { chainId?: number }): Promise<AnalyticsData> {
+export const getAnalytics = cache(async function getAnalytics(
+  userId: string,
+  options?: { chainId?: number }
+): Promise<AnalyticsData> {
   await connectDB();
   const now = new Date();
   const thirtyDaysAgo = new Date(now);
@@ -159,4 +164,4 @@ export async function getAnalytics(userId: string, options?: { chainId?: number 
   };
 
   return { dailySpending, summary, dailyMetrics, metricsSummary };
-}
+});
