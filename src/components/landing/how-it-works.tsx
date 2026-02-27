@@ -1,4 +1,4 @@
-import { Wallet, Settings, Zap } from "lucide-react";
+import { Rocket, Wallet, MessageSquare, ShoppingCart } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -10,41 +10,48 @@ import {
 const steps = [
   {
     step: 1,
-    title: "Connect & Fund",
+    title: "Deploy Brevet",
     description:
-      "Connect your wallet and fund your smart account with USDC on Base. Your smart account handles small payments automatically.",
-    icon: Wallet,
+      "One-click deploy on Vercel. Your wallet is ready in under two minutes.",
+    icon: Rocket,
   },
   {
     step: 2,
-    title: "Configure Your Agent",
+    title: "Create & Fund Your Smart Account",
     description:
-      "Point your AI agent to the Brevet MCP endpoint. Set per-endpoint spending policies to stay in control.",
-    icon: Settings,
+      "Connect your wallet, deposit USDC. Small payments happen automatically.",
+    icon: Wallet,
   },
   {
     step: 3,
-    title: "Automatic Payments",
+    title: "Add MCP to Your Chat Client",
     description:
-      "Your agent discovers 402-protected APIs and pays automatically. Large payments require your approval via WalletConnect.",
-    icon: Zap,
+      "Point your AI agent to the Brevet MCP endpoint. Set spending policies to stay in control of every transaction.",
+    icon: MessageSquare,
+  },
+  {
+    step: 4,
+    title: "Start Shopping",
+    description:
+      "Your agent finds paid services and pays automatically. Large purchases need your approval.",
+    icon: ShoppingCart,
   },
 ];
 
 export function HowItWorks() {
   return (
     <section className="py-24">
-      <div className="mx-auto max-w-5xl px-6">
+      <div className="mx-auto max-w-6xl px-6">
         <div className="text-center">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Agent hits a paywall. Brevet handles the rest.
+            Up and running in minutes
           </h2>
           <p className="mt-4 text-lg text-muted-foreground">
-            Three steps to connect your wallet and start paying.
+            Four steps from deploy to your first agent payment.
           </p>
         </div>
 
-        <div className="mt-16 grid gap-8 sm:grid-cols-3">
+        <div className="mt-16 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {steps.map(({ step, title, description, icon: Icon }) => (
             <Card key={step} className="relative">
               <CardHeader>

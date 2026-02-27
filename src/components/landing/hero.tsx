@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { VERCEL_DEPLOY_URL } from "@/lib/deploy-url";
 
 export function Hero() {
   return (
@@ -17,31 +18,36 @@ export function Hero() {
 
       <div className="mx-auto max-w-5xl px-6 pb-24 pt-20 sm:pt-32 lg:pt-40">
         <div className="flex flex-col items-center text-center">
-          <div className="flex gap-2 mb-8">
-            <Badge variant="secondary">Built on Base</Badge>
-            <Badge variant="secondary">USDC Payments</Badge>
-            <Badge variant="secondary">Open Protocol</Badge>
+          <div className="flex flex-wrap justify-center gap-2 mb-8">
+            <Badge variant="secondary">100% Open Source</Badge>
+            <Badge variant="secondary">Multichain</Badge>
+            <Badge variant="secondary">MCP Native</Badge>
+            <Badge variant="secondary">Smart Accounts</Badge>
           </div>
 
           <h1 className="max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-            Connect your wallet. Let your agents pay.
+            Pay with internet money
           </h1>
 
           <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground sm:text-xl">
-            Brevet bridges AI agents to your wallet for paid API access. One
-            integration. Spending policies you control. A dashboard to see
-            everything.
+            An open-source wallet that lets your AI agents pay for things.
+            Works in ChatGPT, Claude, and any MCP-compatible client.
           </p>
 
           <div className="mt-10 flex flex-col gap-4 sm:flex-row">
-            <Button asChild size="lg" className="text-base">
-              <Link href="/login">
-                Get Started
-                <ArrowRight />
-              </Link>
-            </Button>
+            <div className="flex flex-col items-center gap-1">
+              <Button asChild size="lg" className="text-base">
+                <Link href="/login">
+                  Try now
+                  <ArrowRight />
+                </Link>
+              </Button>
+              <span className="text-xs text-muted-foreground">(Base Sepolia)</span>
+            </div>
             <Button asChild variant="outline" size="lg" className="text-base">
-              <Link href="#features">Learn More</Link>
+              <a href={VERCEL_DEPLOY_URL}>
+                Deploy on Vercel
+              </a>
             </Button>
           </div>
         </div>

@@ -1,23 +1,33 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { VERCEL_DEPLOY_URL } from "@/lib/deploy-url";
 
 export function CtaSection() {
   return (
     <section className="py-24 bg-muted/50">
       <div className="mx-auto max-w-3xl px-6 text-center">
         <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-          Ready to Automate API Payments?
+          Start paying with internet money
         </h2>
         <p className="mt-4 text-lg text-muted-foreground">
-          Free to set up. You only pay for what your agents use.
+          Open source and free to run. You only pay for what your agents spend.
         </p>
-        <div className="mt-10">
+        <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:justify-center">
           <Button asChild size="lg" className="text-base">
             <Link href="/login">
-              Get Started
+              Try now
               <ArrowRight />
             </Link>
+          </Button>
+          <Button asChild variant="outline" size="lg" className="text-base">
+            <a
+              href={VERCEL_DEPLOY_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Deploy on Vercel
+            </a>
           </Button>
         </div>
       </div>
