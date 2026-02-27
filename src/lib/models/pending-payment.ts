@@ -47,6 +47,38 @@ export const PendingPaymentDTO = z.object({
 
 export type PendingPaymentDTO = z.output<typeof PendingPaymentDTO>;
 
+/** Input for creating a pending payment (body/headers map to requestBody/requestHeaders). */
+export const PendingPaymentCreateInput = z.object({
+  userId: z.string(),
+  url: z.string(),
+  chainId: z.number(),
+  paymentRequirements: z.string(),
+  expiresAt: z.date(),
+  method: z.string().optional(),
+  amount: z.number().optional(),
+  amountRaw: z.string().optional(),
+  asset: z.string().optional(),
+  body: z.string().optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+});
+export type PendingPaymentCreateInput = z.output<typeof PendingPaymentCreateInput>;
+
+/** Input for completing a pending payment. */
+export const PendingPaymentCompleteInput = z.object({
+  responsePayload: z.string(),
+  responseStatus: z.number(),
+  txHash: z.string().optional(),
+});
+export type PendingPaymentCompleteInput = z.output<typeof PendingPaymentCompleteInput>;
+
+/** Input for failing a pending payment. */
+export const PendingPaymentFailInput = z.object({
+  responsePayload: z.string().optional(),
+  responseStatus: z.number().optional(),
+  error: z.string().optional(),
+});
+export type PendingPaymentFailInput = z.output<typeof PendingPaymentFailInput>;
+
 const pendingPaymentSchema = new Schema<PendingPaymentDoc>(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },

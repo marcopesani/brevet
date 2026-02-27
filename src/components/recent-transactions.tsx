@@ -35,8 +35,7 @@ function statusVariant(status: string) {
 
 export function RecentTransactions({ transactions }: { transactions: TransactionDTO[] }) {
   return (
-    <div className="px-4 lg:px-6">
-      <Card>
+    <Card>
         <CardHeader>
           <CardTitle>Recent Transactions</CardTitle>
           <CardDescription>Last 5 transactions</CardDescription>
@@ -91,6 +90,5 @@ export function RecentTransactions({ transactions }: { transactions: Transaction
           )}
         </CardContent>
       </Card>
-    </div>
   )
 }

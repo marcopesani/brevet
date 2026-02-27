@@ -1,4 +1,10 @@
-import { PendingPayment, PendingPaymentDTO } from "@/lib/models/pending-payment";
+import {
+  PendingPayment,
+  PendingPaymentDTO,
+  type PendingPaymentCreateInput,
+  type PendingPaymentCompleteInput,
+  type PendingPaymentFailInput,
+} from "@/lib/models/pending-payment";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
 
@@ -53,19 +59,7 @@ export async function getPendingPayment(paymentId: string, userId: string): Prom
  * Create a new pending payment record.
  * Store raw amount and asset from the 402 requirement; amount (number) is optional for legacy.
  */
-export async function createPendingPayment(data: {
-  userId: string;
-  url: string;
-  method?: string;
-  amount?: number;
-  amountRaw?: string;
-  asset?: string;
-  chainId: number;
-  paymentRequirements: string;
-  expiresAt: Date;
-  body?: string;
-  headers?: Record<string, string>;
-}): Promise<PendingPaymentDTO> {
+export async function createPendingPayment(data: PendingPaymentCreateInput): Promise<PendingPaymentDTO> {
   await connectDB();
   const doc = await PendingPayment.create({
     userId: new Types.ObjectId(data.userId),
@@ -92,11 +86,7 @@ export async function createPendingPayment(data: {
 export async function completePendingPayment(
   paymentId: string,
   userId: string,
-  data: {
-    responsePayload: string;
-    responseStatus: number;
-    txHash?: string;
-  },
+  data: PendingPaymentCompleteInput,
 ): Promise<PendingPaymentDTO | null> {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
@@ -124,11 +114,7 @@ export async function completePendingPayment(
 export async function failPendingPayment(
   paymentId: string,
   userId: string,
-  data: {
-    responsePayload?: string;
-    responseStatus?: number;
-    error?: string;
-  },
+  data: PendingPaymentFailInput,
 ): Promise<PendingPaymentDTO | null> {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
