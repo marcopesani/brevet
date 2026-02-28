@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "tags": ["-lintignore"],
+  "ignore": [
+    "src/components/ui/**",
+    "src/lib/models/**",
+    "e2e/helpers/dev-server.mjs"
+  ],
+  "ignoreDependencies": [
+    "mongodb-memory-server"
+  ]
+}

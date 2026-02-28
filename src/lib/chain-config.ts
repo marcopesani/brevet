@@ -247,15 +247,10 @@ for (const [chainIdStr, config] of Object.entries(CHAIN_CONFIGS)) {
 
 // ── Chain helpers ──────────────────────────────────────────────────
 
-export const SUPPORTED_CHAINS: ChainConfig[] = Object.values(CHAIN_CONFIGS);
+const SUPPORTED_CHAINS: ChainConfig[] = Object.values(CHAIN_CONFIGS);
 
 export function getChainById(chainId: number): ChainConfig | undefined {
   return CHAIN_CONFIGS[chainId];
-}
-
-export function getChainBySlug(slug: string): ChainConfig | undefined {
-  const lower = slug.toLowerCase();
-  return SUPPORTED_CHAINS.find((c) => c.slug === lower);
 }
 
 export function getAllChains(): ChainConfig[] {
@@ -268,15 +263,6 @@ export function getTestnetChains(): ChainConfig[] {
 
 export function getMainnetChains(): ChainConfig[] {
   return SUPPORTED_CHAINS.filter((c) => !c.isTestnet);
-}
-
-export function isTestnetChain(chainId: number): boolean {
-  return CHAIN_CONFIGS[chainId]?.isTestnet === true;
-}
-
-export function isMainnetChain(chainId: number): boolean {
-  const config = CHAIN_CONFIGS[chainId];
-  return config !== undefined && !config.isTestnet;
 }
 
 /**
@@ -320,18 +306,6 @@ export function getUsdcConfig(chainId: number): TokenConfig | undefined {
   const config = CHAIN_CONFIGS[chainId];
   if (!config) return undefined;
   return CHAIN_TOKENS[chainId]?.[config.usdcAddress.toLowerCase()];
-}
-
-export function formatTokenAmount(chainId: number, tokenAddress: string, amountRaw: bigint): string {
-  const token = getTokenConfig(chainId, tokenAddress);
-  if (!token) return formatUnits(amountRaw, 18);
-  return token.formatAmount(amountRaw);
-}
-
-export function parseTokenAmount(chainId: number, tokenAddress: string, humanReadable: string): bigint {
-  const token = getTokenConfig(chainId, tokenAddress);
-  if (!token) return parseUnits(humanReadable, 18);
-  return token.parseAmount(humanReadable);
 }
 
 // ── Existing helpers ───────────────────────────────────────────────
@@ -392,9 +366,6 @@ export function resolveValidChainId(
   return enabledChainIds[0];
 }
 
-// Backward-compatible alias — deprecated, use getDefaultChainConfig()
-export const chainConfig: ChainConfig = getDefaultChainConfig();
-
 // ── Alchemy RPC helpers ────────────────────────────────────────────
 
 const ALCHEMY_SUBDOMAINS: Record<number, string> = {
@@ -447,10 +418,6 @@ function getZeroDevProjectId(): string {
 }
 
 export function getZeroDevBundlerRpc(chainId: number): string {
-  return `https://rpc.zerodev.app/api/v3/${getZeroDevProjectId()}/chain/${chainId}`;
-}
-
-export function getZeroDevPaymasterRpc(chainId: number): string {
   return `https://rpc.zerodev.app/api/v3/${getZeroDevProjectId()}/chain/${chainId}`;
 }
 
