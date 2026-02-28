@@ -24,6 +24,8 @@ export const MerchantEntrySchema = z.object({
   category: z.enum(["service", "infrastructure", "client", "facilitator"]),
   chains: z.array(z.string()).min(1),
   endpoints: z.array(EndpointSchema).min(1),
+  website: z.url().optional(),
+  apiDocs: z.url().optional(),
 });
 
 export type MerchantEntry = z.infer<typeof MerchantEntrySchema>;

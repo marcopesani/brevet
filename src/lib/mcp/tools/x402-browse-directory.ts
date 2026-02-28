@@ -52,6 +52,8 @@ export function registerX402BrowseDirectory(
             ...(e.pricing && { pricing: e.pricing }),
           })),
           source: m.source,
+          ...(m.website && { website: m.website }),
+          ...(m.apiDocs && { apiDocs: m.apiDocs }),
         }));
 
         return jsonContent({ count: entries.length, merchants: entries });
