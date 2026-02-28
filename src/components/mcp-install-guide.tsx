@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   Copy,
   Check,
-  ChevronDown,
   Terminal,
   MessageSquare,
   MousePointer,
@@ -238,30 +237,6 @@ function ApiKeyInline({
   );
 }
 
-function ExpandableSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="border-t pt-3">
-      <button
-        onClick={() => setOpen(!open)}
-        className="text-muted-foreground hover:text-foreground flex w-full items-center gap-2 text-sm font-medium transition-colors"
-      >
-        <ChevronDown
-          className={`size-4 transition-transform ${open ? "rotate-0" : "-rotate-90"}`}
-        />
-        {title}
-      </button>
-      {open && <div className="mt-3">{children}</div>}
-    </div>
-  );
-}
-
 export function McpInstallGuide({
   humanHash,
   apiKeyPrefix,
@@ -284,6 +259,7 @@ export function McpInstallGuide({
   const cursorDeeplink = `cursor://anysphere.cursor-deeplink/mcp/install?name=${encodeURIComponent("Brevet")}&config=${encodeURIComponent(btoa(cursorConfig))}`;
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle>Connect Brevet to your AI</CardTitle>
@@ -510,51 +486,70 @@ export function McpInstallGuide({
           </TabsContent>
         </Tabs>
 
-        {/* Expandable Reference Sections */}
-        <ExpandableSection title={`Available tools (${tools.length})`}>
-          <div className="flex flex-wrap gap-2">
-            {tools.map((tool) => (
-              <Badge key={tool.name} variant="secondary" title={tool.summary}>
-                {tool.name}
-              </Badge>
-            ))}
-          </div>
-          <div className="mt-3 space-y-1">
-            {tools.map((tool) => (
-              <p key={tool.name} className="text-muted-foreground text-xs">
-                <code className="text-foreground font-medium">{tool.name}</code>{" "}
-                — {tool.summary}
-              </p>
-            ))}
-          </div>
-        </ExpandableSection>
-
-        <ExpandableSection title="Authentication reference">
-          <div className="text-muted-foreground space-y-2 text-sm">
-            <p>Two ways to authenticate requests:</p>
-            <div className="bg-muted rounded-md border px-3 py-2">
-              <p className="font-mono text-xs">
-                Authorization: Bearer {"<your-api-key>"}
-              </p>
-            </div>
-            <p>
-              Or as a query parameter:{" "}
-              <code className="text-xs">?api_key=brv_...</code>
-            </p>
-          </div>
-        </ExpandableSection>
-
-        <ExpandableSection title="Testing with MCP Inspector">
-          <div className="text-muted-foreground space-y-2 text-sm">
-            <p>
-              Use the MCP Inspector CLI to test your endpoint:
-            </p>
-            <CodeBlock
-              copyText={`npx @anthropic-ai/mcp-inspector --transport http --url ${baseUrl} -h "Authorization: Bearer ${keyPlaceholder}"`}
-            >{`npx @anthropic-ai/mcp-inspector \\\n  --transport http \\\n  --url ${baseUrl} \\\n  -h "Authorization: Bearer ${keyPlaceholder}"`}</CodeBlock>
-          </div>
-        </ExpandableSection>
       </CardContent>
     </Card>
+
+    {/* Available Tools */}
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Available tools ({tools.length})</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap gap-2">
+          {tools.map((tool) => (
+            <Badge key={tool.name} variant="secondary" title={tool.summary}>
+              {tool.name}
+            </Badge>
+          ))}
+        </div>
+        <div className="mt-3 space-y-1">
+          {tools.map((tool) => (
+            <p key={tool.name} className="text-muted-foreground text-xs">
+              <code className="text-foreground font-medium">{tool.name}</code>{" "}
+              — {tool.summary}
+            </p>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+
+    {/* Authentication Reference */}
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Authentication reference</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="text-muted-foreground space-y-2 text-sm">
+          <p>Two ways to authenticate requests:</p>
+          <div className="bg-muted rounded-md border px-3 py-2">
+            <p className="font-mono text-xs">
+              Authorization: Bearer {"<your-api-key>"}
+            </p>
+          </div>
+          <p>
+            Or as a query parameter:{" "}
+            <code className="text-xs">?api_key=brv_...</code>
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+
+    {/* Testing with MCP Inspector */}
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Testing with MCP Inspector</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="text-muted-foreground space-y-2 text-sm">
+          <p>
+            Use the MCP Inspector CLI to test your endpoint:
+          </p>
+          <CodeBlock
+            copyText={`npx @anthropic-ai/mcp-inspector --transport http --url ${baseUrl} -h "Authorization: Bearer ${keyPlaceholder}"`}
+          >{`npx @anthropic-ai/mcp-inspector \\\n  --transport http \\\n  --url ${baseUrl} \\\n  -h "Authorization: Bearer ${keyPlaceholder}"`}</CodeBlock>
+        </div>
+      </CardContent>
+    </Card>
+    </>
   );
 }
