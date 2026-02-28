@@ -281,7 +281,7 @@ export function McpInstallGuide({
     url: baseUrl,
     headers: { Authorization: `Bearer ${keyPlaceholder}` },
   });
-  const cursorDeeplink = `cursor://anysphere.cursor-deeplink/mcp/install?name=${encodeURIComponent("Brevet")}&config=${btoa(cursorConfig)}`;
+  const cursorDeeplink = `cursor://anysphere.cursor-deeplink/mcp/install?name=${encodeURIComponent("Brevet")}&config=${encodeURIComponent(btoa(cursorConfig))}`;
 
   return (
     <Card>
