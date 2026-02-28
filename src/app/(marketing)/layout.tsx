@@ -16,6 +16,12 @@ export default function MarketingLayout({
               Brevet
             </Link>
             <Link
+              href="/directory"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Directory
+            </Link>
+            <Link
               href="https://github.com/marcopesani/brevet"
               target="_blank"
               rel="noopener noreferrer"

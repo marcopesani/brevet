@@ -8,6 +8,7 @@ import {
   Wallet,
   Settings,
   Bot,
+  Compass,
 } from "lucide-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -69,6 +70,11 @@ export function AppSidebar({
       title: "MCP Configuration",
       url: "/dashboard/mcp",
       icon: Bot,
+    },
+    {
+      title: "Directory",
+      url: "/dashboard/directory",
+      icon: Compass,
     },
   ]
 
