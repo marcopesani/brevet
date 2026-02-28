@@ -15,6 +15,7 @@ vi.mock("node:fs", () => ({
 const validCurated = [
   {
     name: "Test Service",
+    slug: "test-service",
     description: "A test service for x402 payments.",
     category: "service",
     chains: ["base"],
@@ -33,6 +34,7 @@ const validCurated = [
   },
   {
     name: "Test Infra",
+    slug: "test-infra",
     description: "Infrastructure provider.",
     category: "infrastructure",
     chains: ["base", "ethereum"],
@@ -48,6 +50,7 @@ const validCurated = [
 const validBazaar = [
   {
     name: "Bazaar Service",
+    slug: "bazaar-service",
     description: "A bazaar-sourced service.",
     category: "service",
     chains: ["base"],
@@ -148,6 +151,7 @@ describe("MerchantEntrySchema", () => {
   it("rejects merchant without endpoints", () => {
     const result = MerchantEntrySchema.safeParse({
       name: "No Endpoints",
+      slug: "no-endpoints",
       description: "Missing endpoints.",
       category: "service",
       chains: ["base"],
@@ -158,12 +162,61 @@ describe("MerchantEntrySchema", () => {
 
   it("rejects merchant without name", () => {
     const result = MerchantEntrySchema.safeParse({
+      slug: "no-name",
       description: "No name.",
       category: "service",
       chains: ["base"],
       endpoints: [{ url: "https://example.com", description: "Test." }],
     });
     expect(result.success).toBe(false);
+  });
+
+  it("rejects merchant without slug", () => {
+    const result = MerchantEntrySchema.safeParse({
+      name: "No Slug",
+      description: "Missing slug.",
+      category: "service",
+      chains: ["base"],
+      endpoints: [{ url: "https://example.com", description: "Test." }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid slugs", () => {
+    const invalidSlugs = [
+      "Has Spaces",
+      "UPPERCASE",
+      "trailing-",
+      "-leading",
+      "double--hyphen",
+      "",
+    ];
+    for (const slug of invalidSlugs) {
+      const result = MerchantEntrySchema.safeParse({
+        name: "Test",
+        slug,
+        description: "Test.",
+        category: "service",
+        chains: ["base"],
+        endpoints: [{ url: "https://example.com", description: "Test." }],
+      });
+      expect(result.success, `slug "${slug}" should be rejected`).toBe(false);
+    }
+  });
+
+  it("accepts valid slugs", () => {
+    const validSlugs = ["zapper", "blockrun-ai", "402box", "spraay-x402-gateway", "dtelecom-stt"];
+    for (const slug of validSlugs) {
+      const result = MerchantEntrySchema.safeParse({
+        name: "Test",
+        slug,
+        description: "Test.",
+        category: "service",
+        chains: ["base"],
+        endpoints: [{ url: "https://example.com", description: "Test." }],
+      });
+      expect(result.success, `slug "${slug}" should be accepted`).toBe(true);
+    }
   });
 });
 
@@ -234,9 +287,10 @@ describe("merchants data module", () => {
       warnSpy.mockRestore();
     });
 
-    it("deduplicates by merchant name — curated wins over bazaar", async () => {
+    it("deduplicates by slug — curated wins over bazaar, merges endpoints", async () => {
       const bazaarDuplicate = {
         name: "Test Service",
+        slug: "test-service",
         description: "Bazaar version of test service.",
         category: "service",
         chains: ["ethereum"],
@@ -255,10 +309,47 @@ describe("merchants data module", () => {
       const { loadMerchants } = await import("./index");
       const merchants = loadMerchants();
 
-      const match = merchants.filter((m) => m.name === "Test Service");
+      const match = merchants.filter((m) => m.slug === "test-service");
       expect(match).toHaveLength(1);
       expect(match[0].source).toBe("curated");
       expect(match[0].description).toBe("A test service for x402 payments.");
+      // Bazaar endpoint merged into curated entry
+      expect(match[0].endpoints).toHaveLength(3);
+      expect(match[0].endpoints[2].url).toBe("https://bazaar.example.com/alt");
+    });
+
+    it("does not duplicate endpoints when merging by slug", async () => {
+      const bazaarWithOverlap = {
+        name: "Test Service",
+        slug: "test-service",
+        description: "Bazaar version.",
+        category: "service",
+        chains: ["base"],
+        endpoints: [
+          {
+            url: "https://example.com/api",
+            description: "Duplicate of curated endpoint.",
+          },
+          {
+            url: "https://bazaar.example.com/unique",
+            description: "Unique bazaar endpoint.",
+          },
+        ],
+      };
+      mockFiles({
+        [CURATED_PATH]: JSON.stringify(validCurated),
+        [BAZAAR_PATH]: JSON.stringify([bazaarWithOverlap]),
+      });
+
+      const { loadMerchants } = await import("./index");
+      const merchants = loadMerchants();
+
+      const match = merchants.find((m) => m.slug === "test-service");
+      expect(match).toBeDefined();
+      // 2 curated + 1 unique bazaar (the duplicate URL is skipped)
+      expect(match!.endpoints).toHaveLength(3);
+      const urls = match!.endpoints.map((e) => e.url);
+      expect(new Set(urls).size).toBe(urls.length);
     });
 
     it("handles missing curated file gracefully", async () => {
