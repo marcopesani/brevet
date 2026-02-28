@@ -277,6 +277,12 @@ export function McpInstallGuide({
   const keyPlaceholder = apiKey ?? "YOUR_API_KEY";
   const hasKey = !!apiKey || !!apiKeyPrefix;
 
+  const cursorConfig = JSON.stringify({
+    url: baseUrl,
+    headers: { Authorization: `Bearer ${keyPlaceholder}` },
+  });
+  const cursorDeeplink = `cursor://anysphere.cursor-deeplink/mcp/install?name=${encodeURIComponent("Brevet")}&config=${btoa(cursorConfig)}`;
+
   return (
     <Card>
       <CardHeader>
@@ -295,7 +301,7 @@ export function McpInstallGuide({
 
         {/* Client Tabs */}
         <Tabs defaultValue="claude">
-          <TabsList className="w-full">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
             <TabsTrigger value="claude">
               <MessageSquare className="size-4" />
               Claude
@@ -306,7 +312,8 @@ export function McpInstallGuide({
             </TabsTrigger>
             <TabsTrigger value="claude-code">
               <Terminal className="size-4" />
-              Claude Code
+              <span className="hidden sm:inline">Claude Code</span>
+              <span className="sm:hidden">CLI</span>
             </TabsTrigger>
             <TabsTrigger value="cursor">
               <MousePointer className="size-4" />
@@ -333,16 +340,10 @@ export function McpInstallGuide({
                 </p>
               </Step>
               <Step number={3}>
-                <p className="mb-2">Paste this URL:</p>
-                <CodeBlock copyText={baseUrl}>{baseUrl}</CodeBlock>
-              </Step>
-              <Step number={4}>
-                <p className="mb-2">
-                  When prompted, add your API key as a Bearer token header:
-                </p>
-                <CodeBlock
-                  copyText={`Bearer ${keyPlaceholder}`}
-                >{`Authorization: Bearer ${keyPlaceholder}`}</CodeBlock>
+                <p className="mb-2">Paste this URL (includes your API key):</p>
+                <CodeBlock copyText={`${baseUrl}?api_key=${keyPlaceholder}`}>
+                  {`${baseUrl}?api_key=${keyPlaceholder}`}
+                </CodeBlock>
               </Step>
             </div>
             {!hasKey && (
@@ -434,7 +435,26 @@ export function McpInstallGuide({
 
           {/* Cursor */}
           <TabsContent value="cursor" className="mt-4 space-y-4">
+            {hasKey && (
+              <div className="rounded-md border border-dashed p-4 text-center">
+                <p className="text-muted-foreground mb-3 text-sm">
+                  Install with one click — opens Cursor and adds the server
+                  automatically.
+                </p>
+                <a href={cursorDeeplink}>
+                  <Button size="sm">
+                    <MousePointer className="size-4" />
+                    Install in Cursor
+                  </Button>
+                </a>
+              </div>
+            )}
             <div className="space-y-4">
+              {hasKey && (
+                <p className="text-muted-foreground text-xs font-medium">
+                  Or add manually:
+                </p>
+              )}
               <Step number={1}>
                 <p className="mb-2">
                   Add this to your project&apos;s{" "}
