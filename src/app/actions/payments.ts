@@ -284,12 +284,17 @@ export async function expirePendingPaymentAction(paymentId: string) {
     if (!payment) return err("Pending payment not found");
     if (payment.status !== "pending") return ok(undefined as void);
 
+    if (Date.now() <= new Date(payment.expiresAt).getTime()) {
+      return ok(undefined as void);
+    }
+
     const expired = await expirePaymentWithAudit(paymentId, auth.userId);
     if (!expired) return ok(undefined as void);
 
     revalidatePaymentPaths();
     return ok(undefined as void);
   });
+}
 }
 
 // ---------------------------------------------------------------------------
