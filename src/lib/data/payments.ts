@@ -179,8 +179,10 @@ export async function rejectPendingPayment(paymentId: string, userId: string): P
  * Only succeeds if the payment is currently "pending" (atomic precondition).
  * Requires userId for defense-in-depth ownership verification.
  * Returns null if the payment was already transitioned by another caller.
+ *
+ * Prefer `expirePaymentWithAudit` which also records the audit transaction.
  */
-export async function expirePendingPayment(paymentId: string, userId: string): Promise<PendingPaymentDTO | null> {
+async function expirePendingPayment(paymentId: string, userId: string): Promise<PendingPaymentDTO | null> {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
     { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
