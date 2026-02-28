@@ -81,9 +81,9 @@ export default function FundWalletForm({
 
   useEffect(() => {
     if (isSuccess) {
-      queryClient.invalidateQueries({ queryKey: WALLET_BALANCE_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: [...WALLET_BALANCE_QUERY_KEY, chainId] });
     }
-  }, [isSuccess, queryClient]);
+  }, [isSuccess, queryClient, chainId]);
 
   const explorerName = chainConfig.explorerUrl.replace("https://", "").split("/")[0];
 

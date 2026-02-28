@@ -1,7 +1,25 @@
-"use client";
-
-import SessionKeyAuthCard from "@/components/session-key-auth-card";
+import dynamic from "next/dynamic";
+import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import FundWalletForm from "@/components/fund-wallet-form";
+
+const SessionKeyAuthCard = dynamic(
+  () => import("@/components/session-key-auth-card"),
+  {
+    loading: () => (
+      <Card className="border-amber-200 dark:border-amber-800">
+        <CardHeader>
+          <Skeleton className="h-6 w-48" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
+    ),
+  }
+);
 import type { SmartAccountDTO } from "@/lib/models/smart-account";
 
 type PendingGrantSectionProps = Pick<SmartAccountDTO, "chainId"> &

@@ -1,5 +1,7 @@
 "use client";
 
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Wallet } from "lucide-react";
 import {
   Card,
@@ -10,22 +12,27 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { setupSmartAccount } from "@/app/actions/smart-account";
+import { unwrap } from "@/lib/action-result";
 
 interface NoAccountCardProps {
   chainId: number;
   chainName: string;
   hasAnyAccounts: boolean;
-  onSetup: (chainId: number) => void;
-  setupPending: boolean;
 }
 
 export default function NoAccountCard({
   chainId,
   chainName,
   hasAnyAccounts,
-  onSetup,
-  setupPending,
 }: NoAccountCardProps) {
+  const { mutate: doSetup, isPending: setupPending } = useMutation({
+    mutationFn: async (cId: number) => unwrap(await setupSmartAccount(cId)),
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
   return (
     <div className="flex flex-col gap-6">
       <Card>
@@ -50,7 +57,7 @@ export default function NoAccountCard({
         </CardContent>
         <CardFooter>
           <Button
-            onClick={() => onSetup(chainId)}
+            onClick={() => doSetup(chainId)}
             disabled={setupPending}
             className="w-full"
           >

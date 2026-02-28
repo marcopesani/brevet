@@ -1,46 +1,69 @@
-"use client";
-
+import { Suspense } from "react";
+import { cache } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { getSmartAccountBalance } from "@/lib/data/smart-account";
 import WalletBalance from "@/components/wallet-balance";
-import FundWalletForm from "@/components/fund-wallet-form";
-import WithdrawCard from "@/components/withdraw-card";
+import WalletFormsSection from "./wallet-forms-section";
 import type { SmartAccountDTO } from "@/lib/models/smart-account";
 
-type ActiveWalletSectionAccount = Pick<SmartAccountDTO, "chainId"> &
-  Partial<Pick<SmartAccountDTO, "smartAccountAddress" | "sessionKeyStatus">>;
+const getCachedBalance = cache(
+  (userId: string, chainId: number) => getSmartAccountBalance(userId, chainId),
+);
 
-interface ActiveWalletSectionProps extends ActiveWalletSectionAccount {
-  balance?: string;
-  balanceLoading: boolean;
-  balanceError?: Error;
+interface ActiveWalletSectionProps {
+  userId: string;
+  chainId: number;
+  smartAccountAddress: string;
+  sessionKeyStatus: SmartAccountDTO["sessionKeyStatus"];
   chainName: string;
   explorerUrl: string;
 }
 
+async function BalanceValue({
+  userId,
+  chainId,
+}: {
+  userId: string;
+  chainId: number;
+}) {
+  const data = await getCachedBalance(userId, chainId);
+  const balance = data?.balance;
+  return (
+    <span className="text-3xl font-bold tracking-tight">
+      {balance != null ? `$${balance}` : "N/A"}
+    </span>
+  );
+}
+
+function BalanceSkeleton() {
+  return <Skeleton className="h-9 w-32" />;
+}
+
 export default function ActiveWalletSection({
+  userId,
+  chainId,
   smartAccountAddress,
-  balance,
-  balanceLoading,
-  balanceError,
+  sessionKeyStatus,
   chainName,
   explorerUrl,
-  sessionKeyStatus,
-  chainId,
 }: ActiveWalletSectionProps) {
   return (
     <div className="flex flex-col gap-6">
       <WalletBalance
         accountAddress={smartAccountAddress}
-        balance={balance}
-        balanceLoading={balanceLoading}
-        balanceError={balanceError}
         chainName={chainName}
         explorerUrl={explorerUrl}
         sessionKeyStatus={sessionKeyStatus}
+        balanceSlot={
+          <Suspense fallback={<BalanceSkeleton />}>
+            <BalanceValue userId={userId} chainId={chainId} />
+          </Suspense>
+        }
       />
-      <div className="grid gap-6 md:grid-cols-2">
-        <FundWalletForm accountAddress={smartAccountAddress} chainId={chainId} />
-        <WithdrawCard balance={balance} chainId={chainId} />
-      </div>
+      <WalletFormsSection
+        smartAccountAddress={smartAccountAddress}
+        chainId={chainId}
+      />
     </div>
   );
 }
