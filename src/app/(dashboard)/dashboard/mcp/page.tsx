@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAuthenticatedUser } from "@/lib/auth";
 import { getApiKeyPrefix } from "@/lib/data/users";
-import { McpServerUrl } from "@/components/mcp-server-url";
-import { ApiKeyCard } from "@/components/api-key-card";
+import { McpInstallGuide } from "@/components/mcp-install-guide";
 import { MCP_TOOLS } from "@/lib/mcp/tool-registry";
 import { getUserHumanHash } from "@/lib/data/wallet";
 
@@ -28,11 +27,14 @@ export default async function McpPage() {
         <div>
           <h2 className="text-xl font-semibold">MCP Configuration</h2>
           <p className="text-sm text-muted-foreground">
-            Configure your MCP server endpoint and API key for AI agent integration.
+            Connect your AI agent to Brevet in under a minute.
           </p>
         </div>
-        <McpServerUrl humanHash={user_record.humanHash!} tools={[...MCP_TOOLS]} />
-        <ApiKeyCard apiKeyPrefix={apiKeyPrefix} />
+        <McpInstallGuide
+          humanHash={user_record.humanHash!}
+          apiKeyPrefix={apiKeyPrefix}
+          tools={[...MCP_TOOLS]}
+        />
       </div>
     );
   }
@@ -42,11 +44,14 @@ export default async function McpPage() {
       <div>
         <h2 className="text-xl font-semibold">MCP Configuration</h2>
         <p className="text-sm text-muted-foreground">
-          Configure your MCP server endpoint and API key for AI agent integration.
+          Connect your AI agent to Brevet in under a minute.
         </p>
       </div>
-      <McpServerUrl humanHash={humanHash} tools={[...MCP_TOOLS]} />
-      <ApiKeyCard apiKeyPrefix={apiKeyPrefix} />
+      <McpInstallGuide
+        humanHash={humanHash}
+        apiKeyPrefix={apiKeyPrefix}
+        tools={[...MCP_TOOLS]}
+      />
     </div>
   );
 }
