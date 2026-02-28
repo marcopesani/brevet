@@ -199,6 +199,34 @@ export async function unarchivePolicy(policyId: string, userId: string) {
   ).lean();
 
   if (!doc) return null;
-  
+
+  return EndpointPolicyDTO.parse(doc);
+}
+
+/**
+ * Ensure an active auto-sign policy exists for the given URL's origin on the
+ * specified chain. Atomic upsert: creates the policy if missing, activates and
+ * enables autoSign if it already exists (even as draft/archived).
+ * Safe with the unique index on (userId, endpointPattern, chainId).
+ */
+export async function ensureAutoSignPolicy(userId: string, url: string, chainId: number) {
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
+  let host: string;
+  try {
+    host = new URL(url).origin;
+  } catch {
+    host = url;
+  }
+
+  const doc = await EndpointPolicy.findOneAndUpdate(
+    { userId: userObjectId, endpointPattern: host, chainId },
+    {
+      $set: { autoSign: true, status: "active", archivedAt: null },
+      $setOnInsert: { endpointPattern: host, userId: userObjectId, chainId },
+    },
+    { upsert: true, returnDocument: "after" },
+  ).lean();
+
   return EndpointPolicyDTO.parse(doc);
 }

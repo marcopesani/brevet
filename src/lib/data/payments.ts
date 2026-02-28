@@ -10,14 +10,19 @@ import { connectDB } from "@/lib/db";
 
 /**
  * Get all pending (non-expired) payments for a user.
+ * When `includeExpired` is true, also returns recently expired payments
+ * so the dashboard can show retry/auto-sign actions on them.
  */
-export async function getPendingPayments(userId: string, options?: { chainId?: number }): Promise<PendingPaymentDTO[]> {
+export async function getPendingPayments(userId: string, options?: { chainId?: number; includeExpired?: boolean }): Promise<PendingPaymentDTO[]> {
   await connectDB();
-  const filter: Record<string, unknown> = {
-    userId: new Types.ObjectId(userId),
-    status: "pending",
-    expiresAt: { $gt: new Date() },
-  };
+  const userFilter = { userId: new Types.ObjectId(userId) };
+  let statusFilter: Record<string, unknown>;
+  if (options?.includeExpired) {
+    statusFilter = { status: { $in: ["pending", "expired"] } };
+  } else {
+    statusFilter = { status: "pending", expiresAt: { $gt: new Date() } };
+  }
+  const filter: Record<string, unknown> = { ...userFilter, ...statusFilter };
   if (options?.chainId !== undefined) {
     filter.chainId = options.chainId;
   }
@@ -149,15 +154,16 @@ export async function approvePendingPayment(paymentId: string, userId: string, s
 }
 
 /**
- * Mark a pending payment as rejected.
- * Only succeeds if the payment is currently "pending" (atomic precondition).
+ * Mark a pending payment as rejected (dismissed).
+ * Succeeds if the payment is "pending" or "expired" (atomic precondition).
+ * Allows users to dismiss expired payments from the dashboard.
  * Requires userId for defense-in-depth ownership verification.
  * Returns null if the payment was already transitioned by another caller.
  */
 export async function rejectPendingPayment(paymentId: string, userId: string): Promise<PendingPaymentDTO | null> {
   await connectDB();
   const doc = await PendingPayment.findOneAndUpdate(
-    { _id: paymentId, status: "pending", userId: new Types.ObjectId(userId) },
+    { _id: paymentId, status: { $in: ["pending", "expired"] }, userId: new Types.ObjectId(userId) },
     { $set: { status: "rejected" } },
     { returnDocument: "after" },
   ).lean();
@@ -178,4 +184,20 @@ export async function expirePendingPayment(paymentId: string, userId: string): P
     { returnDocument: "after" },
   ).lean();
   return doc ? PendingPaymentDTO.parse(doc) : null;
+}
+
+/**
+ * Get the chainId of the most recent actionable (pending or expired) payment.
+ * Used by auth-aware-providers to auto-switch to the chain with pending work.
+ * Returns null if no actionable payments exist.
+ */
+export async function getPendingPaymentChainId(userId: string): Promise<number | null> {
+  await connectDB();
+  const doc = await PendingPayment.findOne(
+    { userId: new Types.ObjectId(userId), status: { $in: ["pending", "expired"] } },
+    { chainId: 1 },
+  )
+    .sort({ createdAt: -1 })
+    .lean();
+  return doc?.chainId ?? null;
 }

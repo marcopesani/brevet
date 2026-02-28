@@ -4,6 +4,7 @@ import {
   getPendingPayment,
   expirePendingPayment,
 } from "@/lib/data/payments";
+import { createTransaction } from "@/lib/data/transactions";
 import { getChainById, getDefaultChainConfig } from "@/lib/chain-config";
 import { formatAmountForDisplay } from "@/lib/x402/display";
 import { textContent, jsonContent, toolError } from "../shared";
@@ -37,6 +38,18 @@ export function registerX402CheckPending(
           Date.now() > new Date(payment.expiresAt).getTime()
         ) {
           await expirePendingPayment(paymentId, userId);
+          const chainIdForTx = payment.chainId ?? getDefaultChainConfig().chain.id;
+          const { displayAmount } = formatAmountForDisplay(payment.amountRaw, payment.asset, chainIdForTx);
+          const chainConfig = getChainById(chainIdForTx);
+          await createTransaction({
+            amount: parseFloat(displayAmount) || 0,
+            endpoint: payment.url,
+            network: chainConfig?.networkString ?? "base",
+            chainId: chainIdForTx,
+            status: "expired",
+            userId: payment.userId,
+            errorMessage: "Payment expired before user approval",
+          });
           return jsonContent({
             status: "expired",
             message: "Payment approval has expired",
