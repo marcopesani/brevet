@@ -9,6 +9,7 @@ export async function regenerateApiKey() {
   return withAuth(async (auth) => {
     const { rawKey } = await _rotateApiKey(auth.userId);
     revalidatePath("/dashboard/settings");
+    revalidatePath("/dashboard/mcp");
     return ok({ rawKey });
   });
 }
