@@ -194,13 +194,18 @@ export async function approvePendingPayment(
       }
 
       const settlement = extractSettleResponse(paidResponse) ?? undefined;
-      const txHash = settlement?.transaction ?? await extractTxHashFromResponse(paidResponse);
+      const txHash = settlement?.transaction ?? null;
 
       const txStatus = paidResponse.ok ? "completed" : "failed";
 
       await createTransaction({
         amount: amountForTx,
         endpoint: payment.url,
+        payTo: acceptedRequirement?.payTo ?? undefined,
+        asset: acceptedRequirement?.asset ?? undefined,
+        scheme: acceptedRequirement?.scheme ?? undefined,
+        maxTimeoutSeconds: acceptedRequirement?.maxTimeoutSeconds ?? undefined,
+        extra: acceptedRequirement?.extra && Object.keys(acceptedRequirement.extra).length > 0 ? acceptedRequirement.extra : undefined,
         network: acceptedRequirement?.network ?? "base",
         chainId,
         status: txStatus,

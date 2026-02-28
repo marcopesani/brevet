@@ -76,6 +76,11 @@ export async function createTransaction(data: TransactionCreateInput): Promise<T
   const doc = await Transaction.create({
     amount: data.amount,
     endpoint: data.endpoint,
+    payTo: data.payTo ?? undefined,
+    asset: data.asset ?? undefined,
+    scheme: data.scheme ?? undefined,
+    maxTimeoutSeconds: data.maxTimeoutSeconds ?? undefined,
+    extra: data.extra ?? undefined,
     txHash: data.txHash ?? undefined,
     network: data.network,
     chainId: data.chainId,
