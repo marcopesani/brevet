@@ -295,7 +295,6 @@ export async function expirePendingPaymentAction(paymentId: string) {
     return ok(undefined as void);
   });
 }
-}
 
 // ---------------------------------------------------------------------------
 // Retry — shared flow for retryExpiredPayment and enableAutoSignAndRetry
