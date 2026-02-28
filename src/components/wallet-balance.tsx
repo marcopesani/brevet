@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Wallet, Copy, Check, ExternalLink, Shield } from "lucide-react";
 import {
   Card,
@@ -14,10 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import type { SmartAccountDTO } from "@/lib/models/smart-account";
 
 interface WalletBalanceProps {
-  accountAddress?: string;
-  balance?: string;
-  balanceLoading: boolean;
-  balanceError?: Error;
+  accountAddress: string;
+  balanceSlot: ReactNode;
   chainName: string;
   explorerUrl: string;
   sessionKeyStatus?: SmartAccountDTO["sessionKeyStatus"];
@@ -25,9 +23,7 @@ interface WalletBalanceProps {
 
 export default function WalletBalance({
   accountAddress,
-  balance,
-  balanceLoading,
-  balanceError,
+  balanceSlot,
   chainName,
   explorerUrl,
   sessionKeyStatus,
@@ -35,30 +31,9 @@ export default function WalletBalance({
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
-    if (!accountAddress) return;
     await navigator.clipboard.writeText(accountAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }
-
-  if (!accountAddress) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Wallet className="h-5 w-5" />
-            Smart Account — {chainName}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            {balanceLoading
-              ? "Loading account..."
-              : "No smart account found. Please reconnect your wallet."}
-          </p>
-        </CardContent>
-      </Card>
-    );
   }
 
   const truncatedAddress = `${accountAddress.slice(0, 6)}...${accountAddress.slice(-4)}`;
@@ -98,15 +73,7 @@ export default function WalletBalance({
         <div className="space-y-1">
           <p className="text-sm text-muted-foreground">USDC Balance</p>
           <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-bold tracking-tight">
-              {balanceError
-                ? "Unavailable"
-                : balanceLoading && balance === null
-                  ? "Loading..."
-                  : balance !== null
-                    ? `$${balance}`
-                    : "Loading..."}
-            </span>
+            {balanceSlot}
             <Badge variant="secondary">USDC</Badge>
           </div>
         </div>

@@ -1,35 +1,66 @@
-import { headers } from "next/headers";
-import { getValidatedChainId } from "@/lib/server/chain";
-import { getAuthenticatedUser } from "@/lib/auth";
-import {
-  getSmartAccountForChain,
-  getAllSmartAccountsAction,
-  getSmartAccountBalanceAction,
-} from "@/app/actions/smart-account";
-import WalletContent from "./wallet-content";
+import { cache } from "react";
+import { getSmartAccount, getAllSmartAccounts } from "@/lib/data/smart-account";
+import { getChainById } from "@/lib/chain-config";
+import NoAccountCard from "./no-account-card";
+import PendingGrantSection from "./pending-grant-section";
+import ActiveWalletSection from "./active-wallet-section";
+import ChainRefresher from "./chain-refresher";
 
-export default async function WalletPageContent() {
-  const user = await getAuthenticatedUser();
-  if (!user) return null;
+const getCachedSmartAccount = cache(
+  (userId: string, chainId: number) => getSmartAccount(userId, chainId),
+);
 
-  const headersList = await headers();
-  const cookieHeader = headersList.get("cookie");
-  const initialChainId = await getValidatedChainId(cookieHeader, user.userId);
+const getCachedAllSmartAccounts = cache(
+  (userId: string) => getAllSmartAccounts(userId),
+);
 
-  const [smartAccount, allAccounts, balance] = await Promise.all([
-    getSmartAccountForChain(initialChainId),
-    getAllSmartAccountsAction(),
-    getSmartAccountBalanceAction(initialChainId),
+interface WalletPageContentProps {
+  userId: string;
+  chainId: number;
+}
+
+export default async function WalletPageContent({
+  userId,
+  chainId,
+}: WalletPageContentProps) {
+  const [smartAccount, allAccounts] = await Promise.all([
+    getCachedSmartAccount(userId, chainId),
+    getCachedAllSmartAccounts(userId),
   ]);
 
+  const chainConfig = getChainById(chainId);
+  const chainName = chainConfig?.displayName ?? "Unknown";
+  const explorerUrl = chainConfig?.explorerUrl ?? "";
+
+  const enabledChainIds = new Set(allAccounts.map((a) => a.chainId));
+  const hasAnyAccounts =
+    allAccounts.filter((a) => enabledChainIds.has(a.chainId)).length > 0;
+
   return (
-    <WalletContent
-      initialData={{
-        smartAccount,
-        allAccounts: allAccounts ?? [],
-        balance: balance ?? null,
-      }}
-      initialChainId={initialChainId}
-    />
+    <>
+      <ChainRefresher serverChainId={chainId} />
+      {!smartAccount ? (
+        <NoAccountCard
+          chainId={chainId}
+          chainName={chainName}
+          hasAnyAccounts={hasAnyAccounts}
+        />
+      ) : smartAccount.sessionKeyStatus === "pending_grant" ? (
+        <PendingGrantSection
+          smartAccountAddress={smartAccount.smartAccountAddress}
+          sessionKeyAddress={smartAccount.sessionKeyAddress}
+          chainId={chainId}
+        />
+      ) : (
+        <ActiveWalletSection
+          userId={userId}
+          chainId={chainId}
+          smartAccountAddress={smartAccount.smartAccountAddress}
+          sessionKeyStatus={smartAccount.sessionKeyStatus}
+          chainName={chainName}
+          explorerUrl={explorerUrl}
+        />
+      )}
+    </>
   );
 }

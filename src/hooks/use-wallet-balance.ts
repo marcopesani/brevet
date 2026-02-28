@@ -17,7 +17,9 @@ export function useWalletBalance(
     queryFn: () => getSmartAccountBalanceAction(chainId),
     enabled,
     refetchOnWindowFocus: true,
-    staleTime: 30_000,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    staleTime: 10_000,
     ...(initialData ? { initialData } : {}),
   });
 

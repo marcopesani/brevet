@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
 import {
   CardContent,
@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getChainById } from "@/lib/chain-config";
 import { withdrawFromWallet } from "@/app/actions/smart-account";
+import { unwrap } from "@/lib/action-result";
 import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
 
 interface WithdrawFormProps {
@@ -27,46 +28,37 @@ export default function WithdrawForm({
 }: WithdrawFormProps) {
   const queryClient = useQueryClient();
   const [amount, setAmount] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [txHash, setTxHash] = useState<string | null>(null);
 
   const chainConfig = getChainById(chainId)!;
   const explorerName = chainConfig.explorerUrl
     .replace("https://", "")
     .split("/")[0];
 
-  useEffect(() => {
-    if (txHash) {
+  const { mutate: doWithdraw, isPending, error, data } = useMutation({
+    mutationFn: async () => {
+      if (!address) throw new Error("No address");
+      const result = await withdrawFromWallet(
+        parseFloat(amount),
+        address,
+        chainId,
+      );
+      return unwrap(result);
+    },
+    onSuccess: () => {
+      setAmount("");
       queryClient.invalidateQueries({ queryKey: [...WALLET_BALANCE_QUERY_KEY, chainId] });
-    }
-  }, [txHash, queryClient, chainId]);
+    },
+  });
+
+  const txHash = data?.txHash;
 
   function handleMax() {
     if (balance) setAmount(balance);
   }
 
-  async function handleWithdraw() {
+  function handleWithdraw() {
     if (!amount || parseFloat(amount) <= 0 || !address) return;
-
-    setLoading(true);
-    setError(null);
-    setTxHash(null);
-
-    const result = await withdrawFromWallet(
-      parseFloat(amount),
-      address,
-      chainId,
-    );
-
-    if (!result.success) {
-      setError(result.error);
-    } else {
-      setTxHash(result.data.txHash);
-      setAmount("");
-    }
-
-    setLoading(false);
+    doWithdraw();
   }
 
   return (
@@ -83,7 +75,7 @@ export default function WithdrawForm({
               onChange={(e) => setAmount(e.target.value)}
               min="0"
               step="0.01"
-              disabled={loading}
+              disabled={isPending}
             />
             <Button
               type="button"
@@ -99,7 +91,7 @@ export default function WithdrawForm({
         </div>
         {error && (
           <p className="text-sm text-destructive">
-            {error.length > 100 ? error.slice(0, 100) + "..." : error}
+            {error.message.length > 100 ? error.message.slice(0, 100) + "..." : error.message}
           </p>
         )}
         {txHash && (
@@ -122,10 +114,10 @@ export default function WithdrawForm({
       <CardFooter>
         <Button
           onClick={handleWithdraw}
-          disabled={loading || !amount || parseFloat(amount) <= 0 || !address}
+          disabled={isPending || !amount || parseFloat(amount) <= 0 || !address}
           className="w-full"
         >
-          {loading ? "Withdrawing..." : "Withdraw"}
+          {isPending ? "Withdrawing..." : "Withdraw"}
         </Button>
       </CardFooter>
     </>
