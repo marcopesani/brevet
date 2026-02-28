@@ -5,6 +5,7 @@ import { registerX402SpendingHistory } from "./tools/x402-spending-history";
 import { registerX402CheckPending } from "./tools/x402-check-pending";
 import { registerX402GetResult } from "./tools/x402-get-result";
 import { registerX402Discover } from "./tools/x402-discover";
+import { registerX402BrowseDirectory } from "./tools/x402-browse-directory";
 import { MCP_TOOL_NAMES } from "./tool-registry";
 
 export function registerTools(server: McpServer, userId: string): void {
@@ -14,6 +15,7 @@ export function registerTools(server: McpServer, userId: string): void {
   registerX402CheckPending(server, userId);
   registerX402GetResult(server, userId);
   registerX402Discover(server, userId);
+  registerX402BrowseDirectory(server, userId);
 
   // Runtime assertion: verify every tool in the registry was actually registered
   // Only runs when using the real McpServer SDK (not mock servers in tests)

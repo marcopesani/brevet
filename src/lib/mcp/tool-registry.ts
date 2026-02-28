@@ -25,6 +25,10 @@ export const MCP_TOOLS = [
     name: "x402_discover",
     summary: "Search for available x402 endpoints",
   },
+  {
+    name: "x402_browse_directory",
+    summary: "Browse the curated merchant directory",
+  },
 ] as const satisfies readonly McpToolDescriptor[];
 
 export const MCP_TOOL_NAMES = MCP_TOOLS.map((t) => t.name);
