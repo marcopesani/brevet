@@ -1,135 +1,148 @@
 [
   {
-    "name": "Zapper Token Price",
-    "url": "https://public.zapper.xyz/x402/token-price",
-    "description": "Real-time token pricing and market cap data via x402 micropayment.",
+    "name": "Zapper",
+    "description": "Portfolio tracking, token pricing, and DeFi analytics via x402 micropayments.",
     "category": "service",
     "chains": ["base"],
-    "pricing": "0.0011 USDC per request"
+    "endpoints": [
+      {
+        "url": "https://public.zapper.xyz/x402/token-price",
+        "description": "Real-time token pricing and market cap data via x402 micropayment.",
+        "pricing": { "fixed": 0.0011 }
+      },
+      {
+        "url": "https://public.zapper.xyz/x402/portfolio-totals",
+        "description": "Aggregated portfolio totals across networks for any wallet address.",
+        "pricing": { "fixed": 0.0019 }
+      },
+      {
+        "url": "https://public.zapper.xyz/x402/token-balances",
+        "description": "Detailed token balances for a single address across supported networks.",
+        "pricing": { "fixed": 0.0011 }
+      },
+      {
+        "url": "https://public.zapper.xyz/x402/transaction-history",
+        "description": "Transaction history with human-readable interpretations for any address.",
+        "pricing": { "fixed": 0.0011 }
+      },
+      {
+        "url": "https://public.zapper.xyz/x402/defi-balances",
+        "description": "DeFi balances including liquidity pools and yield farming positions.",
+        "pricing": { "fixed": 0.0011 }
+      }
+    ]
   },
   {
-    "name": "Zapper Portfolio Totals",
-    "url": "https://public.zapper.xyz/x402/portfolio-totals",
-    "description": "Aggregated portfolio totals across networks for any wallet address.",
-    "category": "service",
-    "chains": ["base"],
-    "pricing": "0.0019 USDC per request"
-  },
-  {
-    "name": "Zapper Token Balances",
-    "url": "https://public.zapper.xyz/x402/token-balances",
-    "description": "Detailed token balances for a single address across supported networks.",
-    "category": "service",
-    "chains": ["base"],
-    "pricing": "0.0011 USDC per request"
-  },
-  {
-    "name": "Zapper Transaction History",
-    "url": "https://public.zapper.xyz/x402/transaction-history",
-    "description": "Transaction history with human-readable interpretations for any address.",
-    "category": "service",
-    "chains": ["base"],
-    "pricing": "0.0011 USDC per request"
-  },
-  {
-    "name": "Zapper DeFi Balances",
-    "url": "https://public.zapper.xyz/x402/defi-balances",
-    "description": "DeFi balances including liquidity pools and yield farming positions.",
-    "category": "service",
-    "chains": ["base"],
-    "pricing": "0.0011 USDC per request"
-  },
-  {
-    "name": "Nansen Smart Money Netflow",
-    "url": "https://api.nansen.ai/api/v1/smart-money/netflow",
+    "name": "Nansen",
     "description": "Smart money netflow data tracking institutional and whale movements.",
     "category": "service",
     "chains": ["ethereum"],
-    "pricing": "0.05 USDC per request"
+    "endpoints": [
+      {
+        "url": "https://api.nansen.ai/api/v1/smart-money/netflow",
+        "description": "Smart money netflow data tracking institutional and whale movements.",
+        "pricing": { "fixed": 0.05 }
+      }
+    ]
   },
   {
-    "name": "AgentUtil Fact Verification",
-    "url": "https://verify.agentutil.net/v1/verify",
-    "description": "AI-powered fact verification returning verdict and confidence score.",
+    "name": "AgentUtil",
+    "description": "AI agent utility services for fact-checking, safety, reversibility, and scheduling.",
     "category": "service",
     "chains": ["base"],
-    "pricing": "0.004 USDC per request"
+    "endpoints": [
+      {
+        "url": "https://verify.agentutil.net/v1/verify",
+        "description": "AI-powered fact verification returning verdict and confidence score.",
+        "pricing": { "fixed": 0.004 }
+      },
+      {
+        "url": "https://think.agentutil.net/v1/check",
+        "description": "Pre-flight safety checklist for AI agent actions and intents.",
+        "pricing": { "fixed": 0.002 }
+      },
+      {
+        "url": "https://undo.agentutil.net/v1/check",
+        "description": "Checks action undo feasibility and recovery windows for reversibility.",
+        "pricing": { "fixed": 0.002 }
+      },
+      {
+        "url": "https://context.agentutil.net/v1/time",
+        "description": "Timezone-aware business hours and holiday information for scheduling.",
+        "pricing": { "fixed": 0.001 }
+      }
+    ]
   },
   {
-    "name": "AgentUtil Intent Security",
-    "url": "https://think.agentutil.net/v1/check",
-    "description": "Pre-flight safety checklist for AI agent actions and intents.",
+    "name": "HTTPay",
+    "description": "On-chain analytics, DeFi yield discovery, and crypto news aggregation.",
     "category": "service",
     "chains": ["base"],
-    "pricing": "0.002 USDC per request"
+    "endpoints": [
+      {
+        "url": "https://httpay.xyz/api/gas-tracker-advanced",
+        "description": "Historical gas analysis with percentiles and trend data.",
+        "pricing": { "fixed": 0.005 }
+      },
+      {
+        "url": "https://httpay.xyz/api/yield-finder",
+        "description": "DeFi yield opportunity discovery across protocols.",
+        "pricing": { "fixed": 0.02 }
+      },
+      {
+        "url": "https://httpay.xyz/api/news/crypto",
+        "description": "Latest crypto headlines aggregated from RSS feeds.",
+        "pricing": { "fixed": 0.005 }
+      }
+    ]
   },
   {
-    "name": "AgentUtil Action Undo Check",
-    "url": "https://undo.agentutil.net/v1/check",
-    "description": "Checks action undo feasibility and recovery windows for reversibility.",
-    "category": "service",
-    "chains": ["base"],
-    "pricing": "0.002 USDC per request"
-  },
-  {
-    "name": "AgentUtil Context Time",
-    "url": "https://context.agentutil.net/v1/time",
-    "description": "Timezone-aware business hours and holiday information for scheduling.",
-    "category": "service",
-    "chains": ["base"],
-    "pricing": "0.001 USDC per request"
-  },
-  {
-    "name": "HTTPay Gas Tracker",
-    "url": "https://httpay.xyz/api/gas-tracker-advanced",
-    "description": "Historical gas analysis with percentiles and trend data.",
-    "category": "service",
-    "chains": ["base"],
-    "pricing": "0.005 USDC per request"
-  },
-  {
-    "name": "HTTPay Yield Finder",
-    "url": "https://httpay.xyz/api/yield-finder",
-    "description": "DeFi yield opportunity discovery across protocols.",
-    "category": "service",
-    "chains": ["base"],
-    "pricing": "0.02 USDC per request"
-  },
-  {
-    "name": "HTTPay Crypto News",
-    "url": "https://httpay.xyz/api/news/crypto",
-    "description": "Latest crypto headlines aggregated from RSS feeds.",
-    "category": "service",
-    "chains": ["base"],
-    "pricing": "0.005 USDC per request"
-  },
-  {
-    "name": "402Box X/Twitter Search Agent",
-    "url": "https://agents.402box.io/x_searcher",
+    "name": "402Box",
     "description": "AI-powered X/Twitter search agent for social media intelligence.",
     "category": "service",
     "chains": ["base"],
-    "pricing": "0.05 USDC per request"
+    "endpoints": [
+      {
+        "url": "https://agents.402box.io/x_searcher",
+        "description": "AI-powered X/Twitter search agent for social media intelligence.",
+        "pricing": { "fixed": 0.05 }
+      }
+    ]
   },
   {
     "name": "x402 Facilitator (Coinbase)",
-    "url": "https://x402.org/facilitator",
     "description": "Reference facilitator server for x402 payment verification and settlement.",
     "category": "facilitator",
-    "chains": ["base", "ethereum", "arbitrum", "optimism", "polygon"]
+    "chains": ["base", "ethereum", "arbitrum", "optimism", "polygon"],
+    "endpoints": [
+      {
+        "url": "https://x402.org/facilitator",
+        "description": "Reference facilitator server for x402 payment verification and settlement."
+      }
+    ]
   },
   {
     "name": "x402 TypeScript SDK",
-    "url": "https://github.com/coinbase/x402",
     "description": "Core TypeScript libraries for x402 clients and servers: @x402/fetch, @x402/express, @x402/next.",
     "category": "client",
-    "chains": ["base", "ethereum", "arbitrum", "optimism", "polygon"]
+    "chains": ["base", "ethereum", "arbitrum", "optimism", "polygon"],
+    "endpoints": [
+      {
+        "url": "https://github.com/coinbase/x402",
+        "description": "Core TypeScript libraries for x402 clients and servers: @x402/fetch, @x402/express, @x402/next."
+      }
+    ]
   },
   {
     "name": "CDP Bazaar Discovery API",
-    "url": "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources",
     "description": "Coinbase Developer Platform discovery API for finding x402-protected endpoints.",
     "category": "infrastructure",
-    "chains": ["base", "ethereum", "arbitrum", "optimism", "polygon"]
+    "chains": ["base", "ethereum", "arbitrum", "optimism", "polygon"],
+    "endpoints": [
+      {
+        "url": "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources",
+        "description": "Coinbase Developer Platform discovery API for finding x402-protected endpoints."
+      }
+    ]
   }
 ]

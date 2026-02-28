@@ -43,11 +43,14 @@ export function registerX402BrowseDirectory(
 
         const entries = merchants.map((m) => ({
           name: m.name,
-          url: m.url,
           description: m.description,
           category: m.category,
           chains: m.chains,
-          ...(m.pricing && { pricing: m.pricing }),
+          endpoints: m.endpoints.map((e) => ({
+            url: e.url,
+            description: e.description,
+            ...(e.pricing && { pricing: e.pricing }),
+          })),
           source: m.source,
         }));
 

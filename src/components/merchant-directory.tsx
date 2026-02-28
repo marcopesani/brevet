@@ -29,14 +29,17 @@ export function MerchantDirectory({
 
   const filtered = merchants.filter((m) => {
     if (category !== ALL_CATEGORIES && m.category !== category) return false;
+    if (!lower) return true;
     if (
-      lower &&
-      !m.name.toLowerCase().includes(lower) &&
-      !m.description.toLowerCase().includes(lower) &&
-      !m.url.toLowerCase().includes(lower)
+      m.name.toLowerCase().includes(lower) ||
+      m.description.toLowerCase().includes(lower)
     )
-      return false;
-    return true;
+      return true;
+    return m.endpoints.some(
+      (ep) =>
+        ep.url.toLowerCase().includes(lower) ||
+        ep.description.toLowerCase().includes(lower),
+    );
   });
 
   return (
@@ -75,7 +78,7 @@ export function MerchantDirectory({
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((m) => (
-            <MerchantCard key={m.url} merchant={m} />
+            <MerchantCard key={m.name} merchant={m} />
           ))}
         </div>
       )}

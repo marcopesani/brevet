@@ -29,10 +29,15 @@ export function MerchantDirectoryPublic({
     }
     if (query) {
       const lower = query.toLowerCase();
-      return (
+      if (
         m.name.toLowerCase().includes(lower) ||
-        m.description.toLowerCase().includes(lower) ||
-        m.url.toLowerCase().includes(lower)
+        m.description.toLowerCase().includes(lower)
+      )
+        return true;
+      return m.endpoints.some(
+        (ep) =>
+          ep.url.toLowerCase().includes(lower) ||
+          ep.description.toLowerCase().includes(lower),
       );
     }
     return true;
@@ -72,7 +77,7 @@ export function MerchantDirectoryPublic({
       {filtered.length > 0 ? (
         <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((merchant) => (
-            <MerchantCard key={merchant.url} merchant={merchant} />
+            <MerchantCard key={merchant.name} merchant={merchant} />
           ))}
         </div>
       ) : (

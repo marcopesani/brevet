@@ -45,18 +45,18 @@ export function loadMerchants(): Merchant[] {
   const curated = loadFile(CURATED_PATH, "curated");
   const bazaar = loadFile(BAZAAR_PATH, "bazaar");
 
-  // Dedup by URL: curated wins
-  const byUrl = new Map<string, Merchant>();
+  // Dedup by merchant name: curated wins
+  const byName = new Map<string, Merchant>();
   for (const m of curated) {
-    byUrl.set(m.url, m);
+    byName.set(m.name, m);
   }
   for (const m of bazaar) {
-    if (!byUrl.has(m.url)) {
-      byUrl.set(m.url, m);
+    if (!byName.has(m.name)) {
+      byName.set(m.name, m);
     }
   }
 
-  return Array.from(byUrl.values());
+  return Array.from(byName.values());
 }
 
 export function searchMerchants(query?: string, category?: string): Merchant[] {
@@ -73,7 +73,11 @@ export function searchMerchants(query?: string, category?: string): Merchant[] {
       (m) =>
         m.name.toLowerCase().includes(lower) ||
         m.description.toLowerCase().includes(lower) ||
-        m.url.toLowerCase().includes(lower),
+        m.endpoints.some(
+          (e) =>
+            e.url.toLowerCase().includes(lower) ||
+            e.description.toLowerCase().includes(lower),
+        ),
     );
   }
 

@@ -46,11 +46,16 @@ describe("x402_browse_directory", () => {
     mockSearchMerchants.mockReturnValue([
       {
         name: "Weather API",
-        url: "https://weather.example.com",
         description: "Get weather data",
         category: "service",
         chains: ["base"],
-        pricing: "$0.001 per request",
+        endpoints: [
+          {
+            url: "https://weather.example.com",
+            description: "Current weather data",
+            pricing: { fixed: 0.001 },
+          },
+        ],
         source: "curated",
       },
     ]);
@@ -63,7 +68,11 @@ describe("x402_browse_directory", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.count).toBe(1);
     expect(parsed.merchants[0].name).toBe("Weather API");
-    expect(parsed.merchants[0].pricing).toBe("$0.001 per request");
+    expect(parsed.merchants[0].endpoints).toHaveLength(1);
+    expect(parsed.merchants[0].endpoints[0].url).toBe(
+      "https://weather.example.com",
+    );
+    expect(parsed.merchants[0].endpoints[0].pricing).toEqual({ fixed: 0.001 });
     expect(parsed.merchants[0].source).toBe("curated");
   });
 
@@ -71,10 +80,15 @@ describe("x402_browse_directory", () => {
     mockSearchMerchants.mockReturnValue([
       {
         name: "Infra Service",
-        url: "https://infra.example.com",
         description: "Infrastructure provider",
         category: "infrastructure",
         chains: ["ethereum", "base"],
+        endpoints: [
+          {
+            url: "https://infra.example.com",
+            description: "Infrastructure API",
+          },
+        ],
         source: "bazaar",
       },
     ]);
@@ -90,24 +104,39 @@ describe("x402_browse_directory", () => {
     const parsed = JSON.parse(result.content[0].text);
     expect(parsed.count).toBe(1);
     expect(parsed.merchants[0].category).toBe("infrastructure");
+    expect(parsed.merchants[0].endpoints[0].url).toBe(
+      "https://infra.example.com",
+    );
   });
 
   it("returns all merchants when no params provided", async () => {
     mockSearchMerchants.mockReturnValue([
       {
         name: "Service A",
-        url: "https://a.example.com",
         description: "Service A",
         category: "service",
         chains: ["base"],
+        endpoints: [
+          {
+            url: "https://a.example.com",
+            description: "Endpoint A",
+            pricing: { min: 0.001, max: 0.01 },
+          },
+        ],
         source: "curated",
       },
       {
         name: "Service B",
-        url: "https://b.example.com",
         description: "Service B",
         category: "infrastructure",
         chains: ["ethereum"],
+        endpoints: [
+          {
+            url: "https://b.example.com",
+            description: "Endpoint B",
+            pricing: { min: 0.005 },
+          },
+        ],
         source: "bazaar",
       },
     ]);
@@ -145,21 +174,26 @@ describe("x402_browse_directory", () => {
     );
   });
 
-  it("omits pricing when not present on merchant", async () => {
+  it("omits pricing when not present on endpoint", async () => {
     mockSearchMerchants.mockReturnValue([
       {
         name: "No Price API",
-        url: "https://noprice.example.com",
         description: "No pricing info",
         category: "service",
         chains: ["base"],
+        endpoints: [
+          {
+            url: "https://noprice.example.com",
+            description: "Free endpoint",
+          },
+        ],
         source: "curated",
       },
     ]);
 
     const result = await server.call("x402_browse_directory", {});
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.merchants[0]).not.toHaveProperty("pricing");
+    expect(parsed.merchants[0].endpoints[0]).not.toHaveProperty("pricing");
   });
 
   it("returns error on unexpected exception", async () => {

@@ -1,26 +1,33 @@
 [
   {
-    "name": "AgentUtil Platform Status",
-    "url": "https://context.agentutil.net/v1/platform",
-    "description": "Platform status monitoring for GitHub, AWS, Stripe, and other services.",
+    "name": "AgentUtil",
+    "description": "AI agent utility services for platform monitoring and value benchmarking.",
     "category": "service",
     "chains": ["base"],
-    "pricing": "0.002 USDC per request"
+    "endpoints": [
+      {
+        "url": "https://context.agentutil.net/v1/platform",
+        "description": "Platform status monitoring for GitHub, AWS, Stripe, and other services.",
+        "pricing": { "fixed": 0.002 }
+      },
+      {
+        "url": "https://norm.agentutil.net/v1/check",
+        "description": "Sanity-check values against real-world benchmarks and norms.",
+        "pricing": { "fixed": 0.002 }
+      }
+    ]
   },
   {
-    "name": "AgentUtil Norm Check",
-    "url": "https://norm.agentutil.net/v1/check",
-    "description": "Sanity-check values against real-world benchmarks and norms.",
+    "name": "HTTPay",
+    "description": "DeFi market monitoring with risk analysis.",
     "category": "service",
     "chains": ["base"],
-    "pricing": "0.002 USDC per request"
-  },
-  {
-    "name": "HTTPay Fresh Markets Watch",
-    "url": "https://httpay.xyz/api/fresh-markets-watch",
-    "description": "Newly created DeFi pools sorted by APY with risk warnings.",
-    "category": "service",
-    "chains": ["base"],
-    "pricing": "0.005 USDC per request"
+    "endpoints": [
+      {
+        "url": "https://httpay.xyz/api/fresh-markets-watch",
+        "description": "Newly created DeFi pools sorted by APY with risk warnings.",
+        "pricing": { "fixed": 0.005 }
+      }
+    ]
   }
 ]
