@@ -17,7 +17,7 @@ import {
 import { createTransaction } from "@/lib/data/transactions";
 import { ensureAutoSignPolicy } from "@/lib/data/policies";
 import { executePayment } from "@/lib/x402/payment";
-import { buildPaymentHeaders, extractSettleResponse, extractTxHashFromResponse } from "@/lib/x402/headers";
+import { buildPaymentHeaders, extractSettleResponse } from "@/lib/x402/headers";
 import { formatAmountForDisplay } from "@/lib/x402/display";
 import { getRequirementAmount } from "@/lib/x402/requirements";
 import { getChainById, getNetworkIdentifiers } from "@/lib/chain-config";
