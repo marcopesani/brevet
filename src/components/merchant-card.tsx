@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  Globe,
+  BookOpen,
+} from "lucide-react";
 import type { Merchant, Pricing } from "@/lib/merchants/types";
 import {
   Card,
@@ -45,6 +51,34 @@ export function MerchantCard({ merchant }: { merchant: Merchant }) {
           </div>
         </div>
         <CardDescription>{merchant.description}</CardDescription>
+        {(merchant.website || merchant.apiDocs) && (
+          <div className="flex items-center gap-2 pt-1">
+            {merchant.website && (
+              <a
+                href={merchant.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`${merchant.name} website`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Globe className="size-4" />
+              </a>
+            )}
+            {merchant.apiDocs && (
+              <a
+                href={merchant.apiDocs}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`${merchant.name} API documentation`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <BookOpen className="size-4" />
+              </a>
+            )}
+          </div>
+        )}
       </CardHeader>
       <CardContent className="mt-auto flex flex-col gap-3">
         <div className="flex flex-wrap gap-1.5">
