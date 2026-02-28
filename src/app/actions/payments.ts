@@ -10,7 +10,7 @@ import {
   createPendingPayment as _createPendingPayment,
   approvePendingPayment as _approvePendingPayment,
   rejectPendingPayment as _rejectPendingPayment,
-  expirePendingPayment as _expirePendingPayment,
+  expirePaymentWithAudit,
   completePendingPayment,
   failPendingPayment,
 } from "@/lib/data/payments";
@@ -48,22 +48,6 @@ type RetryResult = { status: string; paymentId: string | null; message: string }
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Extract display amount from a pending payment for transaction logging. */
-function getAmountForTx(payment: { paymentRequirements: string; amountRaw: string | null; asset: string | null; chainId: number }) {
-  const stored = JSON.parse(payment.paymentRequirements);
-  const isFullFormat = !Array.isArray(stored) && stored.accepts;
-  const accepts = isFullFormat ? stored.accepts : Array.isArray(stored) ? stored : [stored];
-  const chainConfig = getChainById(payment.chainId);
-  const acceptedNetworks = chainConfig ? getNetworkIdentifiers(chainConfig) : [];
-  const req = accepts.find(
-    (r: { scheme?: string; network?: string }) =>
-      r.scheme === "exact" && r.network != null && acceptedNetworks.includes(r.network),
-  ) ?? accepts[0];
-  const amountRaw = (req && getRequirementAmount(req as PaymentRequirements)) ?? payment.amountRaw;
-  const { displayAmount } = formatAmountForDisplay(amountRaw, req?.asset ?? payment.asset, payment.chainId);
-  return { amountForTx: parseFloat(displayAmount) || 0, network: req?.network ?? "base" };
-}
-
 function revalidatePaymentPaths() {
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/pending");
@@ -93,20 +77,7 @@ export async function approvePendingPayment(
 
     if (Date.now() > new Date(payment.expiresAt).getTime()) {
       logger.warn("Payment expired during approval", { userId: auth.userId, paymentId, action: "payment_expired" });
-      await _expirePendingPayment(paymentId, auth.userId);
-
-      // Record expired transaction for audit trail
-      const { amountForTx, network } = getAmountForTx(payment);
-      await createTransaction({
-        amount: amountForTx,
-        endpoint: payment.url,
-        network,
-        chainId: payment.chainId,
-        status: "expired",
-        userId: payment.userId,
-        errorMessage: "Payment expired before approval could complete",
-      });
-
+      await expirePaymentWithAudit(paymentId, auth.userId, "Payment expired before approval could complete");
       revalidatePaymentPaths();
       return err("Payment has expired");
     }
@@ -137,8 +108,12 @@ export async function approvePendingPayment(
       acceptedRequirement?.asset ?? payment.asset,
       chainId,
     );
-    const amountForTx = parseFloat(displayAmount) || 0;
-    logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: amountForTx });
+    const amountForTx = parseFloat(displayAmount);
+    if (isNaN(amountForTx)) {
+      logger.warn("Could not determine payment amount", { userId: auth.userId, paymentId, amountRaw, action: "amount_parse_failed" });
+    }
+    const safeAmount = isNaN(amountForTx) ? 0 : amountForTx;
+    logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: safeAmount });
 
     const x402Version = isFullFormat ? (storedPaymentRequired.x402Version ?? 1) : 1;
     const resource = isFullFormat
@@ -199,7 +174,7 @@ export async function approvePendingPayment(
       const txStatus = paidResponse.ok ? "completed" : "failed";
 
       await createTransaction({
-        amount: amountForTx,
+        amount: safeAmount,
         endpoint: payment.url,
         payTo: acceptedRequirement?.payTo ?? undefined,
         asset: acceptedRequirement?.asset ?? undefined,
@@ -262,7 +237,7 @@ export async function approvePendingPayment(
       });
 
       await createTransaction({
-        amount: amountForTx,
+        amount: safeAmount,
         endpoint: payment.url,
         network: acceptedRequirement?.network ?? "base",
         chainId,
@@ -309,19 +284,8 @@ export async function expirePendingPaymentAction(paymentId: string) {
     if (!payment) return err("Pending payment not found");
     if (payment.status !== "pending") return ok(undefined as void);
 
-    const expired = await _expirePendingPayment(paymentId, auth.userId);
+    const expired = await expirePaymentWithAudit(paymentId, auth.userId);
     if (!expired) return ok(undefined as void);
-
-    const { amountForTx, network } = getAmountForTx(payment);
-    await createTransaction({
-      amount: amountForTx,
-      endpoint: payment.url,
-      network,
-      chainId: payment.chainId,
-      status: "expired",
-      userId: payment.userId,
-      errorMessage: "Payment expired before user approval",
-    });
 
     revalidatePaymentPaths();
     return ok(undefined as void);
@@ -342,6 +306,10 @@ async function retryPaymentFlow(
   if (payment.status !== "expired" && payment.status !== "pending") {
     return err(`Cannot retry: payment is ${payment.status}`);
   }
+
+  // Transition the old payment to a terminal state so the dashboard doesn't
+  // show duplicate actionable entries after the retry creates a new payment.
+  await _rejectPendingPayment(paymentId, userId);
 
   if (options?.enableAutoSign) {
     await ensureAutoSignPolicy(userId, payment.url, payment.chainId);

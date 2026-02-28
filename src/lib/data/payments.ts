@@ -5,6 +5,10 @@ import {
   type PendingPaymentCompleteInput,
   type PendingPaymentFailInput,
 } from "@/lib/models/pending-payment";
+import { createTransaction } from "@/lib/data/transactions";
+import { getChainById, getDefaultChainConfig } from "@/lib/chain-config";
+import { formatAmountForDisplay } from "@/lib/x402/display";
+import { logger } from "@/lib/logger";
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
 
@@ -184,6 +188,46 @@ export async function expirePendingPayment(paymentId: string, userId: string): P
     { returnDocument: "after" },
   ).lean();
   return doc ? PendingPaymentDTO.parse(doc) : null;
+}
+
+/**
+ * Atomically expire a pending payment and record an "expired" transaction.
+ * Returns the expired payment DTO, or null if the payment was already
+ * transitioned by another caller (race-safe: no duplicate transactions).
+ */
+export async function expirePaymentWithAudit(
+  paymentId: string,
+  userId: string,
+  errorMessage = "Payment expired before user approval",
+): Promise<PendingPaymentDTO | null> {
+  const expired = await expirePendingPayment(paymentId, userId);
+  if (!expired) return null;
+
+  const chainIdForTx = expired.chainId ?? getDefaultChainConfig().chain.id;
+  const { displayAmount } = formatAmountForDisplay(expired.amountRaw, expired.asset, chainIdForTx);
+  const amount = parseFloat(displayAmount);
+  if (isNaN(amount)) {
+    logger.warn("Could not determine amount for expired payment transaction", {
+      paymentId,
+      userId,
+      amountRaw: expired.amountRaw,
+      asset: expired.asset,
+      action: "expire_amount_unknown",
+    });
+  }
+  const chainConfig = getChainById(chainIdForTx);
+
+  await createTransaction({
+    amount: isNaN(amount) ? 0 : amount,
+    endpoint: expired.url,
+    network: chainConfig?.networkString ?? "base",
+    chainId: chainIdForTx,
+    status: "expired",
+    userId: expired.userId,
+    errorMessage,
+  });
+
+  return expired;
 }
 
 /**

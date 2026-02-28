@@ -108,6 +108,9 @@ const pendingPaymentSchema = new Schema<PendingPaymentDoc>(
 pendingPaymentSchema.index({ userId: 1 });
 pendingPaymentSchema.index({ status: 1 });
 pendingPaymentSchema.index({ chainId: 1 });
+// Compound index for getPendingPayments / getPendingCount queries that filter
+// on userId + status + chainId + expiresAt together.
+pendingPaymentSchema.index({ userId: 1, status: 1, chainId: 1, expiresAt: -1 });
 
 export const PendingPayment: Model<PendingPaymentDoc> =
   mongoose.models.PendingPayment ||

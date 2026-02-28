@@ -210,20 +210,20 @@ export async function unarchivePolicy(policyId: string, userId: string) {
  * Safe with the unique index on (userId, endpointPattern, chainId).
  */
 export async function ensureAutoSignPolicy(userId: string, url: string, chainId: number) {
-  await connectDB();
-  const userObjectId = new Types.ObjectId(userId);
-  let host: string;
-  try {
-    host = new URL(url).origin;
-  } catch {
-    host = url;
+  const origin = new URL(url).origin;
+  const patternError = validateEndpointPattern(origin);
+  if (patternError) {
+    throw new Error(`Invalid URL for auto-sign policy: ${patternError}`);
   }
 
+  await connectDB();
+  const userObjectId = new Types.ObjectId(userId);
+
   const doc = await EndpointPolicy.findOneAndUpdate(
-    { userId: userObjectId, endpointPattern: host, chainId },
+    { userId: userObjectId, endpointPattern: origin, chainId },
     {
       $set: { autoSign: true, status: "active", archivedAt: null },
-      $setOnInsert: { endpointPattern: host, userId: userObjectId, chainId },
+      $setOnInsert: { endpointPattern: origin, userId: userObjectId, chainId },
     },
     { upsert: true, returnDocument: "after" },
   ).lean();

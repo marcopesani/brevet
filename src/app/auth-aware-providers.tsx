@@ -30,12 +30,12 @@ export default async function AuthAwareProviders({
   // Prevents users from opening the dashboard and missing actionable payments
   // on a different chain than the one stored in the cookie.
   if (user && initialChainId !== undefined && enabledChains) {
-    const pendingOnCookie = await getPendingCount(user.userId, { chainId: initialChainId });
-    if (pendingOnCookie === 0) {
-      const chainWithPending = await getPendingPaymentChainId(user.userId);
-      if (chainWithPending !== null && enabledChains.includes(chainWithPending)) {
-        initialChainId = chainWithPending;
-      }
+    const [pendingOnCookie, chainWithPending] = await Promise.all([
+      getPendingCount(user.userId, { chainId: initialChainId }),
+      getPendingPaymentChainId(user.userId),
+    ]);
+    if (pendingOnCookie === 0 && chainWithPending !== null && enabledChains.includes(chainWithPending)) {
+      initialChainId = chainWithPending;
     }
   }
 
