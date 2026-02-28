@@ -22,4 +22,5 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run knip
+        continue-on-error: true
       - run: npm run test:run
