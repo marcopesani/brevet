@@ -25,14 +25,14 @@ const E2E_ENV = {
   E2E_CHAIN_ID: "80002",
   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: "e2e-walletconnect-project-id",
   NEXTAUTH_SECRET: "e2e-nextauth-secret-with-32chars",
-  ZERODEV_PROJECT_ID: "e2e-zerodev-project-id",
+  ZERODEV_PROJECT_ID: process.env.ZERODEV_PROJECT_ID ?? "e2e-zerodev-project-id",
   SESSION_KEY_MAX_SPEND_PER_TX: "1000000000000",
   SESSION_KEY_MAX_SPEND_DAILY: "10000000000000",
   SESSION_KEY_MAX_EXPIRY_DAYS: "365",
   SESSION_KEY_DEFAULT_EXPIRY_DAYS: "30",
   HOT_WALLET_ENCRYPTION_KEY:
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-} as const;
+} as const satisfies Record<string, string>;
 
 const baseURL = "http://127.0.0.1:3000";
 const webServerCommand = [
