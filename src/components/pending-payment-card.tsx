@@ -368,7 +368,7 @@ export default function PendingPaymentCard({
               ) : (
                 <>
                   <Zap className="size-4" />
-                  Enable Auto Sign & Reply
+                  Enable Auto Sign & Retry
                 </>
               )}
             </Button>
