@@ -1,9 +1,5 @@
 import { x402HTTPClient, x402Client } from "@x402/core/client";
 import type { PaymentRequired, PaymentPayload } from "@x402/core/types";
-import {
-  decodePaymentResponseHeader,
-  encodePaymentSignatureHeader,
-} from "@x402/core/http";
 import type { SettleResponse } from "@x402/core/types";
 
 /**
@@ -47,14 +43,6 @@ export function buildPaymentHeaders(
 ): Record<string, string> {
   return getParsingClient().encodePaymentSignatureHeader(paymentPayload);
 }
-
-/**
- * Encode a payment payload into a base64 header value string.
- *
- * This is a lower-level utility — prefer `buildPaymentHeaders` which returns
- * the complete header name+value pair.
- */
-export { encodePaymentSignatureHeader };
 
 /**
  * Extract payment settlement response from HTTP headers.
@@ -114,5 +102,3 @@ export async function extractTxHashFromResponse(
 
   return null;
 }
-
-export { decodePaymentResponseHeader };

@@ -40,7 +40,7 @@ if (!authSecret || authSecret.trim() === "")
   throw new Error("Missing required env var: NEXTAUTH_SECRET");
 
 /** Validate and extract message + signature from credentials. */
-export function extractCredentials(credentials: Record<string, string> | undefined): {
+function extractCredentials(credentials: Record<string, string> | undefined): {
   message: string;
   signature: string;
 } {
@@ -53,7 +53,7 @@ export function extractCredentials(credentials: Record<string, string> | undefin
 }
 
 /** Verify a SIWE signature using viem's public client. */
-export async function verifySignature(
+async function verifySignature(
   message: string,
   address: string,
   signature: string,
@@ -81,7 +81,7 @@ export async function verifySignature(
 }
 
 /** Compute the default enabledChains for a new user. */
-export function getDefaultEnabledChains(): number[] {
+function getDefaultEnabledChains(): number[] {
   const testnetIds = getTestnetChains().map((c) => c.chain.id);
   const mainnetEnabled = process.env.DEFAULT_MAINNET_CHAINS_ENABLED === "true";
   if (mainnetEnabled) {
@@ -92,7 +92,7 @@ export function getDefaultEnabledChains(): number[] {
 }
 
 /** Find or create a user by wallet address. */
-export async function upsertUser(walletAddress: string) {
+async function upsertUser(walletAddress: string) {
   await connectDB();
 
   let user = await User.findOne({ walletAddress });

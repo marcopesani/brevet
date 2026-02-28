@@ -6,7 +6,7 @@ import { getChainById, getTokenConfig } from "@/lib/chain-config";
  * Only matches known token addresses per chain via the token registry;
  * no default decimals for other tokens.
  */
-export function getDecimalsAndSymbol(
+function getDecimalsAndSymbol(
   chainId: number,
   asset: string | undefined | null,
 ): { decimals: number; symbol: string } {

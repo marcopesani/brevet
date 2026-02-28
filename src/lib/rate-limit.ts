@@ -116,16 +116,3 @@ export function getClientIp(request: Request): string {
   return "direct";
 }
 
-/** @internal Exposed for testing only — clears the rate limit store. */
-export function _resetStoreForTesting(): void {
-  store.clear();
-  lastCleanup = Date.now();
-}
-
-/** @internal Exposed for testing only — returns the current store size. */
-export function _getStoreSizeForTesting(): number {
-  return store.size;
-}
-
-/** @internal Exposed for testing only. */
-export const _MAX_STORE_SIZE = MAX_STORE_SIZE;
