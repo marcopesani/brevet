@@ -102,6 +102,7 @@ export async function createSmartAccountSigner(
         primaryType: message.primaryType,
         message: message.message,
       }),
+    readContract: (args) => publicClient.readContract(args),
   };
 }
 
@@ -145,5 +146,6 @@ export async function createSmartAccountSignerFromSerialized(
         primaryType: message.primaryType,
         message: message.message,
       }),
+    readContract: (args) => publicClient.readContract(args),
   };
 }
