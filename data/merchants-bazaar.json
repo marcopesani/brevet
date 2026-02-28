@@ -1,6 +1,7 @@
 [
   {
     "name": "AgentUtil",
+    "slug": "agentutil",
     "description": "AI agent utility services for platform monitoring and value benchmarking.",
     "category": "service",
     "chains": ["base"],
@@ -19,6 +20,7 @@
   },
   {
     "name": "HTTPay",
+    "slug": "httpay",
     "description": "DeFi market monitoring with risk analysis.",
     "category": "service",
     "chains": ["base"],
@@ -27,134 +29,6 @@
         "url": "https://httpay.xyz/api/fresh-markets-watch",
         "description": "Newly created DeFi pools sorted by APY with risk warnings.",
         "pricing": { "fixed": 0.005 }
-      }
-    ]
-  },
-  {
-    "name": "x402 API Network",
-    "description": "Community-built micropayment-powered API network with 16 utility endpoints for AI agents on Base Mainnet.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://x402.fatihai.app/api/email-verify",
-        "description": "Email verification with syntax, MX record, disposable detection, and scoring.",
-        "pricing": { "fixed": 0.01 }
-      },
-      {
-        "url": "https://x402.fatihai.app/api/domain-health",
-        "description": "Domain health check covering MX, SPF, DKIM, and DMARC records.",
-        "pricing": { "fixed": 0.01 }
-      },
-      {
-        "url": "https://x402.fatihai.app/api/web-scrape",
-        "description": "Structured data extraction from any web page.",
-        "pricing": { "fixed": 0.01 }
-      },
-      {
-        "url": "https://x402.fatihai.app/api/ai-content",
-        "description": "AI content generation powered by Llama 3.3 70B.",
-        "pricing": { "fixed": 0.05 }
-      }
-    ]
-  },
-  {
-    "name": "Pylon",
-    "description": "x402-payable utility API gateway for AI agents with 20 capabilities — web extraction, search, translation, code execution, image generation, and more.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://api.pylonapi.com/v1/extract",
-        "description": "Web content extraction and data retrieval."
-      },
-      {
-        "url": "https://api.pylonapi.com/v1/search",
-        "description": "Web search with AI-powered result ranking."
-      },
-      {
-        "url": "https://api.pylonapi.com/v1/translate",
-        "description": "Text translation across 100+ languages."
-      },
-      {
-        "url": "https://api.pylonapi.com/v1/image/generate",
-        "description": "AI image generation from text prompts."
-      }
-    ]
-  },
-  {
-    "name": "BlackSwan",
-    "description": "Real-time risk intelligence infrastructure for autonomous AI agents.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://blackswan.wtf/api/risk",
-        "description": "Real-time risk assessment and black swan event detection."
-      }
-    ]
-  },
-  {
-    "name": "AdEx AURA API",
-    "description": "Portfolio data, tokens, DeFi positions, yield strategies, and transaction payloads via x402 micropayments.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://aura.adex.network/api/portfolio",
-        "description": "Portfolio data including tokens and DeFi positions."
-      },
-      {
-        "url": "https://aura.adex.network/api/yield",
-        "description": "Yield strategies and DeFi opportunity discovery."
-      }
-    ]
-  },
-  {
-    "name": "Proofivy",
-    "description": "Attestation and x402-paywalled publishing via WordPress plugin or custom tools.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://proofivy.com/api/attest",
-        "description": "Create and verify on-chain attestations."
-      }
-    ]
-  },
-  {
-    "name": "Trusta.AI",
-    "description": "Attestation API supporting users and agents to publish attestations via USDC on Base.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://app.trustalabs.ai/api/attest",
-        "description": "Publish and verify on-chain attestations with USDC payment."
-      }
-    ]
-  },
-  {
-    "name": "RelAI",
-    "description": "Marketplace and SDK to monetize APIs with x402 micropayments across multiple networks. Pay per request without API keys.",
-    "category": "infrastructure",
-    "chains": ["base", "ethereum", "polygon"],
-    "endpoints": [
-      {
-        "url": "https://relai.fi/api/discover",
-        "description": "Discover and access x402-enabled APIs across the RelAI marketplace."
-      }
-    ]
-  },
-  {
-    "name": "SerenAI x402 Gateway",
-    "description": "Production payment gateway for AI agents to pay for database queries and API access.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://serendb.com/api/x402/query",
-        "description": "Pay-per-query database access for AI agents."
       }
     ]
   }

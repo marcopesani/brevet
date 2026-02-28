@@ -1,6 +1,7 @@
 [
   {
     "name": "Zapper",
+    "slug": "zapper",
     "description": "Portfolio tracking, token pricing, and DeFi analytics via x402 micropayments.",
     "category": "service",
     "chains": ["base"],
@@ -34,9 +35,10 @@
   },
   {
     "name": "Nansen",
+    "slug": "nansen",
     "description": "Smart money netflow data tracking institutional and whale movements.",
     "category": "service",
-    "chains": ["ethereum"],
+    "chains": ["base", "solana"],
     "endpoints": [
       {
         "url": "https://api.nansen.ai/api/v1/smart-money/netflow",
@@ -47,7 +49,8 @@
   },
   {
     "name": "CoinGecko",
-    "description": "Crypto market data API with pay-per-use pricing — token prices, liquidity, trending pools, and on-chain data for 28M+ tokens.",
+    "slug": "coingecko",
+    "description": "Crypto market data API with pay-per-use pricing — token prices and on-chain data for 28M+ tokens.",
     "category": "service",
     "chains": ["base", "solana"],
     "endpoints": [
@@ -60,53 +63,25 @@
         "url": "https://pro-api.coingecko.com/api/v3/x402/onchain/simple/networks/base/token_price",
         "description": "On-chain token prices by contract address on Base network.",
         "pricing": { "fixed": 0.01 }
-      },
-      {
-        "url": "https://pro-api.coingecko.com/api/v3/x402/onchain/networks/trending_pools",
-        "description": "Trending liquidity pools and DEX data across networks.",
-        "pricing": { "fixed": 0.01 }
-      }
-    ]
-  },
-  {
-    "name": "QuickNode",
-    "description": "Blockchain RPC, WebSocket, REST, and gRPC endpoints across 130+ networks. Pay per request with USDC — no account or API key needed.",
-    "category": "infrastructure",
-    "chains": ["base", "solana", "polygon"],
-    "endpoints": [
-      {
-        "url": "https://x402.quicknode.com/",
-        "description": "Universal blockchain RPC gateway with x402 pay-per-request access across 130+ networks."
-      }
-    ]
-  },
-  {
-    "name": "Firecrawl",
-    "description": "Web scraping API that converts websites into LLM-ready markdown or structured data. Pay per search with USDC on Base.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://api.firecrawl.dev/v1/x402/search",
-        "description": "On-demand web search and scraping returning LLM-ready content.",
-        "pricing": { "min": 0.01 }
       }
     ]
   },
   {
     "name": "Browserbase",
+    "slug": "browserbase",
     "description": "Pay-per-use headless browser sessions for AI agents. No API keys — just pay with USDC on Base and connect.",
     "category": "service",
     "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://x402.browserbase.com/",
-        "description": "Serverless browser sessions for navigation, interaction, and web automation."
+        "url": "https://x402.browserbase.com/browser/session/create",
+        "description": "Create a browser session for navigation, interaction, and web automation."
       }
     ]
   },
   {
     "name": "Pinata",
+    "slug": "pinata",
     "description": "Account-free IPFS uploads and retrievals using x402 crypto payments. Pin public or private files with USDC on Base.",
     "category": "service",
     "chains": ["base"],
@@ -123,6 +98,7 @@
   },
   {
     "name": "Neynar",
+    "slug": "neynar",
     "description": "Farcaster social data API — casts, profiles, channels, and social graph. Pay per request with USDC on Base, no API key needed.",
     "category": "service",
     "chains": ["base"],
@@ -136,43 +112,34 @@
   },
   {
     "name": "BlockRun AI",
+    "slug": "blockrun-ai",
     "description": "Pay-as-you-go AI gateway providing 30+ LLMs (OpenAI, Anthropic, Google, DeepSeek, xAI) via x402. No API keys — wallet is your auth.",
     "category": "service",
-    "chains": ["base", "solana"],
+    "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://blockrun.ai/v1/chat/completions",
+        "url": "https://blockrun.ai/api/v1/chat/completions",
         "description": "OpenAI-compatible chat completions endpoint with 30+ models including GPT, Claude, and Gemini.",
         "pricing": { "min": 0.003 }
       }
     ]
   },
   {
-    "name": "Bitrefill",
-    "description": "Buy gift cards, prepaid cards, mobile top-ups, and eSIMs with cryptocurrency. Supports 186+ countries and thousands of brands.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://www.bitrefill.com/api/x402",
-        "description": "Purchase gift cards, eSIMs, and mobile recharges for brands like Amazon, Netflix, Uber, and more."
-      }
-    ]
-  },
-  {
     "name": "GoldRush (Covalent)",
+    "slug": "goldrush-covalent",
     "description": "Blockchain data API across 100+ chains — balances, NFTs, transactions, DEX data, pricing, and security. Pay per call with USDC.",
     "category": "service",
     "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://x402.goldrush.dev/v1/chains",
-        "description": "Multi-chain blockchain data including balances, NFTs, transactions, blocks, and DEX analytics."
+        "url": "https://x402.goldrush.dev/v1/x402/endpoints",
+        "description": "Discovery endpoint listing available x402-payable blockchain data APIs across 100+ chains."
       }
     ]
   },
   {
     "name": "AgentUtil",
+    "slug": "agentutil",
     "description": "AI agent utility services for fact-checking, safety, reversibility, and scheduling.",
     "category": "service",
     "chains": ["base"],
@@ -201,6 +168,7 @@
   },
   {
     "name": "HTTPay",
+    "slug": "httpay",
     "description": "On-chain analytics, DeFi yield discovery, and crypto news aggregation.",
     "category": "service",
     "chains": ["base"],
@@ -224,6 +192,7 @@
   },
   {
     "name": "402Box",
+    "slug": "402box",
     "description": "AI-powered X/Twitter search agent for social media intelligence.",
     "category": "service",
     "chains": ["base"],
@@ -237,12 +206,13 @@
   },
   {
     "name": "PayPerScrape",
+    "slug": "payperscrape",
     "description": "Pay-per-request web scraping with automatic proxy rotation, JS rendering, and premium domain handling. No signup, no API keys.",
     "category": "service",
     "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://www.payperscrape.com/scrape",
+        "url": "https://www.payperscrape.com/api/scrape",
         "description": "Web scraping with automatic strategy escalation — proxies, headers, JS rendering handled for you.",
         "pricing": { "fixed": 0.05 }
       }
@@ -250,67 +220,58 @@
   },
   {
     "name": "Spraay x402 Gateway",
+    "slug": "spraay-x402-gateway",
     "description": "Pay-per-request AI gateway with 200+ OpenAI-compatible models, batch USDC payments, and live Uniswap V3 swap quotes.",
     "category": "service",
     "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://gateway.spraay.app/v1/chat/completions",
+        "url": "https://gateway.spraay.app/api/v1/chat/completions",
         "description": "AI inference with 200+ models (OpenAI-compatible) via x402 micropayment.",
         "pricing": { "min": 0.001 }
       },
       {
-        "url": "https://gateway.spraay.app/v1/swap/quote",
+        "url": "https://gateway.spraay.app/api/v1/swap/quote",
         "description": "Live swap quotes from Uniswap V3 on Base."
       }
     ]
   },
   {
     "name": "Einstein AI",
-    "description": "AI-powered blockchain intelligence — whale tracking, smart money signals, DEX analytics, MEV detection, and investment reports.",
-    "category": "service",
-    "chains": ["base", "solana"],
-    "endpoints": [
-      {
-        "url": "https://emc2ai.io/api/v1/intelligence",
-        "description": "Blockchain intelligence including whale tracking, smart money signals, and DEX analytics."
-      }
-    ]
-  },
-  {
-    "name": "Elsa x402",
-    "description": "DeFi API with x402 micropayments — portfolio data, token prices, swap quotes, wallet analytics, and yield suggestions.",
+    "slug": "einstein-ai",
+    "description": "AI-powered blockchain analytics via x402 micropayments — on-chain token data, liquidity pools, and AI-generated market analysis powered by Bitquery.",
     "category": "service",
     "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://x402.heyelsa.ai/api/portfolio",
-        "description": "DeFi portfolio data including token balances and positions."
-      },
-      {
-        "url": "https://x402.heyelsa.ai/api/token-price",
-        "description": "Real-time token price data across supported networks."
-      },
-      {
-        "url": "https://x402.heyelsa.ai/api/yield",
-        "description": "DeFi yield suggestions and strategy recommendations."
+        "url": "https://emc2ai.io/x402/bitquery/latest-pairs",
+        "description": "Latest deployed tokens on-chain with liquidity pool data and AI-generated analysis.",
+        "pricing": { "fixed": 0.40 }
       }
     ]
   },
   {
     "name": "dTelecom STT",
+    "slug": "dtelecom-stt",
     "description": "Production-grade real-time speech-to-text for AI agents with VAD, noise reduction, hallucination filtering, and 99+ language support.",
     "category": "service",
     "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://x402stt.dtelecom.org/v1/transcribe",
-        "description": "Real-time speech-to-text with dual-engine architecture (Parakeet-TDT + Whisper) and smart routing."
+        "url": "https://x402stt.dtelecom.org/v1/session",
+        "description": "Buy a speech-to-text session — returns WebSocket URL for real-time audio streaming and transcription.",
+        "pricing": { "min": 0.025 }
+      },
+      {
+        "url": "https://x402stt.dtelecom.org/v1/session/extend",
+        "description": "Extend an active STT session with additional minutes.",
+        "pricing": { "min": 0.025 }
       }
     ]
   },
   {
     "name": "Rug Munch Intelligence",
+    "slug": "rug-munch-intelligence",
     "description": "AI-powered crypto risk intelligence — check any token for rug pulls, honeypots, and scams. 1.1M+ historical scans with LLM forensic analysis.",
     "category": "service",
     "chains": ["base", "solana"],
@@ -349,6 +310,7 @@
   },
   {
     "name": "Ordiscan",
+    "slug": "ordiscan",
     "description": "Bitcoin Ordinals explorer and API — query inscriptions, runes, rare sats, and inscribe content on Bitcoin via x402.",
     "category": "service",
     "chains": ["base"],
@@ -360,19 +322,8 @@
     ]
   },
   {
-    "name": "Gloria AI",
-    "description": "AI-powered real-time, high-signal, customizable news data for AI agents.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://itsgloria.ai/api/v1/news",
-        "description": "Real-time crypto and tech news with AI-powered signal filtering and customization."
-      }
-    ]
-  },
-  {
     "name": "Orac",
+    "slug": "orac",
     "description": "AI agent security infrastructure — prompt injection scanning, code security auditing, and trust scoring powered by a 265-entity knowledge graph.",
     "category": "service",
     "chains": ["base"],
@@ -385,158 +336,124 @@
   },
   {
     "name": "x402engine",
-    "description": "28 pay-per-call APIs for AI agents — image generation, LLM inference, code execution, audio transcription, and more.",
+    "slug": "x402engine",
+    "description": "61 pay-per-call APIs for AI agents — 30 LLMs, image generation, code execution, audio transcription, crypto data, and more.",
     "category": "service",
     "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://x402engine.app/api/image/generate",
+        "url": "https://x402engine.app/api/image/fast",
         "description": "AI image generation via x402 micropayment."
       },
       {
-        "url": "https://x402engine.app/api/llm/chat",
-        "description": "LLM chat inference across multiple models."
+        "url": "https://x402engine.app/api/llm/gpt-4o",
+        "description": "LLM chat inference (GPT-4o) via x402 micropayment."
       },
       {
-        "url": "https://x402engine.app/api/code/execute",
+        "url": "https://x402engine.app/api/code/run",
         "description": "Sandboxed code execution with output."
       },
       {
-        "url": "https://x402engine.app/api/audio/transcribe",
+        "url": "https://x402engine.app/api/transcribe",
         "description": "Audio transcription and speech-to-text."
       }
     ]
   },
   {
     "name": "Minifetch",
+    "slug": "minifetch",
     "description": "Fetch metadata and content summaries from any web page via x402 micropayment.",
     "category": "service",
     "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://minifetch.com/fetch",
-        "description": "Extract metadata, title, description, and content summary from any URL."
+        "url": "https://minifetch.com/api/v1/x402/extract/url-metadata",
+        "description": "Extract rich structured metadata from any URL: title, description, og/twitter tags, json-ld, images, headings, and more."
       }
     ]
   },
   {
     "name": "Grove API",
+    "slug": "grove-api",
     "description": "A unified API to fund your account via x402 and tip anyone on the internet.",
     "category": "service",
     "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://grove.city/api/tip",
+        "url": "https://api.grove.city/v1/tip",
         "description": "Send crypto tips to content creators and developers."
       },
       {
-        "url": "https://grove.city/api/fund",
+        "url": "https://api.grove.city/v1/fund",
         "description": "Fund your account using x402 USDC payment."
       }
     ]
   },
   {
-    "name": "Moltalyzer",
-    "description": "AI intelligence APIs for trending topics, GitHub repos, and Polymarket insider detection.",
+    "name": "Postera",
+    "slug": "postera",
+    "description": "Publishing platform for AI agents with per-read micropayments via x402. Agents register, publish, and read paywalled content.",
     "category": "service",
     "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://moltalyzer.xyz/api/trending",
-        "description": "Trending topics and sentiment analysis across crypto and tech."
+        "url": "https://postera.dev/api/agents/verify",
+        "description": "Register an AI agent on Postera via x402 payment ($1.00 USDC).",
+        "pricing": { "fixed": 1.0 }
       },
       {
-        "url": "https://moltalyzer.xyz/api/github",
-        "description": "Trending GitHub repositories and developer activity insights."
-      }
-    ]
-  },
-  {
-    "name": "SocioLogic RNG",
-    "description": "x402-enabled RNG API providing cryptographically secure, verifiable randomness for AI agents.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://www.sociologic.ai/x402-rng/generate",
-        "description": "Cryptographically secure, verifiable random number generation."
-      }
-    ]
-  },
-  {
-    "name": "Postera",
-    "description": "Publishing platform for AI agents with per-read micropayments via x402.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://postera.dev/api/publish",
-        "description": "Publish content with x402 micropayment monetization."
+        "url": "https://postera.dev/api/posts/{postId}/publish",
+        "description": "Publish a draft post via x402 micropayment ($0.10 USDC).",
+        "pricing": { "fixed": 0.1 }
       }
     ]
   },
   {
     "name": "Laso Finance",
-    "description": "AI agents can get prepaid cards, gift cards, and make Venmo/PayPal payments with a single API call. 100+ brands in 20+ countries.",
+    "slug": "laso-finance",
+    "description": "AI agents can get prepaid cards and make Venmo/PayPal payments with a single API call. Pay with USDC on Base via x402.",
     "category": "service",
     "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://agents.laso.finance/api/gift-card",
-        "description": "Purchase gift cards from 100+ brands including Amazon, Netflix, Uber, and more."
+        "url": "https://laso.finance/auth",
+        "description": "Get Firebase auth credentials for Laso Finance APIs.",
+        "pricing": { "fixed": 0.001 }
       },
       {
-        "url": "https://agents.laso.finance/api/payment",
-        "description": "Send payments to Venmo or PayPal recipients."
-      }
-    ]
-  },
-  {
-    "name": "AdPrompt",
-    "description": "Pay-per-request advertising and marketing APIs — brand analysis, ad creatives, A/B variants, budget allocation, and strategy.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://www.adprompt.ai/x402-api/brand-analysis",
-        "description": "AI-powered brand analysis and positioning insights."
+        "url": "https://laso.finance/get-card",
+        "description": "Order a prepaid card for use inside the United States ($5–$1000).",
+        "pricing": { "min": 5.0 }
       },
       {
-        "url": "https://www.adprompt.ai/x402-api/ad-creative",
-        "description": "Generate image and video ad creatives with A/B variants."
-      }
-    ]
-  },
-  {
-    "name": "MerchantGuard",
-    "description": "AI-powered compliance infrastructure with GuardScore, GuardScan, and Mystery Shopper endpoints for merchant verification.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://www.merchantguard.ai/api/guardscore",
-        "description": "AI compliance score for merchant risk assessment."
-      },
-      {
-        "url": "https://www.merchantguard.ai/api/guardscan",
-        "description": "Automated compliance scanning and monitoring."
+        "url": "https://laso.finance/send-payment",
+        "description": "Send a payment via Venmo or PayPal ($5–$1000).",
+        "pricing": { "min": 5.0 }
       }
     ]
   },
   {
     "name": "Kurier",
-    "description": "High-performance REST API turning complex zero-knowledge proof workflows into a pay-as-you-go service.",
+    "slug": "kurier",
+    "description": "High-performance REST API turning complex zero-knowledge proof workflows into a pay-as-you-go service via x402.",
     "category": "service",
     "chains": ["base"],
     "endpoints": [
       {
-        "url": "https://kurier.xyz/api/v1/prove",
-        "description": "Generate and verify zero-knowledge proofs on demand."
+        "url": "https://api.kurier.xyz/api/v1/submit-proof",
+        "description": "Submit a zero-knowledge proof for on-chain verification.",
+        "pricing": { "fixed": 0.02 }
+      },
+      {
+        "url": "https://api.kurier.xyz/api/v1/register-vk",
+        "description": "Register a verification key for ZK proof circuits.",
+        "pricing": { "fixed": 0.02 }
       }
     ]
   },
   {
     "name": "invy",
+    "slug": "invy",
     "description": "Returns any wallet's token holdings including values, prices, and NFTs across Ethereum and Solana.",
     "category": "service",
     "chains": ["base", "ethereum", "solana"],
@@ -544,114 +461,6 @@
       {
         "url": "https://invy.bot/api/holdings",
         "description": "Wallet token holdings with real-time values and prices across Ethereum and Solana."
-      }
-    ]
-  },
-  {
-    "name": "twit.sh",
-    "description": "Real-time X/Twitter data for AI agents. No sign-up, no API keys — pay per request in USDC on Base.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://twit.sh/api/search",
-        "description": "Real-time X/Twitter search and data retrieval for AI agents."
-      }
-    ]
-  },
-  {
-    "name": "Otto AI Swarm",
-    "description": "AI-powered crypto intelligence — real-time news, token analysis, market alpha signals, and AI tools.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://api.ottowallet.xyz/v1/intelligence",
-        "description": "Crypto market intelligence with real-time news and token analysis."
-      }
-    ]
-  },
-  {
-    "name": "Zyte",
-    "description": "Unified web scraping API for unblocking, browser rendering, and structured data extraction via x402.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://api.zyte.com/v1/x402/extract",
-        "description": "Web scraping with automatic unblocking, browser rendering, and data extraction."
-      }
-    ]
-  },
-  {
-    "name": "AEON",
-    "description": "Omnichain settlement layer enabling AI agents to pay millions of real-world merchants across Southeast Asia, Latin America, and Africa.",
-    "category": "service",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://aeon.xyz/api/v1/pay",
-        "description": "Pay real-world merchants globally via x402 USDC settlement."
-      }
-    ]
-  },
-  {
-    "name": "x402 Facilitator (Coinbase)",
-    "description": "Reference facilitator server for x402 payment verification and settlement.",
-    "category": "facilitator",
-    "chains": ["base", "ethereum", "arbitrum", "optimism", "polygon", "solana"],
-    "endpoints": [
-      {
-        "url": "https://x402.org/facilitator",
-        "description": "Reference facilitator server for x402 payment verification and settlement."
-      }
-    ]
-  },
-  {
-    "name": "Stripe x402",
-    "description": "Stripe facilitator for x402 payments — machine-to-machine payment processing with USDC on Base, including tax, refunds, and reporting.",
-    "category": "facilitator",
-    "chains": ["base"],
-    "endpoints": [
-      {
-        "url": "https://api.stripe.com/x402/facilitate",
-        "description": "Stripe-hosted facilitator for x402 payment verification and settlement."
-      }
-    ]
-  },
-  {
-    "name": "Cloudflare x402 Proxy",
-    "description": "Cloudflare Workers template for adding x402 payment gates to any website or API. DNS-based, External Origin, and Service Binding proxy modes.",
-    "category": "infrastructure",
-    "chains": ["base", "ethereum", "arbitrum", "optimism", "polygon"],
-    "endpoints": [
-      {
-        "url": "https://github.com/cloudflare/templates/tree/main/x402-proxy-template",
-        "description": "Open-source Cloudflare Workers template for x402 payment-gated proxying."
-      }
-    ]
-  },
-  {
-    "name": "x402 TypeScript SDK",
-    "description": "Core TypeScript libraries for x402 clients and servers: @x402/fetch, @x402/express, @x402/next.",
-    "category": "client",
-    "chains": ["base", "ethereum", "arbitrum", "optimism", "polygon", "solana"],
-    "endpoints": [
-      {
-        "url": "https://github.com/coinbase/x402",
-        "description": "Core TypeScript libraries for x402 clients and servers: @x402/fetch, @x402/express, @x402/next."
-      }
-    ]
-  },
-  {
-    "name": "CDP Bazaar Discovery API",
-    "description": "Coinbase Developer Platform discovery API for finding x402-protected endpoints. Machine-readable catalog of 12,000+ registered services.",
-    "category": "infrastructure",
-    "chains": ["base", "ethereum", "arbitrum", "optimism", "polygon"],
-    "endpoints": [
-      {
-        "url": "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources",
-        "description": "Coinbase Developer Platform discovery API for finding x402-protected endpoints."
       }
     ]
   }

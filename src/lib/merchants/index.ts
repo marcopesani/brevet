@@ -45,18 +45,24 @@ export function loadMerchants(): Merchant[] {
   const curated = loadFile(CURATED_PATH, "curated");
   const bazaar = loadFile(BAZAAR_PATH, "bazaar");
 
-  // Dedup by merchant name: curated wins
-  const byName = new Map<string, Merchant>();
+  // Dedup by slug: curated wins, but merge bazaar endpoints
+  const bySlug = new Map<string, Merchant>();
   for (const m of curated) {
-    byName.set(m.name, m);
+    bySlug.set(m.slug, m);
   }
   for (const m of bazaar) {
-    if (!byName.has(m.name)) {
-      byName.set(m.name, m);
+    const existing = bySlug.get(m.slug);
+    if (existing) {
+      // Merge bazaar endpoints into curated entry, dedup by URL
+      const existingUrls = new Set(existing.endpoints.map((e) => e.url));
+      const newEndpoints = m.endpoints.filter((e) => !existingUrls.has(e.url));
+      existing.endpoints = [...existing.endpoints, ...newEndpoints];
+    } else {
+      bySlug.set(m.slug, m);
     }
   }
 
-  return Array.from(byName.values());
+  return Array.from(bySlug.values());
 }
 
 export function searchMerchants(query?: string, category?: string): Merchant[] {

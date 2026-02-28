@@ -19,6 +19,7 @@ export type Endpoint = z.infer<typeof EndpointSchema>;
 
 export const MerchantEntrySchema = z.object({
   name: z.string().min(1),
+  slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
   description: z.string().min(1),
   category: z.enum(["service", "infrastructure", "client", "facilitator"]),
   chains: z.array(z.string()).min(1),
