@@ -14,7 +14,7 @@ import {
   failPendingPayment,
 } from "@/lib/data/payments";
 import { createTransaction } from "@/lib/data/transactions";
-import { buildPaymentHeaders, extractSettleResponse, extractTxHashFromResponse } from "@/lib/x402/headers";
+import { buildPaymentHeaders, extractSettleResponse } from "@/lib/x402/headers";
 import { formatAmountForDisplay } from "@/lib/x402/display";
 import { getRequirementAmount } from "@/lib/x402/requirements";
 import { getChainById, getNetworkIdentifiers } from "@/lib/chain-config";
@@ -147,13 +147,18 @@ export async function approvePendingPayment(
       }
 
       const settlement = extractSettleResponse(paidResponse) ?? undefined;
-      const txHash = settlement?.transaction ?? await extractTxHashFromResponse(paidResponse);
+      const txHash = settlement?.transaction ?? null;
 
       const txStatus = paidResponse.ok ? "completed" : "failed";
 
       await createTransaction({
         amount: amountForTx,
         endpoint: payment.url,
+        payTo: acceptedRequirement?.payTo ?? undefined,
+        asset: acceptedRequirement?.asset ?? undefined,
+        scheme: acceptedRequirement?.scheme ?? undefined,
+        maxTimeoutSeconds: acceptedRequirement?.maxTimeoutSeconds ?? undefined,
+        extra: acceptedRequirement?.extra && Object.keys(acceptedRequirement.extra).length > 0 ? acceptedRequirement.extra : undefined,
         network: acceptedRequirement?.network ?? "base",
         chainId,
         status: txStatus,
