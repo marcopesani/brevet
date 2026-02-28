@@ -18,7 +18,7 @@ export default function PendingPaymentList({
   walletAddress,
 }: PendingPaymentListProps) {
   const { activeChain } = useChain();
-  const { payments, isLoading } = usePendingPayments(activeChain.chain.id);
+  const { payments, isLoading } = usePendingPayments(activeChain.chain.id, { includeExpired: true });
   const queryClient = useQueryClient();
 
   function handleAction() {

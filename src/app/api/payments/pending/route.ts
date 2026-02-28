@@ -19,9 +19,12 @@ export async function GET(request: NextRequest) {
 
   const chainIdParam = request.nextUrl.searchParams.get("chainId");
   const chainId = chainIdParam ? parseInt(chainIdParam, 10) : undefined;
-  const options = chainId !== undefined && !isNaN(chainId) ? { chainId } : undefined;
+  const includeExpired = request.nextUrl.searchParams.get("includeExpired") === "true";
+  const options: { chainId?: number; includeExpired?: boolean } = {};
+  if (chainId !== undefined && !isNaN(chainId)) options.chainId = chainId;
+  if (includeExpired) options.includeExpired = true;
 
-  const payments = await getPendingPayments(auth.userId, options);
+  const payments = await getPendingPayments(auth.userId, Object.keys(options).length > 0 ? options : undefined);
 
   return NextResponse.json(payments);
 }

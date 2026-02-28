@@ -2,7 +2,7 @@ import { z } from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   getPendingPayment,
-  expirePendingPayment,
+  expirePaymentWithAudit,
 } from "@/lib/data/payments";
 import { getChainById, getDefaultChainConfig } from "@/lib/chain-config";
 import { formatAmountForDisplay } from "@/lib/x402/display";
@@ -36,7 +36,7 @@ export function registerX402CheckPending(
           payment.status === "pending" &&
           Date.now() > new Date(payment.expiresAt).getTime()
         ) {
-          await expirePendingPayment(paymentId, userId);
+          await expirePaymentWithAudit(paymentId, userId);
           return jsonContent({
             status: "expired",
             message: "Payment approval has expired",

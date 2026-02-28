@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useSignTypedData, useAccount, useSwitchChain } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { authorizationTypes } from "@x402/evm";
@@ -14,6 +14,9 @@ import { toast } from "sonner";
 import {
   approvePendingPayment,
   rejectPendingPayment,
+  expirePendingPaymentAction,
+  retryExpiredPayment,
+  enableAutoSignAndRetry,
 } from "@/app/actions/payments";
 import { PENDING_PAYMENTS_QUERY_KEY } from "@/hooks/use-pending-payments";
 import { WALLET_BALANCE_QUERY_KEY } from "@/hooks/use-wallet-balance";
@@ -27,7 +30,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Clock, Check, X, Loader2 } from "lucide-react";
+import { Clock, Check, X, Loader2, RefreshCw, Zap } from "lucide-react";
 import type { PendingPaymentDTO } from "@/lib/models/pending-payment";
 
 interface PendingPaymentCardProps {
@@ -88,7 +91,7 @@ export default function PendingPaymentCard({
   onAction,
 }: PendingPaymentCardProps) {
   const [actionInProgress, setActionInProgress] = useState<
-    "approve" | "reject" | null
+    "approve" | "reject" | "retry" | "autosign" | null
   >(null);
   const { signTypedDataAsync } = useSignTypedData();
   const { chainId: walletChainId } = useAccount();
@@ -96,7 +99,18 @@ export default function PendingPaymentCard({
   const queryClient = useQueryClient();
   const { activeChain } = useChain();
   const remaining = useCountdown(payment.expiresAt);
-  const isExpired = remaining <= 0;
+  const isExpired = remaining <= 0 || payment.status === "expired";
+  const expireFiredRef = useRef(false);
+
+  // Auto-expire: when countdown reaches 0, call server action to record
+  // the expired transaction. Fires once per card instance.
+  useEffect(() => {
+    if (!isExpired || expireFiredRef.current || payment.status === "expired") return;
+    expireFiredRef.current = true;
+    expirePendingPaymentAction(payment._id).then(() => {
+      queryClient.invalidateQueries({ queryKey: PENDING_PAYMENTS_QUERY_KEY });
+    });
+  }, [isExpired, payment._id, payment.status, queryClient]);
 
   const parsedRequirements = useMemo(() => {
     try {
@@ -211,7 +225,7 @@ export default function PendingPaymentCard({
     try {
       const result = await rejectPendingPayment(payment._id);
       if (result.success) {
-        toast.success("Payment rejected");
+        toast.success(isExpired ? "Payment dismissed" : "Payment rejected");
         invalidateAndNotify();
       } else {
         toast.error(result.error);
@@ -219,6 +233,46 @@ export default function PendingPaymentCard({
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to reject payment"
+      );
+    } finally {
+      setActionInProgress(null);
+    }
+  }
+
+  async function handleRetry() {
+    setActionInProgress("retry");
+    try {
+      const result = await retryExpiredPayment(payment._id);
+      if (result.success) {
+        const data = result.data as { status: string; message: string };
+        toast.success(data.message);
+      } else {
+        toast.error(result.error);
+      }
+      invalidateAndNotify();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Retry failed"
+      );
+    } finally {
+      setActionInProgress(null);
+    }
+  }
+
+  async function handleAutoSignAndRetry() {
+    setActionInProgress("autosign");
+    try {
+      const result = await enableAutoSignAndRetry(payment._id);
+      if (result.success) {
+        const data = result.data as { status: string; message: string };
+        toast.success(data.message);
+      } else {
+        toast.error(result.error);
+      }
+      invalidateAndNotify();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to enable auto-sign"
       );
     } finally {
       setActionInProgress(null);
@@ -281,41 +335,96 @@ export default function PendingPaymentCard({
         <Separator />
       </CardContent>
       <CardFooter className="gap-2">
-        <Button
-          onClick={handleApprove}
-          disabled={disabled || isActioning || isExpired}
-          size="sm"
-        >
-          {actionInProgress === "approve" ? (
-            <>
-              <Loader2 className="animate-spin" />
-              Signing...
-            </>
-          ) : (
-            <>
-              <Check />
-              Approve & Sign
-            </>
-          )}
-        </Button>
-        <Button
-          variant="outline"
-          onClick={handleReject}
-          disabled={disabled || isActioning || isExpired}
-          size="sm"
-        >
-          {actionInProgress === "reject" ? (
-            <>
-              <Loader2 className="animate-spin" />
-              Rejecting...
-            </>
-          ) : (
-            <>
-              <X />
-              Reject
-            </>
-          )}
-        </Button>
+        {isExpired ? (
+          <>
+            <Button
+              onClick={handleRetry}
+              disabled={disabled || isActioning}
+              size="sm"
+            >
+              {actionInProgress === "retry" ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="size-4" />
+                  Retry
+                </>
+              )}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={handleAutoSignAndRetry}
+              disabled={disabled || isActioning}
+              size="sm"
+            >
+              {actionInProgress === "autosign" ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  Enabling...
+                </>
+              ) : (
+                <>
+                  <Zap className="size-4" />
+                  Enable Auto Sign & Retry
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleReject}
+              disabled={disabled || isActioning}
+              size="sm"
+            >
+              {actionInProgress === "reject" ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <X />
+              )}
+              Cancel
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              onClick={handleApprove}
+              disabled={disabled || isActioning}
+              size="sm"
+            >
+              {actionInProgress === "approve" ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  Signing...
+                </>
+              ) : (
+                <>
+                  <Check />
+                  Approve & Sign
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleReject}
+              disabled={disabled || isActioning}
+              size="sm"
+            >
+              {actionInProgress === "reject" ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  Rejecting...
+                </>
+              ) : (
+                <>
+                  <X />
+                  Reject
+                </>
+              )}
+            </Button>
+          </>
+        )}
       </CardFooter>
     </Card>
   );

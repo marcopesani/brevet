@@ -7,13 +7,16 @@ import {
   getPendingPayments as _getPendingPayments,
   getPendingCount as _getPendingCount,
   getPendingPayment as _getPendingPayment,
+  createPendingPayment as _createPendingPayment,
   approvePendingPayment as _approvePendingPayment,
   rejectPendingPayment as _rejectPendingPayment,
-  expirePendingPayment as _expirePendingPayment,
+  expirePaymentWithAudit,
   completePendingPayment,
   failPendingPayment,
 } from "@/lib/data/payments";
 import { createTransaction } from "@/lib/data/transactions";
+import { ensureAutoSignPolicy } from "@/lib/data/policies";
+import { executePayment } from "@/lib/x402/payment";
 import { buildPaymentHeaders, extractSettleResponse } from "@/lib/x402/headers";
 import { formatAmountForDisplay } from "@/lib/x402/display";
 import { getRequirementAmount } from "@/lib/x402/requirements";
@@ -33,6 +36,22 @@ export async function getPendingPayments() {
 
 export async function getPendingCount() {
   return withAuthRead((auth) => _getPendingCount(auth.userId));
+}
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type RetryResult = { status: string; paymentId: string | null; message: string };
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function revalidatePaymentPaths() {
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/pending");
+  revalidatePath("/dashboard/transactions");
 }
 
 // ---------------------------------------------------------------------------
@@ -58,9 +77,8 @@ export async function approvePendingPayment(
 
     if (Date.now() > new Date(payment.expiresAt).getTime()) {
       logger.warn("Payment expired during approval", { userId: auth.userId, paymentId, action: "payment_expired" });
-      await _expirePendingPayment(paymentId, auth.userId);
-      revalidatePath("/dashboard");
-      revalidatePath("/dashboard/pending");
+      await expirePaymentWithAudit(paymentId, auth.userId, "Payment expired before approval could complete");
+      revalidatePaymentPaths();
       return err("Payment has expired");
     }
 
@@ -90,8 +108,12 @@ export async function approvePendingPayment(
       acceptedRequirement?.asset ?? payment.asset,
       chainId,
     );
-    const amountForTx = parseFloat(displayAmount) || 0;
-    logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: amountForTx });
+    const amountForTx = parseFloat(displayAmount);
+    if (isNaN(amountForTx)) {
+      logger.warn("Could not determine payment amount", { userId: auth.userId, paymentId, amountRaw, action: "amount_parse_failed" });
+    }
+    const safeAmount = isNaN(amountForTx) ? 0 : amountForTx;
+    logger.info("Payment approval started", { userId: auth.userId, paymentId, url: payment.url, action: "approve_started", amount: safeAmount });
 
     const x402Version = isFullFormat ? (storedPaymentRequired.x402Version ?? 1) : 1;
     const resource = isFullFormat
@@ -152,7 +174,7 @@ export async function approvePendingPayment(
       const txStatus = paidResponse.ok ? "completed" : "failed";
 
       await createTransaction({
-        amount: amountForTx,
+        amount: safeAmount,
         endpoint: payment.url,
         payTo: acceptedRequirement?.payTo ?? undefined,
         asset: acceptedRequirement?.asset ?? undefined,
@@ -196,9 +218,7 @@ export async function approvePendingPayment(
         responseData = responsePayload;
       }
 
-      revalidatePath("/dashboard");
-      revalidatePath("/dashboard/pending");
-      revalidatePath("/dashboard/transactions");
+      revalidatePaymentPaths();
 
       if (!paidResponse.ok) {
         return err(`Payment approved but server responded with ${paidResponse.status}`);
@@ -217,7 +237,7 @@ export async function approvePendingPayment(
       });
 
       await createTransaction({
-        amount: amountForTx,
+        amount: safeAmount,
         endpoint: payment.url,
         network: acceptedRequirement?.network ?? "base",
         chainId,
@@ -230,9 +250,7 @@ export async function approvePendingPayment(
         error: `Network error: ${errorMsg}`,
       });
 
-      revalidatePath("/dashboard");
-      revalidatePath("/dashboard/pending");
-      revalidatePath("/dashboard/transactions");
+      revalidatePaymentPaths();
 
       return err(`Network error: ${errorMsg}`);
     }
@@ -243,14 +261,118 @@ export async function rejectPendingPayment(paymentId: string) {
   return withAuth(async (auth) => {
     const payment = await _getPendingPayment(paymentId, auth.userId);
     if (!payment) return err("Pending payment not found");
-    if (payment.status !== "pending") return err(`Payment is already ${payment.status}`);
+    if (payment.status !== "pending" && payment.status !== "expired") {
+      return err(`Payment is already ${payment.status}`);
+    }
 
     const rejected = await _rejectPendingPayment(paymentId, auth.userId);
     if (!rejected) return err("Payment has already been processed");
 
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/pending");
+    revalidatePaymentPaths();
 
     return ok(undefined as void);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Expire — marks pending payment as expired and records transaction
+// ---------------------------------------------------------------------------
+
+export async function expirePendingPaymentAction(paymentId: string) {
+  return withAuth(async (auth) => {
+    const payment = await _getPendingPayment(paymentId, auth.userId);
+    if (!payment) return err("Pending payment not found");
+    if (payment.status !== "pending") return ok(undefined as void);
+
+    if (Date.now() <= new Date(payment.expiresAt).getTime()) {
+      return ok(undefined as void);
+    }
+
+    const expired = await expirePaymentWithAudit(paymentId, auth.userId);
+    if (!expired) return ok(undefined as void);
+
+    revalidatePaymentPaths();
+    return ok(undefined as void);
+  });
+}
+}
+
+// ---------------------------------------------------------------------------
+// Retry — shared flow for retryExpiredPayment and enableAutoSignAndRetry
+// ---------------------------------------------------------------------------
+
+async function retryPaymentFlow(
+  paymentId: string,
+  userId: string,
+  options?: { enableAutoSign?: boolean },
+) {
+  const payment = await _getPendingPayment(paymentId, userId);
+  if (!payment) return err("Pending payment not found");
+  if (payment.status !== "expired" && payment.status !== "pending") {
+    return err(`Cannot retry: payment is ${payment.status}`);
+  }
+
+  // Transition the old payment to a terminal state so the dashboard doesn't
+  // show duplicate actionable entries after the retry creates a new payment.
+  await _rejectPendingPayment(paymentId, userId);
+
+  if (options?.enableAutoSign) {
+    await ensureAutoSignPolicy(userId, payment.url, payment.chainId);
+    logger.info("Auto-sign policy enabled for retry", { userId, url: payment.url, chainId: payment.chainId, action: "auto_sign_enabled" });
+  }
+
+  const storedHeaders: Record<string, string> = payment.requestHeaders
+    ? JSON.parse(payment.requestHeaders)
+    : {};
+
+  const result = await executePayment(
+    payment.url,
+    userId,
+    {
+      method: payment.method as "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
+      body: payment.requestBody ?? undefined,
+      headers: Object.keys(storedHeaders).length > 0 ? storedHeaders : undefined,
+    },
+    payment.chainId,
+  );
+
+  if (result.status === "pending_approval") {
+    const expiresAt = new Date(Date.now() + result.maxTimeoutSeconds * 1000);
+    const newPayment = await _createPendingPayment({
+      userId,
+      url: payment.url,
+      method: payment.method,
+      amountRaw: result.amountRaw,
+      asset: result.asset,
+      chainId: result.chainId,
+      paymentRequirements: result.paymentRequirements,
+      expiresAt,
+      body: payment.requestBody ?? undefined,
+      headers: Object.keys(storedHeaders).length > 0 ? storedHeaders : undefined,
+    });
+
+    revalidatePaymentPaths();
+
+    const message = options?.enableAutoSign
+      ? "Auto-sign enabled for this endpoint. This payment still requires manual approval (no active session key or insufficient balance)."
+      : "New payment created — approve it before it expires.";
+    return ok<RetryResult>({ status: "pending_approval", paymentId: newPayment._id, message });
+  }
+
+  if (!result.success) {
+    revalidatePaymentPaths();
+    return err(result.error ?? "Payment failed");
+  }
+
+  // Auto-sign path: executePayment already created the transaction
+  revalidatePaymentPaths();
+  return ok<RetryResult>({ status: "completed", paymentId: null, message: "Payment completed successfully." });
+}
+
+export async function retryExpiredPayment(paymentId: string) {
+  return withAuth((auth) => retryPaymentFlow(paymentId, auth.userId));
+}
+
+export async function enableAutoSignAndRetry(paymentId: string) {
+  return withAuth((auth) => retryPaymentFlow(paymentId, auth.userId, { enableAutoSign: true }));
 }

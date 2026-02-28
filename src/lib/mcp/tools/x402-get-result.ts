@@ -2,7 +2,7 @@ import { z } from "zod/v4";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   getPendingPayment,
-  expirePendingPayment,
+  expirePaymentWithAudit,
 } from "@/lib/data/payments";
 import { textContent, jsonContent, toolError } from "../shared";
 
@@ -50,7 +50,7 @@ export function registerX402GetResult(
 
         if (payment.status === "pending") {
           if (Date.now() > new Date(payment.expiresAt).getTime()) {
-            await expirePendingPayment(paymentId, userId);
+            await expirePaymentWithAudit(paymentId, userId);
             return jsonContent({
               status: "expired",
               message:
