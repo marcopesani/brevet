@@ -1,40 +1,23 @@
-import Fastify from "fastify";
+import Fastify from 'fastify'
+import app from './app'
+import { backendEnv } from './lib/env'
+import { backendFastifyLoggingOptions } from './lib/logging'
 
-const port = Number(process.env.PORT ?? 4000);
-const host = process.env.HOST ?? "0.0.0.0";
-const postgresUrl =
-  process.env.POSTGRES_URL ??
-  "postgresql://app:app_dev_password@localhost:5432/appdb";
-const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
+const port = backendEnv.port
+const host = backendEnv.host
 
-const app = Fastify({
-  logger: true,
-});
+const server = Fastify(backendFastifyLoggingOptions)
 
-app.get("/health", async () => {
-  return { ok: true };
-});
-
-app.get("/hello", async () => {
-  return {
-    app: "backend",
-    message: "Hello from Fastify",
-    timestamp: new Date().toISOString(),
-    dependencies: {
-      postgresUrl,
-      redisUrl,
-    },
-  };
-});
+void server.register(app)
 
 const start = async () => {
   try {
-    await app.listen({ port, host });
-    app.log.info(`Backend listening on http://${host}:${port}`);
+    await server.listen({ port, host })
+    server.log.info(`Backend listening on http://${host}:${port}`)
   } catch (error) {
-    app.log.error(error);
-    process.exit(1);
+    server.log.error(error)
+    process.exit(1)
   }
-};
+}
 
-void start();
+void start()

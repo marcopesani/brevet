@@ -7,17 +7,34 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "lint": "pnpm run check-types",
+    "test": "tsx --test test/routes/auth-security.test.ts test/logging/logging-contract.test.ts"
   },
   "keywords": [
     "fastify"
   ],
   "license": "MIT",
   "dependencies": {
-    "fastify": "^5.0.0"
+    "@fastify/autoload": "^6.3.1",
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.2.0",
+    "@fastify/sensible": "^6.0.4",
+    "@repo/auth-contracts": "workspace:*",
+    "@repo/db": "workspace:*",
+    "@simplewebauthn/server": "^13.2.3",
+    "better-auth": "^1.5.2",
+    "drizzle-orm": "^0.44.7",
+    "fastify": "^5.0.0",
+    "fastify-plugin": "^5.1.0",
+    "pg": "^8.19.0",
+    "siwe": "^3.0.0",
+    "viem": "^2.46.3",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^24.0.8",
+    "fastify-cli": "^7.4.1",
     "fastify-tsconfig": "^3.0.0",
     "tsx": "^4.20.6",
     "typescript": "~5.9.2"
