@@ -1,0 +1,8 @@
+{
+  "name": "infra",
+  "private": true,
+  "scripts": {
+    "dev": "docker compose up -d && docker compose logs -f postgres redis",
+    "stop": "docker compose down"
+  }
+}

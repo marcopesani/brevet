@@ -1,0 +1,24 @@
+{
+  "name": "brevet",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --filter=infra --filter=frontend --filter=backend --filter=mcp",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "check-types": "turbo run check-types",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres redis",
+    "dev:all": "pnpm db:up && pnpm dev"
+  },
+  "devDependencies": {
+    "prettier": "^3.7.4",
+    "turbo": "^2.8.13",
+    "typescript": "5.9.2"
+  },
+  "packageManager": "pnpm@10.10.0",
+  "engines": {
+    "node": ">=18"
+  }
+}

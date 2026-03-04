@@ -1,0 +1,7 @@
+packages:
+  - "apps/frontend"
+  - "apps/backend"
+  - "apps/mcp"
+  - "apps/cli"
+  - "apps/infra"
+  - "packages/*"
